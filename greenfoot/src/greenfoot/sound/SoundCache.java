@@ -1,0 +1,70 @@
+/*
+ This file is part of the Greenfoot program. 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ 
+ This program is free software; you can redistribute it and/or 
+ modify it under the terms of the GNU General Public License 
+ as published by the Free Software Foundation; either version 2 
+ of the License, or (at your option) any later version. 
+ 
+ This program is distributed in the hope that it will be useful, 
+ but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ GNU General Public License for more details. 
+ 
+ You should have received a copy of the GNU General Public License 
+ along with this program; if not, write to the Free Software 
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. 
+ 
+ This file is subject to the Classpath exception as provided in the  
+ LICENSE.txt file that accompanied this code.
+ */
+/*
+ * Class SoundCache is a cache for recently played sounds.
+ *
+ * @author mik
+ * @version 1.0
+ */
+
+package greenfoot.sound;
+
+
+public class SoundCache 
+{
+    private static final int CACHE_SIZE = 20;
+
+    private SoundClip[] cache = new SoundClip[CACHE_SIZE];
+    private int nextEntry;
+    
+    /**
+     * Create an empty SoundCache.
+     */
+    public SoundCache() 
+    {
+        nextEntry = 0;
+    }
+    
+    /**
+     * Add a sound to the cache.
+     */
+    public void put(SoundClip sound)
+    {
+        cache[nextEntry] = sound;
+        nextEntry = (nextEntry+1) % CACHE_SIZE;
+    }
+    
+    /**
+     * Try to find a sound in the cache. Returns the sound or null.
+     */
+    public SoundClip get(String name) 
+    {
+        int i = 0;
+        while(i < CACHE_SIZE) {
+            if(cache[i] != null && name.equals(cache[i].getName()) && !cache[i].isPlaying()) {
+                return cache[i];
+            }
+            i++;
+        }
+        return null;
+    }
+}

@@ -1,0 +1,9 @@
+Tato složka obsahuje některé šablony, které BlueJ používá pro
+generování souborů. Změnou těchto šablon dosáhnete změny obsahu
+generovaných souborů.
+
+ - "readme" a "readmeexp" mohou byt libovolně měněny
+ - změny v "html" šablonách provádějte opatrně, mohou nastat problémy
+
+Podsložka "newclass" obsahuje šablony pro generováni nových tříd a rozhraní
+pomocí položky menu "Nová třída ...".

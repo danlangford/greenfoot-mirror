@@ -1,0 +1,49 @@
+README - <bluej-home>/lib/<language>/templates/newclass/README
+--------------------------------------------------------------
+
+Tato složka obsahuje šablony tříd BlueJ.
+
+Tyto šablony tříd jsou zobrazeny jako možnosti při vytváření nových tříd
+v prostředí BlueJ - volba v menu "Úpravy/Nová třída ..."
+
+
+Změny šablon
+------------
+Editováním těchto souborů provedete potřebné změny šablon.
+
+
+Přidáváni šablon
+----------------
+Vytvořte v teto složce soubor s příponou ".tmpl" (pr.: "mainclass.tmpl")
+
+Bude-li jméno třídy začínat některou ze speciálních předpon, 
+bude soubor považován za šablonu příslušnoho typu třídy, resp. rozhraní. 
+Speciálními předponami jsou:
+
+abstract   - označuje šablonu abstraktní třídy
+applet     - označuje šablonu apletu
+enum       - označuje šablonu výčtového typu
+interface  - označuje šablonu rozhraní
+unittest   - označuje šablonu testovací třídy
+
+Bude-li název začínat jakkoliv jinak, bude soubor považován 
+za šablonu standardní třídy.
+
+Implicitně budou přidané šablony šablona uvedeny na konci seznamu 
+v dialogu "Nova třída ..." pod jménem shodným se jménem šablony bez přípony 
+(např. "mainclass").
+
+Jméno zobrazené v tomto seznamu muže byt nastaveno pomoci vlastnosti
+"pkgmgr.newClass.<template-name>" v konfiguračním souboru "labels" 
+(umístěni <bluej-home>/lib/<language>/labels). 
+Příklad:
+
+   pkgmgr.newClass.mainclass=Třída s metodou main
+
+způsobí, ze se v seznamu objeví položka "Třída s metodou main".
+
+Pořadí, v němž budou názvy šablon v seznamu zobrazeny 
+může byt specifikována v konfiguračním souboru <bluej-home>/lib/bluej.defs 
+pomoci položky "bluej.classTemplates".
+Názvy šablon uvedené v této položce budou zobrazeny před zbylými
+šablonami a v zadaném pořadí.
