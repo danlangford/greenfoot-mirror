@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,7 +21,7 @@
  */
 package greenfoot;
 
-import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.image.ImageObserver;
 
 /**
@@ -32,13 +32,13 @@ import java.awt.image.ImageObserver;
  * 
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: ImageVisitor.java 6170 2009-02-20 13:29:34Z polle $
+ * @version $Id: ImageVisitor.java 6256 2009-04-16 11:55:51Z polle $
  */
 public class ImageVisitor
 {
-    public static void drawImage(GreenfootImage image, Graphics g, int x, int y, ImageObserver observer)
+    public static void drawImage(GreenfootImage image, Graphics2D g, int x, int y, ImageObserver observer, boolean useTranparency)
     {
-        image.drawImage(g, x, y, observer);
+        image.drawImage(g, x, y, observer, useTranparency);
     }
     
     public static boolean equal(GreenfootImage image1, GreenfootImage image2)

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -34,7 +34,7 @@ import java.io.File;
  *
  * @author Michael Kolling
  * @see FileUtility
- * @version $Id: PackageFileView.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: PackageFileView.java 6347 2009-05-20 15:22:43Z polle $
  */
 public class PackageFileView extends FileView
 {
@@ -72,7 +72,7 @@ public class PackageFileView extends FileView
      */
     public Icon getIcon(File f)
     {
-        if(Package.isBlueJPackage(f))
+        if(Package.isPackage(f))
             return packageIcon;
         else
             return null;

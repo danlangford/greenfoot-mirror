@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -28,7 +28,7 @@
  * and open the template in the editor.
 
  * @author Michael Kolling
- * @version $Id: ExportAppPane.java 6170 2009-02-20 13:29:34Z polle $
+ * @version $Id: ExportAppPane.java 6277 2009-04-23 21:11:43Z mjrb4 $
  */
 
 package greenfoot.gui.export;
@@ -49,6 +49,7 @@ import javax.swing.JTextField;
 
 import bluej.BlueJTheme;
 import bluej.Config;
+import javax.swing.JOptionPane;
 
 public class ExportAppPane extends ExportPane
 {
@@ -131,9 +132,24 @@ public class ExportAppPane extends ExportPane
         if(file != null) {
             String newName = file.getPath();
             if(!newName.endsWith(".jar")) {
-                newName += ".jar";
+                if(! newName.toLowerCase().endsWith(".jar")) {
+                    newName += ".jar";
+                }
+                else {
+                    newName = newName.substring(0, newName.length()-".jar".length());
+                    newName += ".jar";
+                }
             }
             targetDirField.setText(newName);
+            if(file.exists()) {
+                String message = newName + " already exists. Overwrite?";
+                String title = "Warning";
+                int result = JOptionPane.showConfirmDialog(this, message, title, JOptionPane.YES_NO_OPTION);
+                if(result==JOptionPane.NO_OPTION) {
+                    getFileName(targetFile);
+                    return;
+                }
+            }
         }
     }
 

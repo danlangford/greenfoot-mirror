@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,6 +23,8 @@ package greenfoot.export;
 
 import greenfoot.core.GProject;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -38,10 +40,13 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import bluej.Config;
@@ -79,7 +84,14 @@ public class JarCreator
     /** List of extra jars that should be put in the same dir as the created jar (the exportDir)*/
     private List<File> extraJars = new LinkedList<File>();
     
+    /** List of extra jars whose contents should be put into the created jar */
+    private List<File> extraJarsInJar = new LinkedList<File>();
+
+    /** List of paths to external jars that should be included in the manifest's classpath. */
+    private List<String> extraExternalJars = new LinkedList<String>();
+    
     private List<File> dirs = new LinkedList<File>();
+    private List<PrefixedFile> prefixDirs = new LinkedList<PrefixedFile>();
 
     /** array of directory names not to be included in jar file * */
     private List<String> skipDirs = new LinkedList<String>();
@@ -94,6 +106,7 @@ public class JarCreator
     private Properties properties;
  
     private boolean isZip = false;
+
     /**
      * Prepares a new jar creator. Once everything is set up, call create()
      * 
@@ -122,7 +135,7 @@ public class JarCreator
      * @param exportDir The directory to export to.
      * @param jarName Name of the jar file that should be created.
      * @param worldClass Name of the main class.
-     * @param includeExtraControls Should the exported scenario include 'act'
+     * @param lockScenario Should the exported scenario include 'act'
      *            and speedslider.
      */
     public JarCreator(GProject project, File exportDir, String jarName, String worldClass, boolean lockScenario) 
@@ -142,13 +155,8 @@ public class JarCreator
         
         String scenarioName = project.getName();
         
-        addDir(projectDir);
+        addFile(projectDir);
 
-        // Add the Greenfoot standalone classes
-        File libDir = Config.getGreenfootLibDir();        
-        File greenfootDir = new File(libDir, "standalone");        
-        addDir(greenfootDir);
-        
         // skip CVS stuff
         addSkipDir("CVS");
         addSkipFile(".cvsignore");
@@ -237,7 +245,7 @@ public class JarCreator
         }
         
         
-        addDir(projectDir);        
+        addFile(projectDir);        
         
         // skip CVS stuff
         addSkipDir("CVS");
@@ -277,7 +285,7 @@ public class JarCreator
         ZipOutputStream jStream = null;
 
         try {
-            oStream = new FileOutputStream(jarFile);
+            oStream = new BufferedOutputStream(new FileOutputStream(jarFile));
             String pathPrefix = ""; // Put everything in top level of jar
             if (! isZip) {
                 // It is a jar file so we write the manifest and the properties.
@@ -291,12 +299,17 @@ public class JarCreator
                 pathPrefix = projectDir.getName() + "/";
                 jStream = new ZipOutputStream(oStream);
             }
-            // Write contents of project-dir
+            // Write contents of directories added
             for(File dir : dirs) {
-                writeDirToJar(dir, pathPrefix, jStream, jarFile.getCanonicalFile());
+                writeFileToJar(dir, pathPrefix, jStream, jarFile.getCanonicalFile(), true);
             }
-            
-            copyLibsToJar(extraJars, exportDir);            
+            for(PrefixedFile dir : prefixDirs) {
+                writeFileToJar(dir.getFile(), pathPrefix + dir.getPrefix(), jStream, jarFile.getCanonicalFile(), true);
+            }
+            for(File jar : extraJarsInJar) {
+                writeJarToJar(jar, jStream);
+            }
+            copyLibsToDir(extraJars, exportDir);            
         }
         catch (IOException exc) {
             Debug.reportError("problen writing jar file: " + exc);
@@ -322,7 +335,7 @@ public class JarCreator
         OutputStream os = null;
         try {
             file.createNewFile();
-            os = new FileOutputStream(file);
+            os = new BufferedOutputStream(new FileOutputStream(file));
             properties.store(os, "Properties for running Greenfoot scenarios alone.");
         }
         catch (FileNotFoundException e) {
@@ -385,9 +398,14 @@ public class JarCreator
         // Construct classpath with used library jars
         String classpath = "";
 
-        // add extra jar to classpath
+        // add extra jars to classpath
         for (Iterator<File> it = extraJars.iterator(); it.hasNext();) {
             classpath += " " + it.next().getName();
+        }
+        
+        // add extra external jars to classpath
+        for (Iterator<String> it = extraExternalJars.iterator(); it.hasNext();) {
+            classpath += " " + it.next();
         }
         
         Attributes attr = manifest.getMainAttributes();
@@ -428,15 +446,48 @@ public class JarCreator
     {
         extraJars.add(jar);
     }
+    
+    /** 
+     * Add a jar to the list of extra jars whose contents should be put into the created jar 
+     * <br>
+     * 
+     * This will usually be the jars +libs dir and userlib jars
+     * @param jar A jar file.
+     */
+    public void addJarToJar(File jar)
+    {
+        extraJarsInJar.add(jar);
+    }
 
     /**
-     * Directory to include in export.
+     * Adds a location of an external jar file. This will be added to the
+     * classpath of the manifest.
      * 
-     * @param dir
+     * @param  path Usually a URL or a relative path.
      */
-    public void addDir(File dir)
+    public void addToClassPath(String path)
     {
-        dirs.add(dir);
+        extraExternalJars.add(path);
+    }
+    
+    /**
+     * Directory or file to include in export.
+     * 
+     */
+    public void addFile(File file)
+    {
+        dirs.add(file);
+    }
+
+    
+    /**
+     * Directory or file to include in export, with the given prefix added when putting
+     * it into the jar.
+     * 
+     */
+    public void addFile(String prefix, File file)
+    {
+        prefixDirs.add(new PrefixedFile(prefix, file));
     }
     
     /**
@@ -456,7 +507,7 @@ public class JarCreator
     {
         skipFiles.add(file);
     }
-    
+
     /**
      * Write the contents of a directory to a jar stream. Recursively called for
      * subdirectories. outputFile should be the canonical file representation of
@@ -466,29 +517,66 @@ public class JarCreator
     private void writeDirToJar(File sourceDir, String pathPrefix, ZipOutputStream stream, File outputFile)
         throws IOException
     {
-        File[] dir = sourceDir.listFiles();
-        for (int i = 0; i < dir.length; i++) {
-            if (dir[i].isDirectory()) {
-                if (!skipDir(dir[i])) {
-                    writeDirToJar(dir[i], pathPrefix + dir[i].getName() + "/", stream, outputFile);
-                }
-            }
-            else {
-                // check against a list of file we don't want to export and also
-                // check that we don't try to export the jar file we are writing
-                // (hangs the machine)
-                if (!skipFile(dir[i].getName(), !includeSource)
-                        && !outputFile.equals(dir[i].getCanonicalFile())) {
-                    writeJarEntry(dir[i], stream, pathPrefix + dir[i].getName());
-                }
+        if (!skipDir(sourceDir)) {
+            File[] dir = sourceDir.listFiles();
+            for (int i = 0; i < dir.length; i++) {
+                writeFileToJar(dir[i], pathPrefix, stream, outputFile, false);
             }
         }
+    }
+    
+    /**
+     * Writes a file or directory to a jar. Recursively called for
+     * subdirectories. outputFile should be the canonical file representation of
+     * the Jar file we are creating (to prevent including itself in the Jar
+     * file)
+     * @param onlyDirContents If sourceFile is a dir, this parameter indicates that the contents of the dir should be added, not the dir itself.
+     */
+    private void writeFileToJar(File sourceFile, String pathPrefix, ZipOutputStream stream, File outputFile, boolean onlyDirContents)
+        throws IOException
+    {
+        if(sourceFile.isDirectory()) {
+            if(!onlyDirContents) {
+                pathPrefix += sourceFile.getName()  + "/";
+            }
+            writeDirToJar(sourceFile, pathPrefix, stream, outputFile);
+        }
+        else {
+            // check against a list of files we don't want to export and also
+            // check that we don't try to export the jar file we are writing
+            // (hangs the machine)
+            if (!skipFile(sourceFile.getName(), !includeSource)
+                    && !outputFile.equals(sourceFile.getCanonicalFile())) {
+                writeJarEntry(sourceFile, stream, pathPrefix + sourceFile.getName());
+            }
+        }
+    }
+    
+    /**
+     * Write the contents of a jar into another jar stream. 
+     */
+    private void writeJarToJar(File inputJar, ZipOutputStream outputStream)
+        throws IOException
+    {
+        
+        JarInputStream inputStream = new JarInputStream(
+                new BufferedInputStream(new FileInputStream(inputJar)));
+        
+        ZipEntry inputEntry = inputStream.getNextJarEntry();
+        while(inputEntry != null) {
+            //TODO: What if we have duplicate files????
+            outputStream.putNextEntry(inputEntry);
+            FileUtility.copyStream(inputStream, outputStream);
+            inputStream.closeEntry();
+            inputEntry = inputStream.getNextJarEntry();
+        }        
+        inputStream.close();
     }
 
     /**
      * Copy all files specified in the given list to the new jar directory.
      */
-    private void copyLibsToJar(List<File> userLibs, File destDir)
+    private void copyLibsToDir(List<File> userLibs, File destDir)
     {
         for (Iterator<File> it = userLibs.iterator(); it.hasNext();) {
             File lib = (File) it.next();
@@ -546,7 +634,7 @@ public class JarCreator
     {
         InputStream in = null;
         try {
-            in = new FileInputStream(file);
+            in = new BufferedInputStream(new FileInputStream(file));
             stream.putNextEntry(new ZipEntry(entryName));
             FileUtility.copyStream(in, stream);
         }
@@ -574,7 +662,9 @@ public class JarCreator
         translations.put("APPLETHEIGHT", "" + height);
 
         // add libraries from <project>/+libs/ to archives
-        /*String archives = jarName;
+        /*
+        This does not work on Safari (and maybe other browser as well)
+        String archives = jarName;
         try {
             for (int i = 0; i < libs.length; i++) {
                 if (archives.length() == 0)
@@ -599,4 +689,27 @@ public class JarCreator
             e.printStackTrace();
         }
     }
+    
+    static class PrefixedFile 
+    {
+        private File file;
+        public File getFile()
+        {
+            return file;
+        }
+
+        public String getPrefix()
+        {
+            return prefix;
+        }
+
+        private String prefix;
+
+        public PrefixedFile(String prefix, File file) 
+        {
+            this.prefix = prefix;
+            this.file = file;
+        }    
+    }
+    
 }

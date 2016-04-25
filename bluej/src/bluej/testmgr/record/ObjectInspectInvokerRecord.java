@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,7 +29,7 @@ package bluej.testmgr.record;
  * (not currently working).
  *
  * @author  Andrew Patterson
- * @version $Id: ObjectInspectInvokerRecord.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: ObjectInspectInvokerRecord.java 6312 2009-05-07 04:44:13Z davmac $
  */
 public class ObjectInspectInvokerRecord extends InvokerRecord
 {
@@ -112,13 +112,4 @@ public class ObjectInspectInvokerRecord extends InvokerRecord
         }
     }
     
-    public String toTestMethodInit() 
-    {
-        if(parentIr != null) {
-            return parentIr.toTestMethodInit();
-        }
-        else {
-            return "";
-        }
-    }
 }

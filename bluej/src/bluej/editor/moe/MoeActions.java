@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -31,19 +31,45 @@ package bluej.editor.moe;
 
 import java.awt.Container;
 import java.awt.Event;
+import java.awt.Font;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.Toolkit;
-import java.awt.datatransfer.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Iterator;
 
-import javax.swing.*;
+import javax.swing.Action;
+import javax.swing.InputMap;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JOptionPane;
+import javax.swing.KeyStroke;
 import javax.swing.event.DocumentEvent;
-import javax.swing.text.*;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Caret;
+import javax.swing.text.DefaultEditorKit;
+import javax.swing.text.Document;
+import javax.swing.text.Element;
+import javax.swing.text.JTextComponent;
+import javax.swing.text.Keymap;
+import javax.swing.text.TextAction;
 import javax.swing.undo.CannotRedoException;
 import javax.swing.undo.CannotUndoException;
 
@@ -314,12 +340,21 @@ public final class MoeActions
                         (Action) (actions.get("new-line")));
                 keymap.addActionForKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, Event.SHIFT_MASK),
                         (Action) (actions.get("insert-break")));
+
             }
             if (version < 200) {
                 keymap.addActionForKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_TAB, Event.SHIFT_MASK), 
                         (Action) (actions.get("de-indent")));
                 keymap.addActionForKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_I, SHORTCUT_MASK), 
                         (Action) (actions.get("insert-tab")));
+
+            }
+            if (version <252) {
+                keymap.addActionForKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, SHORTCUT_MASK), (Action) (actions
+                        .get("increase-font")));
+                keymap.addActionForKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, SHORTCUT_MASK), (Action) (actions
+                        .get("decrease-font")));
+
             }
             return true;
         }
@@ -373,9 +408,19 @@ public final class MoeActions
         String prefix = doc.getText(lineStart, offset - lineStart);
         
         if(prefix.trim().length() == 0) {  // only if there is no other text before '}'
+            // Determine where the cursor appears horizontally (before insertion)
+            Rectangle r = textPane.modelToView(textPane.getCaretPosition() - 1);
+            Point p = r.getLocation();
+            
+            // Indent the line
             textPane.setCaretPosition(lineStart);
             doIndent(textPane, true);
             textPane.setCaretPosition(textPane.getCaretPosition() + 1);
+            
+            // Set the magic position to the original position. This means that
+            // cursor up will go to the beginning of the previous line, which is much
+            // nicer behaviour.
+            textPane.getCaret().setMagicCaretPosition(p);
         }
     }
 
@@ -786,6 +831,49 @@ public final class MoeActions
             else
                 getActionByName("cut-to-clipboard").actionPerformed(e);
             lastActionWasCut = true;
+        }
+    }
+    
+ // --------------------------------------------------------------------
+
+    class IncreaseFontAction extends MoeAbstractAction
+    {
+
+        public IncreaseFontAction()
+        {
+            super("increase-font");
+        }
+
+        public void actionPerformed(ActionEvent e)
+        {
+        	
+        	JTextComponent textPane = getTextComponent(e);
+            Font textPFont= textPane.getFont();           
+            int newFont=textPFont.getSize()+1;
+            //PrefMgr.setEditorFontSize(newFont);
+            getTextComponent(e).setFont(textPane.getFont().deriveFont((float)newFont));
+            
+        }
+    }
+    
+ // --------------------------------------------------------------------
+
+    class DecreaseFontAction extends MoeAbstractAction
+    {
+
+        public DecreaseFontAction()
+        {
+            super("decrease-font");
+        }
+
+        public void actionPerformed(ActionEvent e)
+        {
+     
+            JTextComponent textPane = getTextComponent(e);
+            Font textPFont= textPane.getFont();            
+            int newFont=textPFont.getSize()-1;
+            //PrefMgr.setEditorFontSize(newFont);
+            getTextComponent(e).setFont(textPFont.deriveFont((float)newFont));
         }
     }
 
@@ -1645,6 +1733,10 @@ public final class MoeActions
                 new DescribeKeyAction(), 
                 new HelpMouseAction(), 
                 new ShowManualAction(),
+
+                new IncreaseFontAction(),
+                new DecreaseFontAction(),
+               
             };
 
         // insert all actions into a hashtable
@@ -1665,6 +1757,7 @@ public final class MoeActions
         // sort all actions into a big, ordered table
 
         actionTable = new Action[] {
+        		
 
         // edit functions
 
@@ -1758,16 +1851,21 @@ public final class MoeActions
                 (Action) (actions.get("toggle-interface-view")),
                 (Action) (actions.get("toggle-breakpoint")), 
                 (Action) (actions.get("go-to-line")),
-        }; // 78
+                (Action) (actions.get("increase-font")),
+                (Action) (actions.get("decrease-font")),
+                
+        }; // 80
 
         categories = new String[] { 
                 Config.getString("editor.functions.editFunctions"),
-                Config.getString("editor.functions.moveScroll"), Config.getString("editor.functions.classFunctions"),
-                Config.getString("editor.functions.customisation"), Config.getString("editor.functions.help"),
+                Config.getString("editor.functions.moveScroll"), 
+                Config.getString("editor.functions.classFunctions"),
+                Config.getString("editor.functions.customisation"), 
+                Config.getString("editor.functions.help"),
                 Config.getString("editor.functions.misc")
         };
 
-        categoryIndex = new int[] { 0, 41, 57, 62, 64, 68, 78 };
+        categoryIndex = new int[] { 0, 41, 57, 62, 64, 68, 80 };
     }
 
     /**
@@ -1862,6 +1960,11 @@ public final class MoeActions
                 .get("cut-word")));
         keymap.addActionForKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, DOUBLE_SHORTCUT_MASK), (Action) (actions
                 .get("cut-end-of-word")));
+        keymap.addActionForKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, SHORTCUT_MASK), (Action) (actions
+                .get("increase-font")));
+        keymap.addActionForKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, SHORTCUT_MASK), (Action) (actions
+                .get("decrease-font")));
+       
     }
 
     /**

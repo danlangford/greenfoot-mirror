@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -35,7 +35,7 @@ import javax.swing.border.*;
  * @author  Damiano Bolla: University of Kent at Canterbury
  * @author  Michael Kolling
  * 
- * @version $Id: ExtensionPrefManager.java 6163 2009-02-19 18:09:55Z polle $
+ * @version $Id: ExtensionPrefManager.java 6319 2009-05-08 15:05:53Z polle $
  */
 public class ExtensionPrefManager implements PrefPanelListener
 {
@@ -95,8 +95,10 @@ public class ExtensionPrefManager implements PrefPanelListener
         if (doAction == DO_panelUpdate) 
             drawPanel.removeAll();
       
-        for (Iterator iter=extensionsList.iterator(); iter.hasNext(); ) {
-            doWorkItem ((ExtensionWrapper)iter.next(),doAction);
+        synchronized (extensionsList) {
+            for (Iterator iter=extensionsList.iterator(); iter.hasNext(); ) {
+                doWorkItem ((ExtensionWrapper)iter.next(),doAction);
+            }            
         }
     }
 

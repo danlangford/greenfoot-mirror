@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -26,7 +26,7 @@
  * The exporter is a singleton
  *
  * @author Michael Kolling
- * @version $Id: Exporter.java 6170 2009-02-20 13:29:34Z polle $
+ * @version $Id: Exporter.java 6339 2009-05-18 11:53:07Z polle $
  */
 
 package greenfoot.export;
@@ -41,22 +41,31 @@ import greenfoot.gui.export.ExportAppPane;
 import greenfoot.gui.export.ExportDialog;
 import greenfoot.gui.export.ExportPublishPane;
 import greenfoot.gui.export.ExportWebPagePane;
+import greenfoot.util.GreenfootUtil;
 
 import java.awt.Dimension;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.rmi.RemoteException;
 
 import javax.imageio.ImageIO;
 import javax.swing.SwingUtilities;
 
 import bluej.Boot;
 import bluej.Config;
+import bluej.extensions.ProjectNotOpenException;
+import bluej.pkgmgr.Project;
+import bluej.utility.FileUtility;
 
 public class Exporter 
         implements PublishListener
 {
+    private static final String GREENFOOT_CORE_JAR = "Greenfoot-core-" + Boot.GREENFOOT_API_VERSION + ".jar";
+    private static final String GALLERY_SHARED_JARS = "http://www.greenfootgallery.org/sharedjars/";
+    
     private static Exporter instance;
     
     public static synchronized Exporter getInstance()
@@ -69,6 +78,7 @@ public class Exporter
     
     private File tmpJarFile;
     private File tmpImgFile;
+    private File tmpZipFile;
     private WebPublisher webPublisher;
     private ExportDialog dlg;
     
@@ -108,6 +118,15 @@ public class Exporter
         
         // do not include source
         jarCreator.includeSource(false);
+       
+        // Add the Greenfoot standalone classes as a separate external jar
+        jarCreator.addToClassPath(GALLERY_SHARED_JARS + GREENFOOT_CORE_JAR);   
+       
+        // Add 3rd party libraries used by Greenfoot.      
+        String[] thirdPartyLibs = Boot.GREENFOOT_EXPORT_JARS;
+        for (String lib : thirdPartyLibs) {
+            jarCreator.addToClassPath(GALLERY_SHARED_JARS + lib);  
+        }
         
         // Extra entries for the manifest
         jarCreator.putManifestEntry("title", pane.getTitle());
@@ -135,7 +154,6 @@ public class Exporter
         
         jarCreator.create();
             
-        File tmpZipFile = null;
         // Build zip with source code if needed
         if(pane.includeSourceCode()) { 
             //Create temporary zip file for the source code        
@@ -215,10 +233,6 @@ public class Exporter
             dlg.setProgress(false, Config.getString("export.publish.fail") + " " + e.getMessage());
             return;
         }
-        finally {
-            tmpImgFile.delete();
-            tmpImgFile = null;
-        }
     }
 
     /**
@@ -238,7 +252,28 @@ public class Exporter
         JarCreator jarCreator = new JarCreator(project, exportDir, jarName, worldClass, includeControls);            
         
         // do not include source
-        jarCreator.includeSource(false);
+        jarCreator.includeSource(false);        
+
+        // Add the Greenfoot standalone classes
+        File greenfootLibDir = Config.getGreenfootLibDir();        
+        File greenfootDir = new File(greenfootLibDir, "standalone");        
+        jarCreator.addFile(greenfootDir);   
+        
+        // Add 3rd party libraries used by Greenfoot.
+        File bluejLibDir = Config.getBlueJLibDir();        
+        String[] thirdPartyLibs = Boot.GREENFOOT_EXPORT_JARS;
+        for (int i = 0; i < thirdPartyLibs.length; i++) {
+            String lib = thirdPartyLibs[i];
+            jarCreator.addJar(new File(bluejLibDir,lib));
+        }
+        
+        // Add jars in +libs dir in project directory
+        File[] jarFiles = getJarsInPlusLib(project);
+        if (jarFiles != null) {
+            for (File file : jarFiles) {
+                jarCreator.addJar(file);
+            }
+        }                    
         
         Dimension size = getSize(includeControls);
 
@@ -252,6 +287,23 @@ public class Exporter
         File outputFile = new File(exportDir, htmlName);
         jarCreator.generateHTMLSkeleton(outputFile, title, size.width, size.height);
         dlg.setProgress(false, Config.getString("export.progress.complete")); 
+    }
+
+    private File[] getJarsInPlusLib(GProject project)
+    {
+        File[] jarFiles = null;
+        try {
+            File plusLibsDir = new File(project.getDir(), Project.projectLibDirName);
+            jarFiles = plusLibsDir.listFiles(new FilenameFilter() {
+                public boolean accept(File dir, String name)
+                {
+                    return name.toLowerCase().endsWith(".jar");
+                }
+            });
+        }
+        catch (ProjectNotOpenException e) {}
+        catch (RemoteException e) {}
+        return jarFiles;
     }
         
     /**
@@ -271,7 +323,38 @@ public class Exporter
         JarCreator jarCreator = new JarCreator(project, exportDir, jarName, worldClass, includeControls); 
         // do not include source
         jarCreator.includeSource(false);  
+        
+        // Add the Greenfoot standalone classes
+        File greenfootLibDir = Config.getGreenfootLibDir();        
+        File greenfootDir = new File(greenfootLibDir, "standalone");        
+        jarCreator.addFile(greenfootDir);     
+        
+        // Add 3rd party libraries used by Greenfoot.
+        File bluejLibDir = Config.getBlueJLibDir();        
+        String[] thirdPartyLibs = Boot.GREENFOOT_EXPORT_JARS;
+        for (int i = 0; i < thirdPartyLibs.length; i++) {
+            String lib = thirdPartyLibs[i];
+            jarCreator.addJarToJar(new File(bluejLibDir,lib));
+        }
 
+        // Add jars in +libs dir in project directory
+        File[] jarFiles = getJarsInPlusLib(project);
+        if (jarFiles != null) {
+            for (File file : jarFiles) {
+                jarCreator.addJarToJar(file);
+            }
+        }         
+        
+        // Add text file with license information
+        try {
+            File license = new File(GreenfootUtil.getGreenfootDir(), "GREENFOOT_LICENSES.txt");
+            if(license.exists()) {
+                jarCreator.addFile(license);
+            }
+        } catch (IOException e) {
+            // Ignore exceptions with license file since it is not a crucial thing to include.
+        }
+        
         // Make sure the current properties are saved before they are exported.
         project.getProjectProperties().save();
         
@@ -311,8 +394,7 @@ public class Exporter
      */
     public void errorRecieved(final PublishEvent event)
     {
-        tmpJarFile.delete();
-        tmpImgFile.delete();
+        deleteTmpFiles();
         SwingUtilities.invokeLater(new Runnable() {
             public void run()
             {
@@ -326,14 +408,29 @@ public class Exporter
      */    
     public void statusRecieved(PublishEvent event)
     {
-        tmpJarFile.delete();
-        tmpImgFile.delete();
+        deleteTmpFiles();
         SwingUtilities.invokeLater(new Runnable() {
             public void run()
             {
                 dlg.publishFinished(true, Config.getString("export.publish.complete"));
             }
         });
+    }
+
+    private void deleteTmpFiles()
+    {
+        if (tmpJarFile != null) {
+            tmpJarFile.delete();
+            tmpJarFile = null;
+        }
+        if (tmpImgFile != null) {
+            tmpImgFile.delete();
+            tmpImgFile = null;
+        }
+        if (tmpZipFile != null) {
+            tmpZipFile.delete();
+            tmpZipFile = null;
+        }
     }
     
     /**

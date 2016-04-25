@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -37,7 +37,7 @@ import java.io.File;
  * @author Michael Kolling
  * @author Axel Schmolitzky
  * @author Markus Ostman
- * @version $Id: PackageChooserStrict.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: PackageChooserStrict.java 6347 2009-05-20 15:22:43Z polle $
  */
 public class PackageChooserStrict extends PackageChooser
 {
@@ -62,7 +62,7 @@ public class PackageChooserStrict extends PackageChooser
             // it must be an archive (jar or zip)
             approved();
         }
-        else if (Package.isBlueJPackage(getSelectedFile())) {
+        else if (Package.isPackage(getSelectedFile())) {
     	    approved();
         }
         else {

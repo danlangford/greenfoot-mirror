@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,62 +21,78 @@
  */
 package greenfoot.sound;
 
-import java.io.IOException;
-
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.UnsupportedAudioFileException;
-
-public abstract class Sound
-{    
-    /**
-     * Stop this sound.
+/**
+ * Interface for different types of sounds supported by Greenfoot.
+ * 
+ * @see SoundStream
+ * @see MidiFileSound
+ * @see SoundClip
+ * @author Poul Henriksen 
+ *
+ */
+public interface Sound
+{
+	/**
+	 * Closes this sound. Will immediately release any resources for the sound.
+	 */
+	public abstract void close();
+   
+	/**
+     * Stop this sound. 
      *
+     * After this method has been called: isStopped=true, isPlaying=false, isPaused=false.
      */
-    public abstract void stop() ;
+    public abstract void stop();
     
     /**
      * Pause the song. Paused sounds can be resumed.
      *
+     * After this method has been called: isStopped=false, isPlaying=false, isPaused=true.
      */
     public abstract void pause();
 
     /**
-     * Resume a paused sound
-     *
-     */
-    public abstract void resume();
-    
-    /**
-     * Play this sound. Should only be called once.
-     * @throws UnsupportedAudioFileException 
-     * @throws IOException 
-     * @throws LineUnavailableException 
-     * @throws SecurityException 
-     * @throws IllegalArgumentException 
-     * @throws IOException
-     * @throws UnsupportedAudioFileException
-     * @throws LineUnavailableException
-     */
-    public abstract void play() throws IllegalArgumentException, SecurityException, LineUnavailableException, IOException, UnsupportedAudioFileException;
-
-    /**
-     * Converts format to a compatible format.
-     * <p>
-     * TODO: needs testing! haven't tried with a non-compatible sound yet. 
+     * Resume the sound.
      * 
-     * @param format Original format
-     * @return New compatible format.
+     * After this method has been called: isStopped=false, isPlaying=true, isPaused=false.
      */
+	public abstract void resume();
+	
+    /**
+     * Play this sound. 
+     * 
+     * After this method has been called and no exception occurs: isStopped=false, isPlaying=true, isPaused=false.
+     * If a problem occurs it should be: isStopped=true, isPlaying=false, isPaused=false.
+     * 
+     */
+    public abstract void play();
+	
+    /**
+     * Plays this sound in a loop. 
+     * 
+     * After this method has been called and no exception occurs: isStopped=false, isPlaying=true, isPaused=false.
+     * If a problem occurs it should be: isStopped=true, isPlaying=false, isPaused=false.
+     * 
+     */
+    public abstract void loop() ;
 
-    protected AudioFormat getCompatibleFormat(AudioFormat format) {
-      /*		AudioFormat tmp = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
-                                format.getSampleRate(), format.getSampleSizeInBits() * 2,
-                                format.getChannels(), format.getFrameSize() * 2, format
-                                                .getFrameRate(), true);*/
-        //    AudioFormat supportedFormat = new AudioFormat(format.getSampleRate(), format.getSampleSizeInBits(), format.getChannels(), true, false);
-        
-        return new AudioFormat(format.getSampleRate(), format.getSampleSizeInBits(), format.getChannels(), true, false);
-    }
-    
+    /**
+     * True if the sound is currently playing.
+     * 
+     */
+    public abstract boolean isPlaying();
+
+    /**
+     * True if the sound is currently paused.
+     * 
+     */
+	public abstract boolean isPaused();
+
+    /**
+     * True if the sound is currently paused.
+     * 
+     */
+	public abstract boolean isStopped();
+
+
 }

@@ -1,3 +1,24 @@
+/*
+ This file is part of the BlueJ program. 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ 
+ This program is free software; you can redistribute it and/or 
+ modify it under the terms of the GNU General Public License 
+ as published by the Free Software Foundation; either version 2 
+ of the License, or (at your option) any later version. 
+ 
+ This program is distributed in the hope that it will be useful, 
+ but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ GNU General Public License for more details. 
+ 
+ You should have received a copy of the GNU General Public License 
+ along with this program; if not, write to the Free Software 
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. 
+ 
+ This file is subject to the Classpath exception as provided in the  
+ LICENSE.txt file that accompanied this code.
+ */
 #define UNICODE
 
 #include <windows.h>
@@ -11,7 +32,6 @@
 #undef __cplusplus
 #include <jni.h>
 #define __cplusplus
-
 
 #ifndef APPNAME
 #define APPNAME "BlueJ"
@@ -284,7 +304,9 @@ bool launchVMexternal(string jdkLocation)
 //       Note, if this call succeeds, it might not return at all.
 bool launchVM(string jdkLocation)
 {
-	if (externalLaunch) {
+	if (externalLaunch || ! windowsvmargs.empty()) {
+		// If there are VM arguments, do an external launch. It is too difficult
+		// to translate java.exe arguments to javavm.dll options.
 		return launchVMexternal(jdkLocation);
 	}
 
@@ -294,6 +316,12 @@ bool launchVM(string jdkLocation)
 	JavaVM *javaVM;
 	JNIEnv *jniEnv;
 	
+	// Try and load msvcr71.dll from the JDK directory first. Otherwise loading the jvm seems
+	// to fail on some machines.
+	HINSTANCE hMsvcrlib;
+	hMsvcrlib = LoadLibrary( (jdkLocation + TEXT("\\jre\\bin\\msvcr71.dll")).c_str() );
+	
+	// Now load the JVM.
 	HINSTANCE hJavalib;
 	hJavalib = LoadLibrary( (jdkLocation + TEXT("\\jre\\bin\\client\\jvm.dll")).c_str() );
 	if (hJavalib == NULL) {
@@ -329,7 +357,7 @@ bool launchVM(string jdkLocation)
     for (std::list<LPCTSTR>::iterator i = windowsvmargs.begin(); i != windowsvmargs.end(); ) {
 		options[j].optionString = wideToUTF8(string(*i));
 		options[j].extraInfo = NULL;
-		j++;
+		j++; i++;
 	}
 	
 	vm_args.version = 0x00010002;

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,6 +21,7 @@
  */
 package greenfoot.gui;
 
+import greenfoot.Actor;
 import greenfoot.World;
 import greenfoot.actions.AboutGreenfootAction;
 import greenfoot.actions.CloseProjectAction;
@@ -44,6 +45,7 @@ import greenfoot.actions.ShowCopyrightAction;
 import greenfoot.actions.ShowReadMeAction;
 import greenfoot.actions.ShowWebsiteAction;
 import greenfoot.core.GClass;
+import greenfoot.core.GCoreClass;
 import greenfoot.core.GPackage;
 import greenfoot.core.GProject;
 import greenfoot.core.GreenfootMain;
@@ -65,7 +67,7 @@ import greenfoot.gui.inspector.GreenfootClassInspector;
 import greenfoot.gui.inspector.GreenfootObjectInspector;
 import greenfoot.platforms.ide.SimulationDelegateIDE;
 import greenfoot.platforms.ide.WorldHandlerDelegateIDE;
-import greenfoot.sound.SoundPlayer;
+import greenfoot.sound.SoundFactory;
 import greenfoot.util.GreenfootUtil;
 
 import java.awt.BorderLayout;
@@ -124,7 +126,7 @@ import com.apple.eawt.ApplicationEvent;
  * @author Poul Henriksen
  * @author mik
  *
- * @version $Id: GreenfootFrame.java 6170 2009-02-20 13:29:34Z polle $
+ * @version $Id: GreenfootFrame.java 6322 2009-05-09 17:50:58Z polle $
  */
 public class GreenfootFrame extends JFrame
     implements WindowListener, CompileListener, WorldListener, SelectionListener,
@@ -411,8 +413,8 @@ public class GreenfootFrame extends JFrame
                 }
             }
         });
-        
-        sim.addSimulationListener(SoundPlayer.getInstance());
+
+        sim.addSimulationListener(SoundFactory.getInstance().getSoundCollection());
         
         // Panel that contains the border so that borders are not drawn on our
         // canvas, but just outside it.
@@ -541,17 +543,9 @@ public class GreenfootFrame extends JFrame
 
     			GClass[] classes = pkg.getClasses();
     			//add the system classes
-    			GPackage sysPkg = project.getGreenfootPackage();
-    			if (sysPkg == null) {
-    				sysPkg = project.newPackage("greenfoot");
-    			}
-
-    			GClass[] gClasses = sysPkg.getClasses();
-    			for (int i = 0; i < gClasses.length; i++) {
-    				GClass gClass = gClasses[i];
-    				classBrowser.quickAddClass(new ClassView(classBrowser, gClass, true));
-    			}
-
+    			classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(World.class, project)));
+    			classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(Actor.class, project)));
+    			
     			for (int i = 0; i < classes.length; i++) {
     				GClass gClass = classes[i];
     				classBrowser.quickAddClass(new ClassView(classBrowser, gClass));

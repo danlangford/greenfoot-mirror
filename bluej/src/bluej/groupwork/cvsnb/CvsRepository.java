@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -47,7 +47,6 @@ import org.netbeans.lib.cvsclient.command.update.UpdateCommand;
 import org.netbeans.lib.cvsclient.connection.AuthenticationException;
 import org.netbeans.lib.cvsclient.connection.Connection;
 import org.netbeans.lib.cvsclient.connection.PServerConnection;
-import org.netbeans.modules.versioning.system.cvss.SSHConnection;
 
 import bluej.groupwork.*;
 import bluej.utility.Debug;
@@ -58,7 +57,7 @@ import bluej.utility.filefilter.DirectoryFilter;
  * This class handles communication with the repository.
  *
  * @author fisker
- * @version $Id: CvsRepository.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: CvsRepository.java 6313 2009-05-07 06:03:39Z davmac $
  */
 public class CvsRepository implements Repository
 {
@@ -661,7 +660,7 @@ public class CvsRepository implements Repository
                 port = cvsRoot.getPort();
             }
 
-            SSHConnection sshConnection = new SSHConnection(socketFactory,
+            GSSHConnection sshConnection = new GSSHConnection(socketFactory,
                     cvsRoot.getHostName(), port, cvsRoot.getUserName(),
                     cvsRoot.getPassword());
             sshConnection.setRepository(cvsRoot.getRepository());

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,6 +21,7 @@
  */
 package bluej.pkgmgr;
 
+import java.awt.Component;
 import java.awt.EventQueue;
 import java.awt.Window;
 import java.io.File;
@@ -79,9 +80,11 @@ import bluej.terminal.Terminal;
 import bluej.testmgr.record.ClassInspectInvokerRecord;
 import bluej.testmgr.record.InvokerRecord;
 import bluej.utility.Debug;
+import bluej.utility.DialogManager;
 import bluej.utility.FileUtility;
 import bluej.utility.JavaNames;
 import bluej.utility.Utility;
+import bluej.utility.FileUtility.WriteCapabilities;
 import bluej.views.View;
 
 
@@ -92,7 +95,7 @@ import bluej.views.View;
  * @author  Axel Schmolitzky
  * @author  Andrew Patterson
  * @author  Bruce Quig
- * @version $Id: Project.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: Project.java 6347 2009-05-20 15:22:43Z polle $
  */
 public class Project implements DebuggerListener, InspectorManager 
 {
@@ -206,12 +209,12 @@ public class Project implements DebuggerListener, InspectorManager
     }
 
     /**
-     * Check if the path given is either a directory with a bluej pkg file or
-     * the name of a bluej pkg file.
-     *
-     * @param projectPath
-     *            a string representing the path to check. This can either be a
-     *            directory name or the filename of a bluej.pkg file.
+     * Check if the path given is either a directory with a project file or if
+     * it is the project file itself (project.greenfoot or package.bluej).
+     * 
+     * @param projectPath a string representing the path to check. This can
+     *            either be a directory name or the filename of a project
+     *            file.
      */
     public static boolean isProject(String projectPath) 
     {
@@ -227,7 +230,7 @@ public class Project implements DebuggerListener, InspectorManager
             return false;
         }
 
-        return (Package.isBlueJPackage(startingDir));
+        return (Package.isPackage(startingDir));
     }
 
     /**
@@ -236,11 +239,14 @@ public class Project implements DebuggerListener, InspectorManager
      * @param projectPath
      *            a string representing the path to open. This can either be a
      *            directory name or the filename of a bluej.pkg file.
+     * @param parent 
+     *            Component used as parent if we need to show any messages.
+     *            Can be null.
      * @return the Project representing the BlueJ project that has this
      *         directory within it or null if there were no bluej.pkg files in
      *         the specified directory.
      */
-    public static Project openProject(String projectPath) 
+    public static Project openProject(String projectPath, Component parent) 
     {
         String startingPackageName;
         File projectDir;
@@ -265,13 +271,13 @@ public class Project implements DebuggerListener, InspectorManager
         // (and while we are at it we will construct the qualified
         //  package name that lets us open the PkgMgrFrame at the
         //  right point)
-        if (Package.isBlueJPackage(startingDir)) {
+        if (Package.isPackage(startingDir)) {
             File curDir = startingDir;
             File lastDir = null;
 
             startingPackageName = "";
 
-            while ((curDir != null) && Package.isBlueJPackage(curDir)) {
+            while ((curDir != null) && Package.isPackage(curDir)) {
                 if (lastDir != null) {
                     String lastdirName = lastDir.getName();
 
@@ -331,6 +337,25 @@ public class Project implements DebuggerListener, InspectorManager
             proj.initialPackageName = startingPackageName;
         }
 
+        if(Config.isWinOSVista()) {
+        	WriteCapabilities capabilities = FileUtility.getVistaWriteCapabilities(projectDir);
+        	switch (capabilities) {
+			case VIRTUALIZED_WRITE:
+	        	DialogManager.showMessage(parent, "project-is-virtualized");
+				break;
+			case READ_ONLY:
+	            DialogManager.showMessage(parent, "project-is-readonly");
+				break;
+			case NORMAL_WRITE:
+				break;
+			default:
+				break;
+			}
+        }
+    	else if (!projectDir.canWrite()) {
+            DialogManager.showMessage(parent, "project-is-readonly");
+        }
+        
         ExtensionsManager.getInstance().projectOpening(proj);
 
         return proj;
@@ -442,29 +467,6 @@ public class Project implements DebuggerListener, InspectorManager
     {
         return (Project) projects.get(projectKey);
     }
-
-    /**
-     * Check if the given path contains a BlueJ project.
-     * 
-     * @param projectPath
-     */
-    public static boolean isBlueJProject(String projectPath) 
-    {
-        File startingDir = null;
-        try {
-            startingDir = pathIntoStartingDirectory(projectPath);
-        }
-        catch(IOException ioe)
-        {
-            return false;
-        }
-
-        if (startingDir == null) {
-            return false;
-        }
-
-        return Package.isBlueJPackage(startingDir);
-    }
    
     /**
      * Set this project as a Java Micro Edition project. This method has package
@@ -497,7 +499,7 @@ public class Project implements DebuggerListener, InspectorManager
            we immediately find the parent directory and use that as the
            starting directory */
         if (startingDir.isFile()) {
-            if (BlueJPackageFile.isPackageFileName(startingDir.getName())) {
+            if (Package.isPackageFileName(startingDir.getName())) {
                 return startingDir.getParentFile();
             }
         }
@@ -718,17 +720,8 @@ public class Project implements DebuggerListener, InspectorManager
         else {
             return null;
         }
-    }
-    
-    /**
-     * Return whether the project is located in a readonly directory
-     * @return
-     */
-    public boolean isReadOnly() 
-    {
-        return !projectDir.canWrite();
-    }
-
+    }      
+	
     /**
      * A string which uniquely identifies this project
      */

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -184,7 +184,11 @@ public class Simulation extends Thread
                 // Someone interrupted the user code. We ignore it and let
                 // maybePause() handle whatever needs to be done.
                 
-            } catch (Throwable t) {
+            }
+            catch (InterruptedException e) {
+            	//maybePause was interrupted. Do nothing, will be handled the next time we get to maybePause.
+            }
+            catch (Throwable t) {
                 // If any other exceptions occur, halt the simulation
                 paused = true;
                 t.printStackTrace();
@@ -794,6 +798,13 @@ public class Simulation extends Thread
      */
     public void worldRemoved(WorldEvent e)
     {
+        synchronized(this) {
+            if (!paused) {
+                // If the simulation is currently running, we want to make sure
+                // that the world is told that it will now be stopped.
+                e.getWorld().stopped();
+            }
+        }
         setEnabled(false);
     }
 

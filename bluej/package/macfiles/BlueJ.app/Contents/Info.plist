@@ -11,15 +11,26 @@
 		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
-				<string>bjp</string>
-				<string>*</string>
+				<string>bluej</string>
+				<string>jar</string>
+				<string>bjar</string>
 			</array>
 			<key>CFBundleTypeIconFile</key>
-			<string>bluejproj.icns</string>
+			<string>bluej.icns</string>
 			<key>CFBundleTypeName</key>
-			<string>bluejproj</string>
+			<string>bluejproject</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
+		</dict>		
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Folder</string>
+			<key>CFBundleTypeOSTypes</key>
+			<array>
+				<string>fold</string>
+			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
@@ -39,7 +50,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>VERSION</string>
 	<key>CFBundleSignature</key>
-	<string>BluJ</string>
+	<string>bluJ</string>
 	<key>CFBundleVersion</key>
 	<string>VERSION</string>
 	<key>Java</key>

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -28,43 +28,54 @@
 
 package greenfoot.sound;
 
-
-public class SoundCache 
+/**
+ * Cache for holding SoundClips.
+ * 
+ * @author Poul Henriksen
+ * 
+ */
+public class SoundCache
 {
-    private static final int CACHE_SIZE = 20;
+	private static final int CACHE_SIZE = 20;
 
-    private SoundClip[] cache = new SoundClip[CACHE_SIZE];
-    private int nextEntry;
-    
-    /**
-     * Create an empty SoundCache.
-     */
-    public SoundCache() 
-    {
-        nextEntry = 0;
-    }
-    
-    /**
-     * Add a sound to the cache.
-     */
-    public void put(SoundClip sound)
-    {
-        cache[nextEntry] = sound;
-        nextEntry = (nextEntry+1) % CACHE_SIZE;
-    }
-    
-    /**
-     * Try to find a sound in the cache. Returns the sound or null.
-     */
-    public SoundClip get(String name) 
-    {
-        int i = 0;
-        while(i < CACHE_SIZE) {
-            if(cache[i] != null && name.equals(cache[i].getName()) && !cache[i].isPlaying()) {
-                return cache[i];
-            }
-            i++;
-        }
-        return null;
-    }
+	private SoundClip[] cache = new SoundClip[CACHE_SIZE];
+	private int nextEntry;
+
+	/**
+	 * Create an empty SoundCache.
+	 */
+	public SoundCache()
+	{
+		nextEntry = 0;
+	}
+
+	/**
+	 * Add a sound to the cache.
+	 */
+	public void put(SoundClip sound)
+	{
+		if (cache[nextEntry] != null) {
+			// Make sure the discarded clip is closed when it has finished
+			// pÄºaying.
+			cache[nextEntry].setCloseWhenFinished(true);
+		}
+		cache[nextEntry] = sound;
+		nextEntry = (nextEntry + 1) % CACHE_SIZE;
+	}
+
+	/**
+	 * Try to find a sound in the cache. Returns the sound or null.
+	 */
+	public SoundClip get(String name)
+	{
+		int i = 0;
+		while (i < CACHE_SIZE) {
+			if (cache[i] != null && name.equals(cache[i].getName())
+					&& !cache[i].isPlaying()) {
+				return cache[i];
+			}
+			i++;
+		}
+		return null;
+	}
 }

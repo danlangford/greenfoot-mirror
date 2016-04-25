@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -52,7 +52,7 @@ import bluej.Config;
  * 
  * @author Michael Cahill
  * @author Michael Kolling
- * @version $Id: Utility.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: Utility.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class Utility
 {
@@ -472,13 +472,7 @@ public class Utility
             return;
         }
 
-        String pid = ManagementFactory.getRuntimeMXBean().getName();
-        // Strip the host name from the pid.
-        int atIndex = pid.indexOf("@");
-        if (atIndex != -1) {
-            pid = pid.substring(0, atIndex);
-        }
-
+        String pid = getProcessId();
 
         if (Config.isWinOS()) {
             // Use WSH (Windows Script Host) to execute a javascript that brings
@@ -627,6 +621,19 @@ public class Utility
         // }
 
     }
+
+    /**
+     * Get the process ID of this process.
+     */
+	public static String getProcessId() {
+		String pid = ManagementFactory.getRuntimeMXBean().getName();
+        // Strip the host name from the pid.
+        int atIndex = pid.indexOf("@");
+        if (atIndex != -1) {
+            pid = pid.substring(0, atIndex);
+        }
+		return pid;
+	}
 
    
     /**

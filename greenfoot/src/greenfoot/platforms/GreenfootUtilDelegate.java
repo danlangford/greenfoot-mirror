@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -24,6 +24,7 @@ package greenfoot.platforms;
 import java.awt.Component;
 import java.io.File;
 import java.io.IOException;
+import java.net.URL;
 
 /**
  * Interface to classes that contain specialized behaviour for the GreefootUtil
@@ -40,7 +41,8 @@ public interface GreenfootUtilDelegate
     
     public String getNewProjectName(Component parent);
 
-    public ClassLoader getCurrentClassLoader();  
+    public URL getResource(String path);  
+    
 
     public String getGreenfootLogoPath();
 }

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -67,7 +67,7 @@ import bluej.utility.Utility;
  * General utility methods for Greenfoot.
  * 
  * @author Davin McCall
- * @version $Id: GreenfootUtil.java 6170 2009-02-20 13:29:34Z polle $
+ * @version $Id: GreenfootUtil.java 6380 2009-06-19 14:07:10Z polle $
  */
 public class GreenfootUtil
 {
@@ -448,21 +448,25 @@ public class GreenfootUtil
      * @param filename Name of the file
      * @param dir directory to search in first
      * @return A URL that can be read or null if the URL could not be found.
+     * @throws FileNotFoundException If the file cannot be found.
      */
-    public static URL getURL(String filename, String dir)
+    public static URL getURL(final String filename, final String dir) throws FileNotFoundException
     {
         if (filename == null) {
             throw new NullPointerException("Filename must not be null.");
         }
-
-        ClassLoader currentLoader = delegate.getCurrentClassLoader();
+        
         URL url = null;
        
         // If the 'dir' is part of the filename already, we attempt to use the
         // filename alone first in order to avoid a wrong lookup for applets,
         // because this can take a while over the net.
         boolean pathContainsDir = false;
-        if(dir != null) {
+        if (dir != null) {
+            // TODO It might not actually be the file system separator that
+            // should be used. Should also check for "/" to make it work on
+            // windows. If an applet it is probably "/" that is used on all 
+            // platforms.
             int sepLoc = filename.lastIndexOf(System.getProperty("file.separator"));
             if(sepLoc > 0) {
               String pathOnly = filename.substring(0,sepLoc);
@@ -477,23 +481,22 @@ public class GreenfootUtil
         
         boolean dirSearched = false;     
         if (!pathContainsColon && !pathContainsDir) {
-            url = currentLoader.getResource(dir + "/" + filename);
+            // First, try the project directory, unless it is already part of the filename or an absolute path.
+            url = delegate.getResource(dir + "/" + filename);
             dirSearched = true;
         } 
-        
+
         if (url == null) {
-            // First, try the project directory
-            url = currentLoader.getResource(filename);
+            url = delegate.getResource(filename);
         }
-        if(url == null && !dirSearched) {
+        if (url == null && !dirSearched) {
             // Second, try the specified dir
-            url = currentLoader.getResource(dir + "/" + filename);
+            url = delegate.getResource(dir + "/" + filename);
             dirSearched = true;
         }
         if (url == null) {
             // Third, try as an absolute file
             File f = new File(filename);
-
             
             try {
                 if (f.canRead()) {
@@ -532,15 +535,16 @@ public class GreenfootUtil
                 }
             }
         }
-        
+
         checkCase(url);
-        
+
         if(url == null) {
-            throw new IllegalArgumentException("Could not find file: " + filename);
+            throw new FileNotFoundException("Could not find file: " + filename);
         }
         return url;
     }
 
+    
     /**
      * Checks whether the case is correct for the given URL. If it is detected
      * NOT to be the right case a IllegalArgumentException will be thrown.

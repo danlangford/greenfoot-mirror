@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -24,18 +24,22 @@ package greenfoot;
 import greenfoot.util.GraphicsUtilities;
 import greenfoot.util.GreenfootUtil;
 
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Composite;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.MediaTracker;
+import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
 import java.awt.image.ImageObserver;
 import java.awt.image.VolatileImage;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
 
@@ -45,7 +49,7 @@ import java.net.URL;
  * and/or drawn by using various drawing methods.
  * 
  * @author Poul Henriksen
- * @version 2.0
+ * @version 2.1
  */
 public class GreenfootImage
 {
@@ -115,7 +119,9 @@ public class GreenfootImage
     {
         if (! image.copyOnWrite) {
             setImage(GraphicsUtilities.createCompatibleTranslucentImage(image.getWidth(), image.getHeight()));
-            drawImage(image, 0, 0);
+            Graphics2D g = getGraphics();
+            image.drawImage(g, 0, 0, null, false);
+            g.dispose();
         }
         else {
             // If the source image is a copy-on-write image, we can easily
@@ -157,6 +163,7 @@ public class GreenfootImage
         dst.imageUrl = src.imageUrl;
         dst.currentColor = src.currentColor;
         dst.currentFont = src.currentFont;
+        dst.transparency = src.transparency;
     }    
     
     private void loadURL(URL imageURL)
@@ -188,7 +195,12 @@ public class GreenfootImage
             throw new NullPointerException("Filename must not be null.");
         }
         imageFileName = filename;
-        imageUrl = GreenfootUtil.getURL(filename, "images");
+        try {
+            imageUrl = GreenfootUtil.getURL(filename, "images");
+        }
+        catch (FileNotFoundException e) {
+            throw new IllegalArgumentException(e);
+        }
 
         loadURL(imageUrl);
     }
@@ -340,18 +352,35 @@ public class GreenfootImage
      */
     public void drawImage(GreenfootImage image, int x, int y)
     {
-        Graphics g = getGraphics();
-        image.drawImage(g, x, y, null);
+        Graphics2D g = getGraphics();
+        image.drawImage(g, x, y, null, true);
         g.dispose();
     }
-    
+
     /**
      * Draws this image onto the given Graphics object.
      * 
+     * @param useTransparency Whether the transparency value should be used when
+     *            drawing the image.
      */
-    void drawImage(Graphics g, int x, int y, ImageObserver observer)
+    void drawImage(Graphics2D g, int x, int y, ImageObserver observer, boolean useTransparency)
     {
+        Composite oldComposite = null;
+        if(useTransparency) {
+            float opacity = getTransparency() / 255f;
+            if(opacity < 1) {
+                // Don't bother with the composite if completely opaque.
+                if(opacity < 0) opacity = 0;
+                oldComposite = g.getComposite();
+                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity));
+            }
+        }
+        
         g.drawImage(image, x, y, observer);
+
+        if(oldComposite != null) {
+            g.setComposite(oldComposite);
+        }
     }
     
     /**
@@ -550,6 +579,32 @@ public class GreenfootImage
     {
         Graphics2D g = getGraphics();
         g.drawString(string, x, y);
+        g.dispose();
+    }
+
+    /**
+     * Draw a shape directly on the image. Shapes are specified by the <a href=
+     * "http://java.sun.com/javase/6/docs/api/java/awt/Shape.html">shape
+     * interface</a>.
+     * @param shape the shape to be drawn.
+     */
+    public void drawShape(Shape shape)
+    {
+        Graphics2D g = getGraphics();
+        g.draw(shape);
+        g.dispose();
+    }
+
+    /**
+     * Draw a filled shape directly on the image. Shapes are specified by the
+     * <a href="http://java.sun.com/javase/6/docs/api/java/awt/Shape.html">shape
+     * interface</a>.
+     * @param shape the shape to be drawn.
+     */
+    public void fillShape(Shape shape)
+    {
+        Graphics2D g = getGraphics();
+        g.fill(shape);
         g.dispose();
     }
 

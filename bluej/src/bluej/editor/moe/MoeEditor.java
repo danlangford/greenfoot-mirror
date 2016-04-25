@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -86,8 +86,8 @@ public final class MoeEditor extends JFrame
     // -------- CONSTANTS --------
 
     // version number
-    final static int version = 200;
-    final static String versionString = "2.0";
+    final static int version = 252;
+    final static String versionString = "2.5.2";
 
     // colours
     final static Color cursorColor = new Color(255, 0, 100);                 // cursor

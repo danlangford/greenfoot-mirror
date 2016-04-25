@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,6 +29,7 @@ import greenfoot.actions.ShowApiDocAction;
 import greenfoot.core.GClass;
 import greenfoot.core.GProject;
 import greenfoot.core.GreenfootMain;
+import greenfoot.core.WorldHandler;
 import greenfoot.core.WorldInvokeListener;
 import greenfoot.event.WorldEvent;
 import greenfoot.event.WorldListener;
@@ -48,6 +49,7 @@ import javax.swing.JPopupMenu;
 
 import bluej.Config;
 import bluej.debugmgr.ConstructAction;
+import bluej.debugmgr.objectbench.ObjectBenchInterface;
 import bluej.extensions.ProjectNotOpenException;
 import bluej.prefmgr.PrefMgr;
 import bluej.utility.Debug;
@@ -62,7 +64,7 @@ import bluej.views.ViewFilter;
  * "normal" classes.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: ClassRole.java 6170 2009-02-20 13:29:34Z polle $
+ * @version $Id: ClassRole.java 6363 2009-06-08 14:00:45Z polle $
  */
 public abstract class ClassRole implements WorldListener
 {
@@ -97,7 +99,8 @@ public abstract class ClassRole implements WorldListener
                 if (!filter.accept(m))
                     continue;
 
-                WorldInvokeListener invocListener = new WorldInvokeListener(realClass, GreenfootMain.getInstance().getFrame(), project);
+                ObjectBenchInterface ob = WorldHandler.getInstance().getObjectBench();
+                WorldInvokeListener invocListener = new WorldInvokeListener(realClass, ob, GreenfootMain.getInstance().getFrame(), project);
 
                 String prefix = "new ";
                 Action callAction = new ConstructAction(m, invocListener, prefix + m.getLongDesc());
@@ -153,7 +156,9 @@ public abstract class ClassRole implements WorldListener
             ViewFilter filter = new ViewFilter(ViewFilter.STATIC | ViewFilter.PUBLIC);
             View view = View.getView(realClass);
             MethodView[] allMethods = view.getAllMethods();
-            WorldInvokeListener invocListener = new WorldInvokeListener(realClass, GreenfootMain.getInstance().getFrame(), project);
+
+            ObjectBenchInterface ob = WorldHandler.getInstance().getObjectBench();
+            WorldInvokeListener invocListener = new WorldInvokeListener(realClass, ob, GreenfootMain.getInstance().getFrame(), project);
             if (bluej.pkgmgr.target.role.ClassRole.createMenuItems(popupMenu, allMethods, filter, 0, allMethods.length, "", invocListener))
                 popupMenu.addSeparator();
         }

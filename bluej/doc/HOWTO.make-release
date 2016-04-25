@@ -1,39 +1,35 @@
-How to make a BlueJ release                    (last update 05.01.2006, iau)
+How to make a BlueJ release
 ---------------------------
 
- 1. Set the right BlueJ version number in bluej/boot/src/bluej/Boot.java
+ 1. Set the right BlueJ version number in bluej/build.xml and run: ant update-version-number
 
  2. Make sure to build the submitter extension (using 'buildall' from the
-    extension ant build file). This places subitter.jar into bluej/lib/extensions.
+    extension ant build file). This places submitter.jar into bluej/lib/extensions.
+    
+    NOTE: submitter.jar is now under version control. If changes are made to the submitter
+    extension, the submitter.jar file should preferably be re-built and committed to the
+    repository at that time.
      
- 3a)
- 		temporary (while building the release on MacOS without jdk 5.0 support
- 		while BlueJ supports jdk 5.0):
- 		- Build BlueJ on MacOS
- 		- Build BlueJ on a 5.0 system, then copy the following files to Mac:
- 			bluej/utility/JavaUtils15.class
-			bluej/debugger/jdi/JdiUtils15.class
-
- b) 
+ 3. Make sure you have a reasonably clean project folder as almost everything
+    will be included in the source bundle.
     (Compile and) build the release with:  ant dist
     (make sure the JDK version used for the build is the lowest
      compatible JDK for BlueJ)
     This will create 
-        .../bluej/package/bluej-dist-new.jar   -- the distribution jar
-        .../bluej/package/bluej-dist.jar       -- the core jar for building the win release
-    NOTE: for some mysterious reasons, distribuitions are larger when
-    built on Windows. Preferrably build on Solaris or Mac.
+        bluej/package/bluej-dist.jar            -- the core jar for building the win release
+        bluej/package/BlueJ-generic-VERSION.jar -- the cross platform installer
+        bluej/package/BlueJ-mac-VERSION.zip       -- the Mac installer
+        bluej/package/BlueJ-source-VERSION.zip    -- the source bundle
+    NOTE: for some mysterious reason, distributions are larger when
+    built on Windows. Preferably build on Solaris or Mac.
 
- 4. Rename (usually to bluej-XXXrcX.jar).
-    Use bluej-dist.jar to build Windows version. (See HOWTO.make-win-version)
-    Make a Mac version (see separate file HOWTO.make-mac-version).
+ 4. Rename (usually by adding a release candidate string like "BlueJ*rc1.???").
+  
+ 5. Use bluej-dist.jar to build Windows version. (See HOWTO.make-win-version)
 
- 5. Test. When okay, rename to final distribution name.
+ 6. Test. When okay, rename to final distribution name.
 
- 6. Make an editor source release (use ant editor-dist). This creates
-        .../bluej/package/editor-src.jar
-
- 7. Move the distribution files and the editor source to the public 
+ 7. Move the distribution files and the source to the public 
     server (currently www.bluej.org/download/files/).
 
  8. Update the BlueJ web site to announce the new version. At least:
@@ -55,17 +51,29 @@ How to make a BlueJ release                    (last update 05.01.2006, iau)
         - Change the jarUrl entry for the "pure Java" release to refer to 
           the "all other systems" distribution Jar.
 
-11. In the bugs database, change status of all "RESOLVED" bugs to "CLOSED".
-    When doing this, write "closed in version XXX" into status whitebord.
-    
+11. In the bugs database (http://bugs.bluej.org/trac/bluej),
+
+   1. Add a future release milestone ("Roadmap", "New Milestone").
+   
+   2. Make sure that there are no open bugs for the new release milestone (i.e. the milestone
+      for the release which is about to happen).
+      
+      If there are any bugs open, they should be re-assigned to the (newly created) future
+      release milestone.
+   
+   3. Also check that there are no bugs against the current release which are marked as
+      FIXED but for which the milestone isn't set. Set the milestone to the new release
+      for such bugs.
+      
+   4. Mark the new release milestone as completed.  
+   
 12. Also in the bugs database, add the new version so that bugs can be reported against
     it.
     
 13. Update the support form at http://www.bluej.org/help/supportform.html - the drop-down
     version field should have the new version added as an option.
 
-14. Send a mail message to bluej-announce@bluej.org, announcing the
-    release.
+14. Send a mail message to bluej-announce@bluej.org, announcing the release.
 
 15. More public announcements. See HOWTO.announce-release.
 

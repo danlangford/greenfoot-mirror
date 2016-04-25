@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -44,7 +44,7 @@ import bluej.utility.filefilter.*;
  * @author  Michael Kolling
  * @author  Axel Schmolitzky
  * @author  Markus Ostman
- * @version $Id: PackageChooser.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: PackageChooser.java 6347 2009-05-20 15:22:43Z polle $
  */
 class PackageChooser extends JFileChooser
 {
@@ -119,7 +119,7 @@ class PackageChooser extends JFileChooser
      */
     public void setCurrentDirectory(File dir)   // redefined
     {
-        if (Package.isBlueJPackage(dir)) {
+        if (Package.isPackage(dir)) {
             setSelectedFile(dir);
             super.approveSelection();
         }

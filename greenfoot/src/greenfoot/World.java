@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -58,7 +58,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * @see greenfoot.Actor
  * @author Poul Henriksen
  * @author Michael Kolling
- * @version 2.0
+ * @version 2.1
  */
 public abstract class World
 {    
@@ -712,9 +712,9 @@ public abstract class World
         for (Actor actor : objects) {
             Rect bounds = actor.getBoundingRect();
             if(x >= bounds.getX()  && x <= bounds.getRight() && y>=bounds.getY() && y<= bounds.getTop()) {
-                int actorX = (int) Math.floor(getCellCenter(actor.getX()));
-                int actorY = (int) Math.floor(getCellCenter(actor.getY()));
-                if(actor.contains(x - actorX, y - actorY)){
+                int xClickCell = toCellFloor(x);
+                int yClickCell = toCellFloor(y);
+                if(actor.contains(xClickCell - actor.getX(), yClickCell - actor.getY())){
                    result.add(actor);
                 }
             }

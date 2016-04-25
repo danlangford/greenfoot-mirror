@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -80,16 +80,16 @@ public class ColManager
         }
         else {
             List<? extends Actor> classSet = freeObjects.remove(cls);
-            if (classSet == null)
-                return;
 
-            collisionClasses.add(cls);
-
-            // Add all the objects to the collision checker
-            // TODO: bulk add could be faster if implemented in collision checker?
-            if (classSet != null) {
-                for (Actor actor : classSet) {
-                    collisionChecker.addObject(actor);
+            if( classSet != null) {
+                collisionClasses.add(cls);
+    
+                // Add all the objects to the collision checker
+                // TODO: bulk add could be faster if implemented in collision checker?
+                if (classSet != null) {
+                    for (Actor actor : classSet) {
+                        collisionChecker.addObject(actor);
+                    }
                 }
             }
         }
@@ -97,6 +97,8 @@ public class ColManager
         if (includeSubclasses) {
             // Run through all classes to see if any of them is a subclass.
             Set<Entry<Class<? extends Actor>, LinkedList<Actor>>> entries = freeObjects.entrySet();
+            // Clone it, so we avoid concurrent modification:
+            entries = new HashSet<Entry<Class<? extends Actor>, LinkedList<Actor>>>(entries);
             for (Entry<Class<? extends Actor>, LinkedList<Actor>> entry : entries) {
                 if(cls.isAssignableFrom(entry.getKey())) {
                     makeCollisionObjects(entry.getKey(), false);
@@ -181,7 +183,7 @@ public class ColManager
         return getObjects(null);
     }
 
-    public Actor getOneIntersectingObject(Actor object, Class cls)
+    public <T extends Actor> T getOneIntersectingObject(Actor object, Class<T> cls)
     {
         prepareForCollision(object, cls);
         return collisionChecker.getOneIntersectingObject(object, cls);

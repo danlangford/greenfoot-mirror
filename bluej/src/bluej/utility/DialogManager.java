@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -25,6 +25,9 @@ import bluej.Config;
 
 import java.awt.*;
 import java.io.*;
+import java.util.HashMap;
+import java.util.Map;
+
 import javax.swing.*;
 
 /**
@@ -34,7 +37,7 @@ import javax.swing.*;
  * internationalised, using BlueJ's langauage library system.
  *
  * @author Michael Kolling
- * @version $Id: DialogManager.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: DialogManager.java 6353 2009-05-27 04:26:36Z marionz $
  */
 public class DialogManager
 {
@@ -320,5 +323,35 @@ public class DialogManager
             Point p_topleft = parent.getLocationOnScreen();
             child.setLocation(p_topleft.x + 20, p_topleft.y + 20);
         }
+    }
+    
+    /**
+     * Allows the user to specify the number of buttons in question dialog. 
+     * The text for the question and the buttons is read from the dialogues file. 
+     */
+    public static int askQuestion(Component parent, String msgID, int numOptions)
+    {
+        String message = getMessage(msgID);
+        String buttonName;
+        int btnIndex=message.length()+1;
+        int prevBtnIndex=message.length(); 
+        String[] options=new String[numOptions];
+        if(message != null) {
+        	for (int i=0; i < numOptions; i++){
+        		btnIndex=message.lastIndexOf("\n", btnIndex-1);
+        		buttonName=message.substring(btnIndex+1, prevBtnIndex);
+        		options[numOptions-i-1]=buttonName; //just to ensure they go in, in the correct order
+        		prevBtnIndex=btnIndex;
+        	}
+            message = message.substring(0, btnIndex);
+          
+
+            return JOptionPane.showOptionDialog(parent, message,
+                                                Config.getString("dialogmgr.question"),
+                                                JOptionPane.DEFAULT_OPTION,
+                                                JOptionPane.WARNING_MESSAGE,
+                                                null, options, options[0]);
+        }
+        return 0;
     }
 }

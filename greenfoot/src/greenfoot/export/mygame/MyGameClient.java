@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -159,7 +159,6 @@ public abstract class MyGameClient
      * @throws NumberFormatException
      */
     private boolean handleResponse(PostMethod postMethod)
-        throws NumberFormatException
     {
         Header statusHeader = postMethod.getResponseHeader("X-mygame-status");
         if (statusHeader == null) {
@@ -167,8 +166,14 @@ public abstract class MyGameClient
             return false;
         }
         String responseString = statusHeader.getValue();
-        int statusCode = Integer.parseInt(responseString.substring(0, responseString.indexOf(" ")));
-        switch(statusCode) {
+        int spaceIndex = responseString.indexOf(" ");
+        if (spaceIndex == -1) {
+            error("Unrecognized response from the server."); // TODO i18n
+            return false;
+        }
+        try {
+            int statusCode = Integer.parseInt(responseString.substring(0, spaceIndex));
+            switch(statusCode) {
             case 0 :
                 // Everything is good!
                 return true;
@@ -180,8 +185,13 @@ public abstract class MyGameClient
                 return false;
             default :
                 // Unknown error - print it!
-                error(responseString);
-                return false;
+                error(responseString.substring(spaceIndex + 1));
+            return false;
+            }
+        }
+        catch (NumberFormatException nfe) {
+            error("Unrecognized response from the server."); // TODO i18n
+            return false;
         }
     }
     

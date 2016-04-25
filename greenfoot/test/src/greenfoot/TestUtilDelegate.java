@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 
 import greenfoot.platforms.GreenfootUtilDelegate;
 
@@ -40,9 +41,9 @@ public class TestUtilDelegate implements GreenfootUtilDelegate
         return;
     }
 
-    public ClassLoader getCurrentClassLoader()
+    public URL getResource(String path)
     {
-        return getClass().getClassLoader();
+        return getClass().getClassLoader().getResource(path);
     }
 
     public String getGreenfootLogoPath()

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -61,6 +61,13 @@ public class GClass
     private ClassView classView;
     private Class realClass;
 
+	/**
+     * Constructor used by GCoreClass only
+     */
+    protected GClass() {
+    	
+    }
+    
     /**
      * Constructor for GClass. You should generally not use this -
      * GPackage maintains a class pool which needs to be updated. Use
@@ -164,7 +171,13 @@ public class GClass
     public void setClassProperty(String propertyName, String value)
     {
         try {
-            pkg.getProject().getProjectProperties().setString("class." + getName() + "." + propertyName, value);
+        	String key = "class." + getName() + "." + propertyName;
+        	if (value != null) {
+        		pkg.getProject().getProjectProperties().setString(key, value);
+        	}
+        	else {
+        		pkg.getProject().getProjectProperties().removeProperty(key);
+        	}
         }
         catch (Exception exc) {
             exc.printStackTrace();
@@ -406,13 +419,18 @@ public class GClass
         }
         
         // If the class is compiled, but we did not get a superclass back, then
-        // the superclass is not from this project and we set it 
+		// the superclass is not from this project, but we can get it from the
+		// real class
         if (realSuperclass == null && isCompiled()) {
-            // no super class that we are interested in.
-            setSuperclassGuess("");
-            return;
+        	Class<?> superclass = realClass.getSuperclass();
+        	if (superclass != null) {
+        		setSuperclassGuess(realClass.getSuperclass().getName());
+        		return;
+        	}
+        	else {
+        		setSuperclassGuess(null);
+        	}
         }
-
         
         //Second, try to parse the file
         String parsedSuperclass = null;

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,6 +21,9 @@
  */
 package bluej.parser;
 
+import java.util.LinkedList;
+import java.util.List;
+
 import antlr.Token;
 import antlr.TokenStream;
 import antlr.TokenStreamException;
@@ -39,6 +42,7 @@ public class JavaTokenFilter implements TokenStream
     private Token lastComment;
     private LocatableToken previousToken;
     private Token cachedToken;
+    private List<LocatableToken> buffer = new LinkedList<LocatableToken>();
     
     public JavaTokenFilter(TokenStream source)
     {
@@ -46,9 +50,13 @@ public class JavaTokenFilter implements TokenStream
         lastComment = null;
     }
     
-    public Token nextToken() throws TokenStreamException
+    public LocatableToken nextToken() throws TokenStreamException
     {
-        // We cache one lookahead token so that we can be sure the returned token
+        if (! buffer.isEmpty()) {
+        	return buffer.remove(buffer.size() - 1);
+        }
+    	
+    	// We cache one lookahead token so that we can be sure the returned token
         // has its end column set correctly. (The end column for a token can only be set
         // when the following token is received).
         Token rval;
@@ -58,12 +66,41 @@ public class JavaTokenFilter implements TokenStream
             rval = cachedToken;
         
         cachedToken = nextToken2();
-        return rval;
+        return (LocatableToken) rval;
     }
     
-    public Token nextToken2() throws TokenStreamException
+    /**
+     * Push a token on to the stream. The token will be returned by the next call
+     * to nextToken().
+     */
+    public void pushBack(LocatableToken token)
     {
-        LocatableToken t = null;
+    	buffer.add(token);
+    }
+    
+    /**
+     * Look ahead a certain number of tokens (without actually consuming them).
+     * @param distance  The distance to look ahead (1 or greater).
+     */
+    public LocatableToken LA(int distance) throws TokenStreamException
+    {
+    	if (cachedToken != null) {
+    		buffer.add(0, (LocatableToken) cachedToken);
+    		cachedToken = null;
+    	}
+    	
+    	int numToAdd = distance - buffer.size();
+    	while (numToAdd > 0) {
+    		buffer.add(0, nextToken2());
+    		numToAdd--;
+    	}
+    
+    	return buffer.get(buffer.size() - distance);
+    }
+    
+    private LocatableToken nextToken2() throws TokenStreamException
+    {    	
+    	LocatableToken t = null;
         
         // Repeatedly read tokens until we find a non-comment, non-whitespace token.
         while (true) {

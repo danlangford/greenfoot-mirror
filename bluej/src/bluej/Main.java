@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,8 +23,11 @@ package bluej;
 
 import java.awt.EventQueue;
 import java.io.File;
+import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.Properties;
+import java.util.UUID;
 
 import bluej.extensions.event.ApplicationEvent;
 import bluej.extmgr.ExtensionsManager;
@@ -39,7 +42,7 @@ import bluej.utility.Debug;
  * "real" BlueJ.
  * 
  * @author Michael Kolling
- * @version $Id: Main.java 6163 2009-02-19 18:09:55Z polle $
+ * @version $Id: Main.java 6349 2009-05-22 14:49:01Z polle $
  */
 public class Main
 {
@@ -55,7 +58,7 @@ public class Main
         Boot boot = Boot.getInstance();
         final String[] args = boot.getArgs();
         Properties commandLineProps = boot.getCommandLineProperties();
-        File bluejLibDir = boot.getBluejLibDir();
+        File bluejLibDir = Boot.getBluejLibDir();
 
         Config.initialise(bluejLibDir, commandLineProps, boot.isGreenfoot());
 
@@ -74,6 +77,14 @@ public class Main
                 processArgs(args);
             }
         });
+        
+        // Send usage data back to bluej.org
+        new Thread() {
+            public void run()
+            {
+                updateStats();
+            }
+        }.start();
     }
 
     /**
@@ -89,16 +100,8 @@ public class Main
         if (args.length > 0) {
             for (int i = 0; i < args.length; i++) {
                 if (!args[i].startsWith("-")) {
-                    Project openProj;
-                    if ((openProj = Project.openProject(args[i])) != null) {
-                        oneOpened = true;
-
-                        Package pkg = openProj.getPackage(openProj.getInitialPackageName());
-
-                        PkgMgrFrame pmf = PkgMgrFrame.createFrame(pkg);
-
-                        pmf.setLocation(i * 30 + FIRST_X_LOCATION, i * 30 + FIRST_Y_LOCATION);
-                        pmf.setVisible(true);
+                    if(PkgMgrFrame.doOpen(new File(args[i]), null)) {
+                        oneOpened = true;                        
                     }
                 }
             }
@@ -116,7 +119,7 @@ public class Main
                     if (exists != null) {
                         Project openProj;
                         // checking all is well (project exists)
-                        if ((openProj = Project.openProject(exists)) != null) {
+                        if ((openProj = Project.openProject(exists, null)) != null) {
                             Package pkg = openProj.getPackage(openProj.getInitialPackageName());
                             PkgMgrFrame.createFrame(pkg);
                             oneOpened = true;
@@ -149,6 +152,76 @@ public class Main
         PkgMgrFrame frame = PkgMgrFrame.createFrame();
         frame.setLocation(FIRST_X_LOCATION, FIRST_Y_LOCATION);
         frame.setVisible(true);
+    }
+    
+    /**
+     * Send statistics of use back to bluej.org
+     */
+    private void updateStats() 
+    {
+        // System property name for honouring web proxy settings
+        // See the JDK docs/technotes/guides/net/proxies.html
+        final String useProxiesProperty = "java.net.useSystemProxies";
+        String oldProxySetting = "false";   // Documented default value
+
+        // Platform details, first the ones which vary between BlueJ/Greenfoot
+        String uidPropName;
+        String baseURL;
+        String appVersion;
+        if (Config.isGreenfoot()) {
+            uidPropName = "greenfoot.uid";
+            baseURL = "http://stats.greenfoot.org/updateGreenfoot.php";
+            appVersion = Boot.GREENFOOT_VERSION;
+        } else {
+            uidPropName = "bluej.uid";
+            baseURL = "http://stats.bluej.org/updateBlueJ.php";
+            // baseURL = "http://localhost:8080/BlueJStats/index.php";
+            appVersion = Boot.BLUEJ_VERSION;
+        }
+
+        // Then the common ones.
+        String language = Config.language;
+        String javaVersion = System.getProperty("java.version");
+        String systemID = System.getProperty("os.name") +
+                "/" + System.getProperty("os.arch") +
+                "/" + System.getProperty("os.version");
+        
+        // User uid. Use the one already stored in the Property if it exists,
+        // otherwise generate one and store it for next time.
+        String uid = Config.getPropString(uidPropName, null);
+        if (uid == null) {
+            uid = UUID.randomUUID().toString();
+            Config.putPropString(uidPropName, uid);
+        } else if (uid.equalsIgnoreCase("private")) {
+            // Allow opt-out
+            return;
+        }
+        
+        try {
+            // Attempt to use local proxy settings to avoid any firewalls, just
+            // for the rest of this method.
+            oldProxySetting = System.getProperty(useProxiesProperty, oldProxySetting);
+            System.setProperty(useProxiesProperty,"true");
+
+            URL url = new URL(baseURL +
+                "?uid=" + URLEncoder.encode(uid, "UTF-8") +
+                "&osname=" + URLEncoder.encode(systemID, "UTF-8") +
+                "&appversion=" + URLEncoder.encode(appVersion, "UTF-8") +
+                "&javaversion=" + URLEncoder.encode(javaVersion, "UTF-8") +
+                "&language=" + URLEncoder.encode(language, "UTF-8")
+            );
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.connect();
+            int rc = conn.getResponseCode();
+            conn.disconnect();
+
+            if(rc != 200) Debug.reportError("Update stats failed, HTTP response code: " + rc);
+
+        } catch (Exception ex) {
+            Debug.reportError("Update stats failed", ex);
+        } finally {
+            System.setProperty(useProxiesProperty, oldProxySetting);
+        }
     }
 
     /**

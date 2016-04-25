@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -31,7 +31,7 @@ import bluej.pkgmgr.Package;
  * the listFiles method of class File.
  *
  * @author  Axel Schmolitzky
- * @version $Id: SubPackageFilter.java 6164 2009-02-19 18:11:32Z polle $
+ * @version $Id: SubPackageFilter.java 6347 2009-05-20 15:22:43Z polle $
  */
 public class SubPackageFilter implements FileFilter
 {
@@ -41,6 +41,6 @@ public class SubPackageFilter implements FileFilter
     public boolean accept(File pathname)
     {
         return (pathname.isDirectory() &&
-                 Package.isBlueJPackage(pathname));
+                 Package.isPackage(pathname));
     }
 }

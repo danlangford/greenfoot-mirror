@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,6 +21,8 @@
  */
 package greenfoot.event;
 
+import greenfoot.World;
+
 import java.util.EventObject;
 
 /**
@@ -32,9 +34,16 @@ import java.util.EventObject;
 public class WorldEvent extends EventObject
 {
     private int type;
+    private World world;
 
-    public WorldEvent(Object source)
+    public WorldEvent(Object source, World world)
     {
         super(source);
+        this.world = world;
+    }
+    
+    public World getWorld() 
+    {
+        return world;
     }
 }

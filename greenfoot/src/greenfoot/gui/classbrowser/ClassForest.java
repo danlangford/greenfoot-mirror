@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -37,11 +37,11 @@ import java.util.TreeSet;
  * A forest of trees. The roots are sorted alphabetically on their keys
  * 
  * @author Poul Henriksen
- * @version $Id: ClassForest.java 6170 2009-02-20 13:29:34Z polle $
+ * @version $Id: ClassForest.java 6322 2009-05-09 17:50:58Z polle $
  */
 public class ClassForest
 {
-    public class TreeEntry
+    public static class TreeEntry
         implements Comparable<TreeEntry>
     {
         private List<TreeEntry> children = new ArrayList<TreeEntry>();
@@ -147,17 +147,30 @@ public class ClassForest
         treeEntryMap.put(name, entry);
     }
 
-    /**
-     * Remove a class from this forest.
-     */
-    public synchronized boolean remove(ClassView cls)
+	public void add(TreeEntry entry) {
+		treeEntryMap.put(entry.getKey(), entry);
+		List<TreeEntry> children = entry.getChildren();
+		for (TreeEntry treeEntry : children) {
+			add(treeEntry);
+		}
+	}
+
+	/**
+	 * Remove a class from this forest, including all its children if it has
+	 * any. Returns the removed TreeEntry.
+	 */
+    public synchronized TreeEntry remove(ClassView cls)
     {
         String name =  cls.getClassName();
-        if(treeEntryMap.remove(name) != null) {
-            rebuild();
-            return true;
-        }
-        return false;
+        TreeEntry removedEntry = treeEntryMap.remove(name);
+        if (removedEntry != null) {
+			List<TreeEntry> children = removedEntry.getChildren();
+			for (TreeEntry child : children) {
+				remove(child.getData());				
+			}
+		}
+
+		return removedEntry;
     }
     
     /**

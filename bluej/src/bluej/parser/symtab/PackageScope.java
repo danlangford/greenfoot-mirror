@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kšlling and John Rosenberg 
+ Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,7 +27,7 @@ import java.util.List;
 public class PackageScope extends Scope
 {
     // private ClassInfo info;
-    private List references = new ArrayList();
+    private List<String> references = new ArrayList<String>();
     
     public PackageScope()
     {
@@ -35,16 +35,14 @@ public class PackageScope extends Scope
         // this.info = info;
     }
     
-    public boolean checkType(String name)
+    public void addTypeReference(String name)
     {
-        boolean r = super.checkType(name);
-        if (r) {
-            references.add(name);
-        }
-        return r;
+    	if (hasType(name)) {
+    		references.add(name);
+    	}
     }
     
-    public List getReferences()
+    public List<String> getReferences()
     {
         return references;
     }

@@ -405,6 +405,16 @@ permission in the project directory and each file within it.
 This can often be accomplished by choosing "save as" from the
 Project menu after closing this dialog.
 
+project-is-virtualized
+The project you are opening is being virtualized by Windows. This 
+usually happens when the project is stored somewhere in the 
+"Program Files" directory. 
+When a project is being virtualized by Windows you will get errors 
+when trying to create objects and invoke methods.
+To fully use this project, you should move the project to a different
+location. This can be accomplished by choosing "save as" from 
+the Project menu after closing this dialog.
+
 could-not-write-shell-file
 Execution failed because the project directory is not writable.
 To create objects or execute methods, we must be able to write
@@ -518,3 +528,14 @@ Do you want to overwrite it?
 Overwrite
 Cancel
 null
+
+debugger-running-options
+Your program is already running, but it is stopped at a breakpoint
+Here are your options
+Terminate: Terminate the current running code
+Continue Debugging: Equivalent to the Continue button in the Debugger
+Open Debugger: Cancel current request and open the Debugger window
+Terminate
+Continue
+Open Debugger
+Cancel 

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,6 +27,7 @@ import greenfoot.util.FileChoosers;
 import java.awt.Component;
 import java.io.File;
 import java.io.IOException;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.Dictionary;
 import java.util.Hashtable;
@@ -54,7 +55,11 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
         String baseName = "greenfoot/templates/" +  templateFileName;
         File template = Config.getLanguageFile(baseName);
         
+        if(!template.canRead()) {
+            template = Config.getDefaultLanguageFile(baseName);
+        }
         BlueJFileReader.translateFile(template, file, translations, Charset.forName("UTF-8"));
+        
     }
     
     /**
@@ -72,9 +77,9 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
     }
 
 
-    public ClassLoader getCurrentClassLoader() 
+    public URL getResource(String path) 
     {
-        return ExecServer.getCurrentClassLoader();
+        return ExecServer.getCurrentClassLoader().getResource(path);
     }
     
     /**

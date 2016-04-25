@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -54,6 +54,20 @@ public class GPackage
     private GProject project; 
     
     private Map<RClass,GClass> classPool = new HashMap<RClass,GClass>();
+    
+    /**
+	 * Contructor for an unspecified package, but for which a project is known.
+	 * Used to allow a class to not be part of a package, but still being able
+	 * to get the project the class is part of.
+	 * 
+	 */
+    GPackage(GProject project) 
+    {
+        if(project == null) {
+            throw new NullPointerException("Project must not be null.");
+        }
+    	this.project = project;
+    }
     
     /**
      * Construct a new GPackage; this should generally only be called by

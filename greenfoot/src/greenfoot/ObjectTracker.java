@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kšlling 
+ Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -72,10 +72,10 @@ public class ObjectTracker
             //This can be the same for world and actor apart from above lines.
             if(obj instanceof Actor) {
                 Actor.setTransportField(obj);
-                remoteObjectTracker = (RClass) Actor.getRemoteObjectTracker();
+                remoteObjectTracker = (RClass) ((Actor) obj).getRemoteObjectTracker();
             } else  if( obj instanceof World) {
                 World.setTransportField(obj);
-                remoteObjectTracker = (RClass) World.getRemoteObjectTracker();
+                remoteObjectTracker = (RClass) ((World) obj).getRemoteObjectTracker();
             } else {
                 Debug.reportError("Could not get remote version of object: " + obj, new Exception());
                 return null;
