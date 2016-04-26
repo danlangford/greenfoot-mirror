@@ -15,11 +15,12 @@
     <!-- Greenfoot Version Number -->
     <property name="greenfoot.version.major" value="2"/>
     <property name="greenfoot.version.minor" value="4"/>
-    <property name="greenfoot.version.micro" value="0"/>
+    <property name="greenfoot.version.micro" value="1"/>
     
 	<!-- Greenfoot version to API mapping:        -->
 	<!--    Greenfoot 2.3.0 = API version 2.5.0   -->
 	<!--    Greenfoot 2.4.0 = API version 2.6.0   -->
+	<!--    Greenfoot 2.4.1 = API version 2.7.0   -->
 	
     <!-- Change when API has changed in a way that is likely to break some scenarios. 
     A warning will be shown to the user - update the greenfoot-labels file to
@@ -32,7 +33,7 @@
     Changing this number will stripe the user's classes and require a recompile.
     Do not change this number if the changes cannot break older scenarios. -->
 	<!-- YOU SHOULD UPDATE THE GREENFOOT LABELS if you change this -->
-    <property name="greenfoot.apiversion.nonbreaking" value="6"/>
+    <property name="greenfoot.apiversion.nonbreaking" value="7"/>
     
     <!-- Change when API has only changed internally and not in any way visible to the user. 
     It should not be possible for this change to break existing scenarios. 
@@ -253,6 +254,11 @@ LICENSE.txt file that accompanied this code.${line.separator}
                         <path refid="bluej.class.path"/>
                     </classpath>
                 </javac>
+                <replaceregexp byline="true">
+                    <regexp pattern="version=.*"/>
+                    <substitution expression="version=${greenfoot.apiversion}"/>
+                    <fileset dir="scenarios/@{scenario}" includes="project.greenfoot"/>
+                </replaceregexp>
             </sequential>
         </macrodef>
 
@@ -286,7 +292,8 @@ LICENSE.txt file that accompanied this code.${line.separator}
                  Windowtitle="Greenfoot API"
                  Doctitle="Greenfoot API"
                  bottom="&lt;a href=http://www.greenfoot.org/&gt;Greenfoot homepage&lt;/a&gt;"
-                 classpathref="greenfoot.class.path">
+                 classpathref="greenfoot.class.path"
+                 encoding="UTF-8">
             <fileset refid="api-source.files"/>
         </javadoc>
     	<mkdir dir="${bluej.projectdir}/lib/english/greenfoot/api"/>
@@ -359,7 +366,10 @@ LICENSE.txt file that accompanied this code.${line.separator}
 	<target name="copy-common-class" depends="compile-scenarios">
 		<javadoc destdir="common" sourcefiles="common/${common.class}.java"
 			Version="yes" notree="yes" noindex="yes" nohelp="yes" nonavbar="yes"
-			classpath="${build}:common/${common.class}/lib/${common.class}.jar" docletpath="${bluej.projectdir}/lib/bjdoclet.jar" doclet="bluej.doclet.doclets.formats.html.HtmlDoclet"/> 
+			classpath="${build}:common/${common.class}/lib/${common.class}.jar"
+			docletpath="${bluej.projectdir}/lib/bjdoclet.jar" doclet="bluej.doclet.doclets.formats.html.HtmlDoclet"
+			encoding="UTF-8"
+		/> 
 		
 		<copy todir="${bluej.lib.greenfoot}" preservelastmodified="true">
 		  <fileset dir=".">
@@ -697,6 +707,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <include name="greenfoot/gui/DragListener.java"/>
             <include name="greenfoot/gui/DropTarget.java"/>
             <include name="greenfoot/gui/WorldCanvas.java"/>
+        	<include name="greenfoot/gui/AskPanel.java"/>
          
             <include name="greenfoot/gui/input/KeyboardManager.java"/>
             
@@ -849,11 +860,15 @@ LICENSE.txt file that accompanied this code.${line.separator}
     </target>
 
     <target name="update-version-number" description="updates the version number in all files where it appears" >
+        <!-- This should be done manually instead, only for files actually changed: -->
+        <!--
         <replaceregexp byline="true">
             <regexp pattern="@version .*"/>
             <substitution expression="@version ${greenfoot.apiversion.public}"/>
             <fileset dir="${src}/greenfoot" includes="Greenfoot.java,GreenfootImage.java,GreenfootSound.java,Actor.java,World.java,MouseInfo.java,UserInfo.java"/>
         </replaceregexp>
+        -->
+        
         <replaceregexp byline="true">
             <regexp pattern="GREENFOOT_VERSION = .*"/>
             <substitution expression="GREENFOOT_VERSION = &quot;${greenfoot.version}&quot;;"/>
@@ -868,6 +883,11 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <regexp pattern="version=.*"/>
             <substitution expression="version=${greenfoot.apiversion}"/>
             <fileset dir="projects/startupProject" includes="project.greenfoot"/>
+        </replaceregexp>
+        <replaceregexp byline="true">
+            <regexp pattern="version: .*"/>
+            <substitution expression="version: ${greenfoot.version}"/>
+            <fileset dir="doc" includes="Greenfoot-README.txt"/>
         </replaceregexp>
     </target>
 </project>

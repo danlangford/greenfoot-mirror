@@ -225,6 +225,14 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
                         }
                     }
                     
+                    try
+                    {
+                        rBlueJ.hideSplash();
+                    }
+                    catch (RemoteException e)
+                    {
+                        Debug.reportError(e);
+                    }
                     frame.setVisible(true);
                     Utility.bringToFront(frame);
                 }
@@ -325,16 +333,11 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
         File dirName = FileChoosers.getScenario(frame);
 
         if (dirName != null) {
-            if (Config.isZipFile(dirName)) {
-                JOptionPane.showMessageDialog(frame, Config.getString("open.project.message.zip"));
+            try {
+                openProject(dirName.getAbsolutePath());
             }
-            else{
-                try {
-                    openProject(dirName.getAbsolutePath());
-                }
-                catch (Exception exc) {
-                    Debug.reportError("Could not open scenario", exc);
-                }
+            catch (Exception exc) {
+                Debug.reportError("Could not open scenario", exc);
             }
         }
     }

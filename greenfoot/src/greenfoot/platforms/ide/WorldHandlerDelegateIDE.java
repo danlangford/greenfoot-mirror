@@ -45,6 +45,7 @@ import greenfoot.util.GreenfootUtil;
 
 import java.awt.Color;
 import java.awt.Cursor;
+import java.awt.EventQueue;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
@@ -53,6 +54,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.rmi.RemoteException;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.swing.JFrame;
 import javax.swing.JMenuItem;
@@ -254,6 +257,7 @@ public class WorldHandlerDelegateIDE
     public void discardWorld(World world)
     {        
         ObjectTracker.clearRObjectCache();
+        frame.stopWaitingForAnswer();
     }
     
     @Override
@@ -710,5 +714,35 @@ public class WorldHandlerDelegateIDE
     public void setVmRestarted(boolean vmRestarted)
     {
         this.vmRestarted = vmRestarted;
+    }
+
+    @Override
+    public String ask(final String prompt)
+    {
+        final AtomicReference<Callable<String>> c = new AtomicReference<Callable<String>>();
+        try
+        {
+            EventQueue.invokeAndWait(new Runnable() {public void run() {
+                c.set(frame.ask(prompt));
+            }});
+        }
+        catch (InvocationTargetException e)
+        {
+            Debug.reportError(e);
+        }
+        catch (InterruptedException e)
+        {
+            Debug.reportError(e);
+        }
+        
+        try
+        {
+            return c.get().call();
+        }
+        catch (Exception e)
+        {
+            Debug.reportError(e);
+            return null;
+        }
     }
 }

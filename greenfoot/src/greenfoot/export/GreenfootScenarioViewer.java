@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011,2012,2013  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011,2012,2013,2014  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,6 +27,7 @@ import greenfoot.core.Simulation;
 import greenfoot.core.WorldHandler;
 import greenfoot.event.SimulationEvent;
 import greenfoot.event.SimulationListener;
+import greenfoot.gui.AskPanel;
 import greenfoot.gui.ControlPanel;
 import greenfoot.gui.WorldCanvas;
 import greenfoot.gui.input.mouse.LocationTracker;
@@ -35,16 +36,21 @@ import greenfoot.platforms.standalone.GreenfootUtilDelegateStandAlone;
 import greenfoot.platforms.standalone.SimulationDelegateStandAlone;
 import greenfoot.platforms.standalone.WorldHandlerDelegateStandAlone;
 import greenfoot.sound.SoundFactory;
+import greenfoot.util.AskHandler;
 import greenfoot.util.GreenfootUtil;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.EventQueue;
+import java.awt.Image;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import javax.swing.JApplet;
@@ -52,10 +58,13 @@ import javax.swing.JPanel;
 import javax.swing.JRootPane;
 import javax.swing.JScrollPane;
 import javax.swing.BorderFactory;
+import javax.swing.OverlayLayout;
 import javax.swing.RootPaneContainer;
 
 import bluej.Config;
 import bluej.utility.CenterLayout;
+import bluej.utility.Debug;
+import bluej.utility.Utility;
 
 /**
  * This class can view and run a Greenfoot scenario. It is not possible to
@@ -73,10 +82,13 @@ public class GreenfootScenarioViewer extends JApplet
     private ProjectProperties properties;
     private Simulation sim;
     private WorldCanvas canvas;
+    private AskPanel askPanel;
     private ControlPanel controls;
     private RootPaneContainer rootPaneContainer;
 
     private Constructor<?> worldConstructor;
+
+    private AskHandler askHandler;
 
     /**
      * The default constructor, used when the scenario runs as an applet.
@@ -119,9 +131,20 @@ public class GreenfootScenarioViewer extends JApplet
             rootPaneContainer = this;
         }
         
-        JPanel centerPanel = new JPanel(new CenterLayout());
+        JPanel centerPanel = new JPanel();
+        centerPanel.setLayout(new OverlayLayout(centerPanel));
+        canvas.setAlignmentX(0.5f);
+        canvas.setAlignmentY(1.0f);
+        
+        
+        askPanel = new AskPanel();
+        askPanel.getComponent().setAlignmentX(0.5f);
+        askPanel.getComponent().setAlignmentY(1.0f);
+        centerPanel.add(askPanel.getComponent());
         centerPanel.add( canvas );
         centerPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
+        askHandler = new AskHandler(askPanel, canvas);
+        
         
         JScrollPane outer = new JScrollPane( centerPanel );
         outer.setBorder(BorderFactory.createEmptyBorder(EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE));
@@ -380,5 +403,34 @@ public class GreenfootScenarioViewer extends JApplet
     public ReentrantReadWriteLock getWorldLock(World world)
     {
         return WorldHandler.getInstance().getWorldLock();
+    }
+    
+    public String ask(final String prompt)
+    {
+        final AtomicReference<Callable<String>> c = new AtomicReference<Callable<String>>();
+        try
+        {
+            EventQueue.invokeAndWait(new Runnable() {public void run() {
+                c.set(askHandler.ask(prompt, canvas.getPreferredSize().width));
+            }});
+        }
+        catch (InvocationTargetException e)
+        {
+            Debug.reportError(e);
+        }
+        catch (InterruptedException e)
+        {
+            Debug.reportError(e);
+        }
+        
+        try
+        {
+            return c.get().call();
+        }
+        catch (Exception e)
+        {
+            Debug.reportError(e);
+            return null;
+        }
     }
 }

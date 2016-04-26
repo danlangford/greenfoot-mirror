@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011,2014  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,6 +27,7 @@ import greenfoot.core.WorldHandler;
 import greenfoot.gui.input.InputManager;
 
 import java.awt.event.MouseEvent;
+import java.util.concurrent.Callable;
 
 
 /**
@@ -75,4 +76,9 @@ public interface WorldHandlerDelegate
      * An actor was added into the world (by any means, possibly programmatically). Called with the world locked.
      */
     public void objectAddedToWorld(Actor actor);
+
+    /**
+     * Show a text prompt asking for input, with given prompt string
+     */
+    public String ask(String prompt);
 }

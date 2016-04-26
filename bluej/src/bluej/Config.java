@@ -1698,30 +1698,4 @@ public final class Config
     {
         return isGreenfoot;
     }
-    
-    /**
-     * Determine whether a file is a ZIP File.
-     */
-    public static boolean isZipFile(File file)
-    {
-        try {
-            if(file.isDirectory()) {
-                return false;
-            }
-            if(!file.canRead()) {
-                throw new IOException();
-            }
-            if(file.length() < 4) {
-                return false;
-            }
-            DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file)));
-            int magicNumber = in.readInt();
-            in.close();
-            return magicNumber == 0x504b0304;
-        }
-        catch (IOException exc) {
-            Debug.reportError("Could not read file: " + file.getAbsolutePath(), exc);
-        }
-        return false;
-    }
 }

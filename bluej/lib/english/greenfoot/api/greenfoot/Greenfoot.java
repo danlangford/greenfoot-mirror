@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2011,2012  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2011,2012,2014  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -50,7 +50,7 @@ import greenfoot.sound.SoundFactory;
  * </ul>
  * 
  * @author Davin McCall
- * @version 2.4
+ * @version 2.7
  */
 public class Greenfoot
 {
@@ -105,10 +105,7 @@ public class Greenfoot
      */
     public static void delay(int time)
     {
-        for(int i=0; i < time; i++) {
-            WorldHandler.getInstance().repaint();
-            Simulation.getInstance().sleep();
-        }
+        Simulation.getInstance().sleep(time);
     }
     
     /**
@@ -288,5 +285,16 @@ public class Greenfoot
     public static int getMicLevel()
     {
         return MicLevelGrabber.getInstance().getLevel();
+    }
+    
+    /**
+     * Get input from the user (and freeze the scenario while we are waiting).
+     * The prompt String parameter will be shown to the user (e.g. "How many players?"), and the answer will be returned as a String.
+     * If you want to ask for a number, you can use methods like Integer.parseInt to turn
+     * the returned String into a number. 
+     */
+    public static String ask(String prompt)
+    {
+        return WorldHandler.getInstance().ask(prompt);
     }
 }

@@ -41,6 +41,7 @@ project.version.changes.9=2.3.0 A 'turnTowards(int,int)' method has been added t
 project.version.changes.10=2.4.0 A 'UserInfo' class was added (renamed from 'PlayerData' in the Greenfoot 2.2.0 beta).
 project.version.changes.11=2.5.0 The 'isTouching' and 'removeTouching' methods were added to the Actor class.
 project.version.changes.12=2.6.0 The 'showText' method was added to the World class, and a new constructor added to GreenfootImage.
+project.version.changes.13=2.7.0 The 'ask' method was added to the Greenfoot class.
 
 project.version.newer.part1=The scenario being opened has been written using a newer version of Greenfoot (API version 
 # project version inserted here by Greenfoot
@@ -295,7 +296,7 @@ menu.help.discuss=Greenfoot Discussion
 #Copyright
 
 menu.help.copyright.title=Greenfoot Copyright, Licensing and Redistribution
-menu.help.copyright.line0=Greenfoot \u00a9 2005-2014 Michael K\u00F6lling, Poul Henriksen.
+menu.help.copyright.line0=Greenfoot \u00a9 2005-2015 Michael K\u00F6lling, Poul Henriksen.
 menu.help.copyright.line1=Greenfoot is available under the GNU General Public License  
 menu.help.copyright.line2=version 2 with Classpath exception.
 menu.help.copyright.line3=For more information please see the files LICENSE.txt 
@@ -314,9 +315,6 @@ properties.heading.greenfoot=Greenfoot properties. Settings in this file overrid
 
 # Message to display if a file cannot be created
 greenfoot.cannotCreateClass=The class file could not be created. Check that the project folder is writable.
-
-# Message to display when a project is opened from a zip file
-open.project.message.zip=The selected file is inside a Zip file. Please extract it \n outside Greenfoot first, then retry to open the scenario.   
 
 # General error messages
 greenfoot.cannotFindAPIDocumentation=The API documentation seems to be missing, or unreadable.
