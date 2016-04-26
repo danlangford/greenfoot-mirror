@@ -26,7 +26,7 @@
  * The exporter is a singleton
  *
  * @author Michael Kolling
- * @version $Id: Exporter.java 6339 2009-05-18 11:53:07Z polle $
+ * @version $Id: Exporter.java 6720 2009-09-18 13:49:11Z davmac $
  */
 
 package greenfoot.export;
@@ -58,7 +58,6 @@ import bluej.Boot;
 import bluej.Config;
 import bluej.extensions.ProjectNotOpenException;
 import bluej.pkgmgr.Project;
-import bluej.utility.FileUtility;
 
 public class Exporter 
         implements PublishListener
@@ -110,7 +109,7 @@ public class Exporter
         String jarName = tmpJarFile.getName();           
         
         
-        String worldClass = WorldHandler.getInstance().getLastWorldClass().getName();
+        String worldClass = WorldHandler.getInstance().getLastWorldClassName();
         
         boolean  lockScenario = pane.lockScenario();
         
@@ -245,7 +244,7 @@ public class Exporter
         File exportDir = new File(pane.getExportLocation());
         exportDir.mkdir();
 
-        String worldClass = WorldHandler.getInstance().getLastWorldClass().getName();
+        String worldClass = WorldHandler.getInstance().getLastWorldClassName();
         
         boolean  includeControls = pane.lockScenario();
         String jarName = project.getName() + ".jar";
@@ -316,7 +315,7 @@ public class Exporter
         File exportDir = exportFile.getParentFile();
         String jarName = exportFile.getName();
 
-        String worldClass = WorldHandler.getInstance().getLastWorldClass().getName();
+        String worldClass = WorldHandler.getInstance().getLastWorldClassName();
         
         boolean  includeControls = pane.lockScenario();
         

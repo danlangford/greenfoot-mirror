@@ -41,7 +41,7 @@ import java.util.Map;
  * F1-F12.
  * 
  * @author davmac
- * @version $Id: KeyboardManager.java 6216 2009-03-30 13:41:07Z polle $
+ * @version $Id$
  */
 public class KeyboardManager implements TriggeredKeyListener, FocusListener
 {

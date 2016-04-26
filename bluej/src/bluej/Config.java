@@ -21,20 +21,32 @@
  */
 package bluej;
 
-import java.awt.*;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Image;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintStream;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.Properties;
+import java.util.StringTokenizer;
 
 import javax.swing.ImageIcon;
 import javax.swing.KeyStroke;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
+import javax.swing.UIManager.LookAndFeelInfo;
 import javax.swing.border.BevelBorder;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
@@ -66,7 +78,7 @@ import bluej.utility.Utility;
  * @author Michael Cahill
  * @author Michael Kolling
  * @author Andrew Patterson
- * @version $Id: Config.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: Config.java 6718 2009-09-18 12:44:11Z davmac $
  */
 
 public final class Config
@@ -87,7 +99,7 @@ public final class Config
     public static Properties moeSystemProps;  // moe (editor) properties
     public static Properties moeUserProps;    // moe (editor) properties
     
-    private static Properties langProps;	// international labels
+    private static Properties langProps;        // international labels
 
     private static BlueJPropStringSource propSource; // source for properties
 
@@ -96,8 +108,8 @@ public final class Config
     /** The greenfoot subdirectory of the "lib"-directory*/ 
     private static File greenfootLibDir;
     
-    public static String compilertype;	// current compiler (javac, jikes)
-    public static String language;	// message language (english, ...)
+    public static String compilertype;  // current compiler (javac, jikes)
+    public static String language;      // message language (english, ...)
 
     public static Rectangle screenBounds; // maximum dimensions of screen
 
@@ -111,7 +123,7 @@ public final class Config
     public static String debugLogName = bluejDebugLogName;
     
     private static boolean initialised = false;
-    private static boolean isGreenfoot;
+    private static boolean isGreenfoot = false;
     
     /** name of the icons file for the VM on Mac */
     private static final String BLUEJ_DEBUG_DOCK_ICON = "vm.icns";
@@ -144,7 +156,7 @@ public final class Config
     private static List<String> debugVMArgs = new ArrayList<String>();
     
     /** whether this is the debug vm or not. */
-    private static boolean isDebugVm = false;
+    private static boolean isDebugVm = true; // Default to true, will be corrected on main VM
 
 
     /**
@@ -160,7 +172,6 @@ public final class Config
             return;
 
         initialised = true;
-
         
         initialCommandLineProps = tempCommandLineProps;
         
@@ -175,6 +186,8 @@ public final class Config
         // setup our heirarchy of property objects if it is not done yet:
         if(systemProps == null)
         {
+            isDebugVm = false;
+            
             // top level is the system properties loaded from bluej.defs
             systemProps = loadDefs("bluej.defs", System.getProperties());
             
@@ -246,7 +259,7 @@ public final class Config
             MetalLookAndFeel.setCurrentTheme(new BlueJTheme());
         }
 
-        String laf = Config.getPropString("bluej.lookAndFeel", "default");
+        String laf = Config.getPropString("bluej.lookAndFeel", "bluejdefault");
         setLookAndFeel(laf);
         
         //read any debug vm args
@@ -408,8 +421,8 @@ public final class Config
      */
     public static boolean isWinOSVista()
     {
-		return isWinOS()
-				&& System.getProperty("os.version").compareTo("6.0") >= 0;
+                return isWinOS()
+                                && System.getProperty("os.version").compareTo("6.0") >= 0;
     }
     
     /**
@@ -515,34 +528,45 @@ public final class Config
      */
     private static void checkDebug(File userdir)
     {
-        if (!isDebugVM() && !"true".equals(commandProps.getProperty("bluej.debug"))) {
-            File debugLogFile = new File(userdir, debugLogName);
-            // simple diversion of output stream to a log file
-            try {
-                PrintStream outStream =
-                    new PrintStream(new FileOutputStream(debugLogFile));
-                System.setOut(outStream);
-                System.setErr(outStream);
-                Debug.message(getApplicationName() + " run started: " + new Date());
-                if(isGreenfoot())
-                    Debug.message("Greenfoot version: " + Boot.GREENFOOT_VERSION);
-                else
-                    Debug.message("BlueJ version " + Boot.BLUEJ_VERSION);
-                Debug.message("Java version " + System.getProperty("java.version"));
-                Debug.message("Virtual machine: " +
-                                    System.getProperty("java.vm.name") + " " +
-                                    System.getProperty("java.vm.version") +
-                                    " (" + System.getProperty("java.vm.vendor") + ")");
-                Debug.message("Running on: " + System.getProperty("os.name") +
-                                    " " + System.getProperty("os.version") +
-                                    " (" + System.getProperty("os.arch") + ")");
-                Debug.message("Java Home: " + System.getProperty("java.home"));            
-                Debug.message("----");            
-            }
-            catch (IOException e) {
-                Debug.reportError("Warning: Unable to create debug log file.");
+        if (!isDebugVM()) {
+            if (!"true".equals(commandProps.getProperty("bluej.debug"))) {
+                File debugLogFile = new File(userdir, debugLogName);
+                // simple diversion of output stream to a log file
+                try {
+                    PrintStream outStream =
+                        new PrintStream(new FileOutputStream(debugLogFile));
+                    System.setOut(outStream);
+                    System.setErr(outStream);
+                    Debug.setDebugStream(new OutputStreamWriter(outStream));
+
+                    Debug.message(getApplicationName() + " run started: " + new Date());
+                    if(isGreenfoot())
+                        Debug.message("Greenfoot version: " + Boot.GREENFOOT_VERSION);
+                    else
+                        Debug.message("BlueJ version " + Boot.BLUEJ_VERSION);
+                    Debug.message("Java version " + System.getProperty("java.version"));
+                    Debug.message("Virtual machine: " +
+                            System.getProperty("java.vm.name") + " " +
+                            System.getProperty("java.vm.version") +
+                            " (" + System.getProperty("java.vm.vendor") + ")");
+                    Debug.message("Running on: " + System.getProperty("os.name") +
+                            " " + System.getProperty("os.version") +
+                            " (" + System.getProperty("os.arch") + ")");
+                    Debug.message("Java Home: " + System.getProperty("java.home"));            
+                    Debug.message("----");    
+                    return;
+                }
+                catch (IOException e) {
+                    Debug.reportError("Warning: Unable to create debug log file.");
+                }
             }
         }
+        
+        // We get here if:
+        // - we are on the debug VM (and in Greenfoot) or
+        // - bluej.debug=true or
+        // - creating the debug log failed
+        Debug.setDebugStream(new OutputStreamWriter(System.out));
     }
     
     /**
@@ -1061,14 +1085,14 @@ public final class Config
                 if (jdkPath != null) {
                     binPath = new File(jdkPath, "bin");
 
-					// try to find normal (unix??) executable
+                                        // try to find normal (unix??) executable
                     potentialExe = new File(binPath, executableName);
                     if(potentialExe.exists())
                         return potentialExe.getAbsolutePath();
-					// try to find windows executable
-					potentialExe = new File(binPath, executableName + ".exe");
-					if(potentialExe.exists())
-						return potentialExe.getAbsolutePath();
+                                        // try to find windows executable
+                                        potentialExe = new File(binPath, executableName + ".exe");
+                                        if(potentialExe.exists())
+                                                return potentialExe.getAbsolutePath();
                 }
             }
 
@@ -1355,24 +1379,41 @@ public final class Config
     private static void setLookAndFeel(String laf)
     {
         try {
+            if (laf.equals("default")) {
+                return;
+            }
+            
             // if system specified
             if(laf.equals("system")) {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                return;
             }
             else if(laf.equals("crossplatform")) {
                 UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+                return;
+            }
+            
+            if (! laf.equals("bluejdefault")) {
+                LookAndFeelInfo [] lafi = UIManager.getInstalledLookAndFeels();
+                for (int i = 0; i < lafi.length; i++) {
+                    if (lafi[i].getName().equals(laf)) {
+                        UIManager.setLookAndFeel(lafi[i].getClassName());
+                        return;
+                    }
+                }
+                
+                // Try as a class name
+                UIManager.setLookAndFeel(laf);
             }
             
             // do the "default, ie. let BlueJ decide
             // Windows - System l&F, Linux & Solaris - cross-platform
-            else {
-                if (isWinOS()){
-                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-                }
-                // treat Linux and Solaris the same at the moment
-                else if(isLinux() || isSolaris()) {
-                    UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
-                }
+            if (isWinOS()){
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            }
+            // treat Linux and Solaris the same at the moment
+            else if(isLinux() || isSolaris()) {
+                UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
             }
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
@@ -1395,7 +1436,7 @@ public final class Config
         if(args != null && !args.equals("bluej.vm.args")) {
             // if there is more than one arg set
             List<String> splitArgs = splitVMArgs(args);
-	        debugVMArgs.addAll(splitArgs);
+                debugVMArgs.addAll(splitArgs);
         }        
     }
     
@@ -1403,7 +1444,7 @@ public final class Config
      * Splits VM args String into separate args including handling quotes
      * used for file paths with spaces. 
      * @param str - the string to be split
-     * @returns	an array of Strings
+     * @returns an array of Strings
      */
     private static List<String> splitVMArgs(String str)
     {

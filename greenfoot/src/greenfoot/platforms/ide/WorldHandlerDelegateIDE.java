@@ -24,9 +24,8 @@ package greenfoot.platforms.ide;
 import greenfoot.Actor;
 import greenfoot.ObjectTracker;
 import greenfoot.World;
-import greenfoot.WorldVisitor;
+import greenfoot.core.GClass;
 import greenfoot.core.GProject;
-import greenfoot.core.ProjectProperties;
 import greenfoot.core.WorldHandler;
 import greenfoot.core.WorldInvokeListener;
 import greenfoot.gui.DragGlassPane;
@@ -35,6 +34,7 @@ import greenfoot.gui.MessageDialog;
 import greenfoot.gui.input.InputManager;
 import greenfoot.localdebugger.LocalObject;
 import greenfoot.platforms.WorldHandlerDelegate;
+import greenfoot.util.GreenfootUtil;
 
 import java.awt.Color;
 import java.awt.Component;
@@ -45,8 +45,6 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.rmi.RemoteException;
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 import javax.swing.BorderFactory;
@@ -96,8 +94,6 @@ public class WorldHandlerDelegateIDE
 
     private JLabel worldTitle;
 
-    private String lastWorldClass; 
-    
     public WorldHandlerDelegateIDE(GreenfootFrame frame)
     {
         worldTitle = new JLabel();
@@ -195,22 +191,13 @@ public class WorldHandlerDelegateIDE
         return false;
     }
 
-
-    public void discardWorld(World world) {        
-        // Remove the  world and actors from the remote object caches
-        ObjectTracker.forgetRObject(world);
-        List<Actor> oldActors = new ArrayList<Actor>(WorldVisitor.getObjectsListInPaintOrder(world));
-        for (Iterator<Actor> i = oldActors.iterator(); i.hasNext();) {
-            Actor oldActor = i.next();
-            ObjectTracker.forgetRObject(oldActor);
-        }
+    public void discardWorld(World world)
+    {        
+        ObjectTracker.clearRObjectCache();
     }
     
     public void setWorld(final World oldWorld, final World newWorld)
     {
-        if (newWorld != null) {
-            lastWorldClass = newWorld.getClass().getName();
-        }
         if (oldWorld != null) {
             discardWorld(oldWorld);
         }
@@ -389,9 +376,6 @@ public class WorldHandlerDelegateIDE
     public void attachProject(Object project)
     {
         this.project = (GProject) project;
-
-        ProjectProperties probs = this.project.getProjectProperties();
-        lastWorldClass = probs.getString("world.lastInstantiated");
     }
 
     public Component getWorldTitle()
@@ -407,6 +391,8 @@ public class WorldHandlerDelegateIDE
     public void instantiateNewWorld()
     {
         Class<?> cls = getLastWorldClass();
+        
+        cls = getLastWorldClass();
         if(cls == null) {
             try {
             	List<Class<?>> worldClasses = project.getDefaultPackage().getWorldClasses();
@@ -451,25 +437,24 @@ public class WorldHandlerDelegateIDE
 
     public Class<?> getLastWorldClass()
     {
+        String lastWorldClass = WorldHandler.getInstance().getLastWorldClassName();
         if(lastWorldClass == null) {
             return null;
         }
         
         try {
-        	List<Class<?>> worldClasses = project.getDefaultPackage().getWorldClasses();
+            GClass gclass = project.getDefaultPackage().getClass(lastWorldClass);
+            if (gclass != null) {
+                Class<?> rclass = gclass.getJavaClass();
+                if (GreenfootUtil.canBeInstantiated(rclass)) {
+                    return  rclass;
+                }
+            }
+        }
+        catch (Exception e) {
+            Debug.reportError("Error trying to get world class", e);
+        }
 
-        	//Has to be one of the currently instantiable world classes.
-        	for (Class<?> worldClass : worldClasses) {
-        		if(worldClass.getName().equals(lastWorldClass)) {
-        			return worldClass;
-        		}                
-        	}
-        }
-        catch (ProjectNotOpenException pnoe) {}
-        catch (RemoteException re) {
-        	re.printStackTrace();
-        }
-        
         return null;
     }
 

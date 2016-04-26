@@ -31,13 +31,14 @@ import bluej.extensions.ProjectNotOpenException;
 /**
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: RProject.java 6216 2009-03-30 13:41:07Z polle $
+ * @version $Id: RProject.java 6721 2009-09-19 04:11:55Z davmac $
  */
 public interface RProject
     extends java.rmi.Remote
 {
     /**
-     * Close this project
+     * Close this project. This will cause the local VM to
+     * terminate.
      */
     public abstract void close()
         throws RemoteException;

@@ -37,7 +37,7 @@ import java.util.List;
  * A wrapper for a single package of a BlueJ project.
  * This represents an open package, and functions relating to that package.
  *
- * @version $Id: BPackage.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: BPackage.java 6720 2009-09-18 13:49:11Z davmac $
  */
 
 /*
@@ -285,19 +285,19 @@ public class BPackage
      * @throws CompilationNotStartedException if BlueJ is currently executing Java code.
      */
     public void compileAll ( boolean waitCompileEnd ) 
-        throws ProjectNotOpenException, PackageNotFoundException, CompilationNotStartedException
-        {
+    throws ProjectNotOpenException, PackageNotFoundException, CompilationNotStartedException
+    {
         Package bluejPkg = packageId.getBluejPackage();
 
         if ( ! bluejPkg.isDebuggerIdle() )
-          throw new CompilationNotStartedException ("BlueJ is currently executing Java code");
+            throw new CompilationNotStartedException ("BlueJ is currently executing Java code");
 
         // Request for ALL files to be compiled
         bluejPkg.rebuild(); 
 
         // if requested wait for the compilation to finish.
         if ( waitCompileEnd ) JobQueue.getJobQueue().waitForEmptyQueue();
-        }
+    }
 
     /** 
      * Returns the currently selected classes in this Package.

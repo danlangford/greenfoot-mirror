@@ -85,7 +85,7 @@ import bluej.utility.filefilter.SubPackageFilter;
  * @author Michael Kolling
  * @author Axel Schmolitzky
  * @author Andrew Patterson
- * @version $Id: Package.java 6347 2009-05-20 15:22:43Z polle $
+ * @version $Id: Package.java 6719 2009-09-18 13:36:58Z davmac $
  */
 public final class Package extends Graph
 {
@@ -1226,7 +1226,7 @@ public final class Package extends Graph
             return;
         }
 
-        List compileTargets = new ArrayList();
+        List<ClassTarget> compileTargets = new ArrayList<ClassTarget>();
 
         try {
             for (Iterator it = targets.iterator(); it.hasNext();) {
@@ -1236,13 +1236,20 @@ public final class Package extends Graph
                     ClassTarget ct = (ClassTarget) target;
                     // we don't want to try and compile if it is a class target without src
                     if (ct.hasSourceCode()) {
-                        ct.ensureSaved();
-                        ct.setState(ClassTarget.S_INVALID);
-                        ct.setQueued(true);
                         compileTargets.add(ct);
                     }
                 }
             }
+            
+            // We have to do this after building the list, seeing as
+            // ct.ensureSaved() may rename a target which alters the
+            // targets collection causing ConcurrentModificationException
+            for (ClassTarget ct : compileTargets) {
+                ct.ensureSaved();
+                ct.setState(ClassTarget.S_INVALID);
+                ct.setQueued(true);
+            }
+            
             project.removeClassLoader();
             project.newRemoteClassLoader();
             

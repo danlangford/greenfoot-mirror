@@ -26,7 +26,6 @@ import greenfoot.World;
 import greenfoot.actions.AboutGreenfootAction;
 import greenfoot.actions.CloseProjectAction;
 import greenfoot.actions.CompileAllAction;
-import greenfoot.actions.EditImagesAction;
 import greenfoot.actions.ExportProjectAction;
 import greenfoot.actions.NewClassAction;
 import greenfoot.actions.NewProjectAction;
@@ -127,7 +126,7 @@ import com.apple.eawt.ApplicationEvent;
  * @author Poul Henriksen
  * @author mik
  *
- * @version $Id: GreenfootFrame.java 6477 2009-08-03 14:03:50Z mjrb4 $
+ * @version $Id: GreenfootFrame.java 6720 2009-09-18 13:49:11Z davmac $
  */
 public class GreenfootFrame extends JFrame
     implements WindowListener, CompileListener, WorldListener, SelectionListener,
@@ -163,7 +162,6 @@ public class GreenfootFrame extends JFrame
     private CloseProjectAction closeProjectAction;
     private RemoveSelectedClassAction removeSelectedClassAction;
     private CompileAllAction compileAllAction;
-    private EditImagesAction editImagesAction;
     
     private JMenu recentProjectsMenu;
     
@@ -305,6 +303,7 @@ public class GreenfootFrame extends JFrame
         if (isClosedProject) {
             this.project = project;
             worldHandlerDelegate.attachProject(project);
+            worldHandler.setLastWorldClass(project.getProjectProperties().getString("world.lastInstantiated"));
             project.addCompileListener(this);
             setTitle("Greenfoot: " + project.getName());
             enableProjectActions();
@@ -327,7 +326,7 @@ public class GreenfootFrame extends JFrame
                 // If there is no speed info in the properties we don't care...
             }
             
-            WorldHandler.getInstance().instantiateNewWorld();
+            worldHandler.instantiateNewWorld();
             worldHandlerDelegate.getWorldTitle().setVisible(true);
             if (needsResize()) {
                 pack();
@@ -573,7 +572,6 @@ public class GreenfootFrame extends JFrame
     	removeSelectedClassAction = new RemoveSelectedClassAction(this);
     	removeSelectedClassAction.setEnabled(false);
     	compileAllAction = new CompileAllAction(project);
-        editImagesAction = new EditImagesAction(project, this);
     }
     
     /**
@@ -697,7 +695,6 @@ public class GreenfootFrame extends JFrame
         saveProjectAction.setEnabled(state);
         saveCopyAction.setEnabled(state);
         newClassAction.setEnabled(state);
-        editImagesAction.setEnabled(state);
         showReadMeAction.setEnabled(state);
         exportProjectAction.setEnabled(state);
         
@@ -708,7 +705,6 @@ public class GreenfootFrame extends JFrame
         }
         
         compileAllAction.setProject(project);
-        editImagesAction.setProject(project);
     }
 
     /**
