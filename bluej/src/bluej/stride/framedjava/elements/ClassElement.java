@@ -104,8 +104,8 @@ public class ClassElement extends DocumentContainerCodeElement implements TopLev
     /** The frame corresponding to this code element (may be null) */
     private ClassFrame frame;
     /** The curly brackets and class keyword in the generated code (saved for mapping positions) */
-    private final FrameFragment openingCurly = new FrameFragment(frame, "{");
-    private final FrameFragment closingCurly = new FrameFragment(frame, "}");
+    private final FrameFragment openingCurly;
+    private final FrameFragment closingCurly;
     private JavaFragment classKeyword;
     /**
      * The generated Java code for this class, used for doing code completion without
@@ -132,6 +132,8 @@ public class ClassElement extends DocumentContainerCodeElement implements TopLev
             JavadocUnit documentation, List<ImportElement> imports, boolean enabled)
     {
         this.frame = frame;
+        this.openingCurly = new FrameFragment(this.frame, "{");
+        this.closingCurly = new FrameFragment(this.frame, "}");
         this.abstractModifier = abstractModifier;
         this.className = className;
         this.extendsName = extendsName;
@@ -164,7 +166,7 @@ public class ClassElement extends DocumentContainerCodeElement implements TopLev
     public ClassElement(Element el, EntityResolver projectResolver)
     {
         Attribute abstractAttribute = el.getAttribute("abstract");
-        abstractModifier = (abstractAttribute == null) ? false : new Boolean(abstractAttribute.getValue());
+        abstractModifier = (abstractAttribute == null) ? false : Boolean.valueOf(abstractAttribute.getValue());
         
         className = new NameDefSlotFragment(el.getAttributeValue("name"));
         final String extendsAttribute = el.getAttributeValue("extends");
@@ -185,6 +187,8 @@ public class ClassElement extends DocumentContainerCodeElement implements TopLev
        
         enable = new Boolean(el.getAttributeValue("enable"));
         this.projectResolver = projectResolver;
+        this.openingCurly = new FrameFragment(null, "{");
+        this.closingCurly = new FrameFragment(null, "}");
     }
     
     @Override
@@ -203,7 +207,7 @@ public class ClassElement extends DocumentContainerCodeElement implements TopLev
         classKeyword = new FrameFragment(frame, "class ");
         Collections.addAll(header, classKeyword, className);
         
-        if (extendsName != null) {
+        if (extendsName != null && !extendsName.isEmpty()) {
             Collections.addAll(header, space(), f(frame, "extends"), space(), extendsName);
         }
         if (!implementsList.isEmpty())
@@ -578,7 +582,7 @@ public class ClassElement extends DocumentContainerCodeElement implements TopLev
             .filter(c -> c instanceof ConstructorElement)
             .map(c -> (ConstructorElement)c)
             .map(c -> {
-                List<ParamInfo> paramInfo = Utility.mapList(c.getParams(), p -> new ParamInfo(p.getParamType().getContent(), p.getParamName().getContent(), "", ""));
+                List<ParamInfo> paramInfo = Utility.mapList(c.getParams(), p -> new ParamInfo(p.getParamType().getContent(), p.getParamName().getContent(), "", () -> ""));
                 return new AssistContentThreadSafe(c.getAccessPermission().asAccess(), getName(), c.getDocumentation(), CompletionKind.CONSTRUCTOR, getName(), null, paramInfo, null, null, null);
             })
             .collect(Collectors.toList());

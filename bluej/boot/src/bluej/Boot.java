@@ -98,7 +98,7 @@ public class Boot
         "guava-17.0.jar", "javassist-3.18.0.jar", "commons-vfs2-2.0.jar",
         "httpclient-4.1.1.jar", "httpcore-4.1.jar", "httpmime-4.1.1.jar"};
     private static final int greenfootUserBuildJars = 4;
-    public static String GREENFOOT_VERSION = "3.0.1";
+    public static String GREENFOOT_VERSION = "3.0.2";
     public static String GREENFOOT_API_VERSION = "2.8.0";
     // A singleton boot object so the rest of BlueJ can pick up args etc.
     private static Boot instance;
@@ -126,37 +126,38 @@ public class Boot
     private static final ArrayList<File> macInitialProjects = new ArrayList<>();
 
     private SplashWindow splashWindow;
+    
+    public static String[] cmdLineArgs;      // Command line arguments
+
     // ---- instance part ----
     private final Properties commandLineProps; //Properties specified a the command line (-....)
-    private final String[] args;      // Command line arguments
     private File javaHomeDir;   // The value returned by System.getProperty
     private ClassLoader bootLoader; // The loader this class is loaded with
     private URL[] runtimeUserClassPath; // The initial class path used to run code within BlueJ
     private URL[] runtimeClassPath;     // The class path containing all the BlueJ classes
+
     /**
      * Constructor for the singleton Boot object.
      * 
-     * @param args the arguments with which main() was invoked
      * @param props the properties (created from the args)
      */
-    private Boot(String[] args, Properties props, final SplashLabel image)
+    private Boot(Properties props, final SplashLabel image)
     {
         // Display the splash window, and wait until it's been painted before
         // proceeding. Otherwise, the event thread may be occupied by BlueJ
         // starting up and the window might *never* be painted.
         
         try {
-            EventQueue.invokeAndWait(() -> {
-                splashWindow = new SplashWindow(image);
-                splashWindow.repaint(); // avoid delay before painting
-            });
-            splashWindow.waitUntilPainted();
+            EventQueue.invokeAndWait(() -> splashWindow = new SplashWindow(image));
+
+            // I removed this for now [mik]. We are using invokeAndWait, so we already wait anyway.
+            // The following call adds 3 secs to startup time (for no reason, I think). Avoid.
+            //splashWindow.waitUntilPainted();
         }
         catch (InvocationTargetException | InterruptedException ite) {
             ite.printStackTrace();
         }
 
-        this.args = args;
         this.commandLineProps = props;
     }
 
@@ -167,31 +168,7 @@ public class Boot
      */
     public static void main(String[] args)
     {
-        if((args.length >= 1) && "-version".equals(args[0])) {
-            System.out.println("BlueJ version " + BLUEJ_VERSION
-                               + " (Java version "
-                               + System.getProperty("java.version")
-                               + ")");
-            System.out.println("--");
-
-            System.out.println("virtual machine: "
-                               + System.getProperty("java.vm.name")
-                               + " "
-                               + System.getProperty("java.vm.version")
-                               + " ("
-                               + System.getProperty("java.vm.vendor")
-                               + ")");
-
-            System.out.println("running on: "
-                               + System.getProperty("os.name")
-                               + " "
-                               + System.getProperty("os.version")
-                               + " ("
-                               + System.getProperty("os.arch")
-                               + ")");
-            System.exit(-1);
-        }
-        
+        cmdLineArgs = args;
         Application.launch(App.class, args);
     }
   
@@ -200,9 +177,9 @@ public class Boot
         return macInitialProjects;
     }
 
-    public static void subMain(String[] args)
+    public static void subMain()
     {
-        Properties commandLineProps = processCommandLineProperties(args);
+        Properties commandLineProps = processCommandLineProperties(cmdLineArgs);
         isGreenfoot = commandLineProps.getProperty("greenfoot", "false").equals("true");
         
         SplashLabel image;
@@ -211,7 +188,7 @@ public class Boot
             runtimeJars = greenfootUserJars;
             userJars = greenfootUserJars;
             numBuildJars = greenfootUserBuildJars;
-            numUserBuildJars = greenfootUserBuildJars;            
+            numUserBuildJars = greenfootUserBuildJars;
         } else {
             image = new BlueJLabel();
         }
@@ -219,7 +196,7 @@ public class Boot
         jfxrtJar = commandLineProps.getProperty("jfxrt.jarpath");
         
         try {
-            instance = new Boot(args, commandLineProps, image);
+            instance = new Boot(commandLineProps, image);
             instance.bootBluej();
         }
         catch (Throwable t) {
@@ -383,16 +360,6 @@ public class Boot
             splashWindow.dispose();
             splashWindow = null;
         }
-    }
-
-    /**
-     * Retuns the args list passed to the starting program.
-     *
-     * @return    The args value
-     */
-    public String[] getArgs()
-    {
-        return args;
     }
 
     /**
@@ -646,9 +613,7 @@ public class Boot
         public void start(Stage s) throws Exception {
             Platform.setImplicitExit(false);
             s.setTitle("BlueJ");
-            new Thread(() ->
-            subMain(getParameters().getRaw().toArray(new String[0]))
-            ).start();
+            new Thread(() -> subMain()).start();
         }
         
     }
@@ -656,7 +621,7 @@ public class Boot
     /**
      * We don't want this Boot class to depend on further BlueJ classes, so although
      * Boot needs to know how to quit, we don't want to introduce a compile-time
-     * dependency on the classes needed to quit.  So this lamba/Runnable is a late
+     * dependency on the classes needed to quit.  So this lambda/Runnable is a late
      * binding for the same purpose
      */
     private Runnable quitAction;

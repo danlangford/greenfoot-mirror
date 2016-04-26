@@ -1200,6 +1200,7 @@ public final class MoeActions
                 actions.get("new-line"),
                 actions.get(DefaultEditorKit.insertBreakAction), 
                 actions.get("insert-method"),
+                actions.get("add-javadoc"),
                 actions.get("comment-block"), 
                 actions.get("uncomment-block"),
                 actions.get("autoindent"), 
@@ -1496,8 +1497,7 @@ public final class MoeActions
             catch (CannotUndoException ex) {
                 Debug.message("moe: cannot undo...");
             }
-            editor.updateUndoControls();
-            editor.updateRedoControls();
+            editor.updateUndoRedoControls();
         }
     }
 
@@ -1522,8 +1522,7 @@ public final class MoeActions
             catch (CannotRedoException ex) {
                 Debug.message("moe: cannot redo...");
             }
-            editor.updateUndoControls();
-            editor.updateRedoControls();
+            editor.updateUndoRedoControls();
         }
     }
     
@@ -1671,7 +1670,7 @@ public final class MoeActions
         {
             MoeEditor editor = getEditor();
             //this method should not be actioned if the editor is not displaying source code
-            if (!editor.containsSourceCode()){
+            if (!editor.containsSourceCode()) {
                 return;
             }
             int caretPos = editor.getCurrentTextPane().getCaretPosition();
@@ -2226,9 +2225,7 @@ public final class MoeActions
         {
             //getEditor(e).find();
             MoeEditor editor=getEditor();
-            if (editor!=null) {
-                editor.initFindPanel();
-            }
+            editor.initFindPanel();
         }
     }
 
@@ -2271,12 +2268,10 @@ public final class MoeActions
         public void actionPerformed(ActionEvent e)
         {
             MoeEditor editor=getEditor();
-            if (editor != null) {
-                editor.setFindPanelVisible();
-                editor.setReplacePanelVisible(true);
-                if (editor.getSourcePane().getSelectedText()!=null){
-                    editor.setFindTextfield(editor.getSourcePane().getSelectedText());
-                }
+            editor.setFindPanelVisible();
+            editor.setReplacePanelVisible(true);
+            if (editor.getSourcePane().getSelectedText()!=null){
+                editor.setFindTextfield(editor.getSourcePane().getSelectedText());
             }
         }
     }

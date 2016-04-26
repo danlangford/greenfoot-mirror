@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012,2013,2014,2015  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2015  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -65,30 +65,9 @@ import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 
-import javax.swing.AbstractAction;
-import javax.swing.AbstractButton;
-import javax.swing.Action;
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.InputMap;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
-import javax.swing.JComponent;
-import javax.swing.JEditorPane;
-import javax.swing.JFrame;
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
-import javax.swing.JMenuItem;
-import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
-import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
-import javax.swing.KeyStroke;
-import javax.swing.SwingUtilities;
-import javax.swing.SwingWorker;
-import javax.swing.Timer;
+import javax.swing.*;
 import javax.swing.border.BevelBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
@@ -183,9 +162,9 @@ public final class MoeEditor extends JPanel
     private final static int NAVIVIEW_WIDTH = 90;       // width of the "naviview" (min-source) box
     private static final Color highlightBorderColor = new Color(212, 172,45);
     // Fonts
-    public static int printFontSize = Config.getPropInteger("bluej.fontsize.printText", 10);
-    public static Font printFont = new Font("Monospaced", Font.PLAIN, printFontSize);
-    protected static AdvancedHighlightPainter searchHighlightPainter =
+    private static final int printFontSize = Config.getPropInteger("bluej.fontsize.printText", 10);
+    private static final Font printFont = new Font("Monospaced", Font.PLAIN, printFontSize);
+    private static final AdvancedHighlightPainter searchHighlightPainter =
         new MoeBorderHighlighterPainter(highlightBorderColor, Config.getHighlightColour(),
                 Config.getHighlightColour2(), Config.getSelectionColour2(),
                 Config.getSelectionColour());
@@ -206,12 +185,15 @@ public final class MoeEditor extends JPanel
     // Strings
     private final String implementationString = Config.getString("editor.implementationLabel");
     private final String interfaceString = Config.getString("editor.interfaceLabel");
-    private final SwingTabbedEditor swingTabbedEditor;
+    // The code to ask for the default editor to be added to, for the case
+    // where we have been hidden but want to reshow ourselves again:
+    private final Supplier<SwingTabbedEditor> defaultSwingTabbedEditor;
+    private SwingTabbedEditor swingTabbedEditor;
     //private StringProperty titleProperty;
     private final AtomicBoolean panelOpen = new AtomicBoolean();
     public MoeUndoManager undoManager;
-    private EditorWatcher watcher;
-    private Properties resources;
+    private final EditorWatcher watcher;
+    private final Properties resources;
     private AbstractDocument document;
     private MoeSyntaxDocument sourceDocument;
     private HTMLDocument htmlDocument;
@@ -233,13 +215,18 @@ public final class MoeEditor extends JPanel
     private EditorDividerPanel dividerPanel;  // Divider Panel to indicate separation between the
                                             // editor and navigation view
     private JComponent toolbar;             // The toolbar
+    private JMenuBar menubar;
+    private final JMenuItem undoMenuItem;
+    private final JMenuItem redoMenuItem;
+    private final JButton undoButton;
+    private final JButton redoButton;
     private JPopupMenu popup;               // Popup menu options
     private String filename;                // name of file or null
     private long lastModified;              // time of last modification of file
     private String windowTitle;             // title of editor window
     private String docFilename;             // path to javadoc html file
     private Charset characterSet;           // character set of the file
-    private boolean sourceIsCode;           // true if current buffer is code
+    private final boolean sourceIsCode;           // true if current buffer is code
     private boolean viewingHTML;
     private int currentStepPos;             // position of step mark (or -1)
     private boolean mayHaveBreakpoints;     // true if there were BP here
@@ -247,37 +234,44 @@ public final class MoeEditor extends JPanel
     private boolean tabsAreExpanded = false;
     private MoePrinter printer;
     private PrintDialog printDialog;
-    private TextInsertNotifier doTextInsert = new TextInsertNotifier();
+    private final TextInsertNotifier doTextInsert = new TextInsertNotifier();
     /** Used to obtain javadoc for arbitrary methods */
-    private JavadocResolver javadocResolver;
+    private final JavadocResolver javadocResolver;
     private ReparseRunner reparseRunner;
     /** Search highlight tags for both text panes */
-    private List<Object> sourceSearchHighlightTags = new ArrayList<Object>();
-    private List<Object> htmlSearchHighlightTags = new ArrayList<Object>();
+    private final List<Object> sourceSearchHighlightTags = new ArrayList<>();
+    private final List<Object> htmlSearchHighlightTags = new ArrayList<>();
     /**
      * Property map, allows BlueJ extensions to associate property values with
      * this editor instance; otherwise unused.
      */
-    private HashMap<String,Object> propertyMap = new HashMap<String,Object>();
+    private final HashMap<String,Object> propertyMap = new HashMap<>();
     // Blackbox data recording:
     private int oldCaretLineNumber = -1;
     private ErrorDisplay errorDisplay;
     private boolean madeChangeOnCurrentLine = false;
     private AbstractButton nextErrorButton;
     /** Manages display of compiler and parse errors */
-    private MoeErrorManager errorManager = new MoeErrorManager(this, enable -> {
+    private final MoeErrorManager errorManager = new MoeErrorManager(this, enable -> {
         setNextErrorEnabled(enable || madeChangeOnCurrentLine, madeChangeOnCurrentLine);
     });
     private Timer mouseHover;
     private int mouseCaretPos = -1;
 
+
+    /**
+     * A callback to call (on the Swing thread) when this editor is opened.
+     */
+    private final Runnable callbackOnOpen;
+
     /**
      * Constructor. Title may be null.
      */
-    public MoeEditor(MoeEditorParameters parameters, SwingTabbedEditor swingTabbedEditor)
+    public MoeEditor(MoeEditorParameters parameters, Supplier<SwingTabbedEditor> getDefaultEditor)
     {
         super(new BorderLayout(6,6));
-        this.swingTabbedEditor = swingTabbedEditor;
+        this.defaultSwingTabbedEditor = getDefaultEditor;
+        this.swingTabbedEditor = getDefaultEditor.get();
         watcher = parameters.getWatcher();
         resources = parameters.getResources();
         javadocResolver = parameters.getJavadocResolver();
@@ -293,6 +287,12 @@ public final class MoeEditor extends JPanel
 
         initWindow(parameters.getProjectResolver());
         swingTabbedEditor.scheduleCompilation(false);
+        callbackOnOpen = parameters.getCallbackOnOpen();
+
+        undoMenuItem = findMenuItem("undo");
+        redoMenuItem = findMenuItem("redo");
+        undoButton = findToolbarButton("undo");
+        redoButton = findToolbarButton("redo");
     }
 
     // --------------------------------------------------------------------
@@ -403,11 +403,8 @@ public final class MoeEditor extends JPanel
      */
     private static boolean isEditAction(String text)
     {       
-        ArrayList<String> editActions = getEditActions();
-        if (editActions!=null && editActions.contains(text)) {
-            return true;
-        }
-        return false;
+        ArrayList<String> actions = getEditActions();
+        return actions.contains(text);
     }
 
     /**
@@ -422,10 +419,7 @@ public final class MoeEditor extends JPanel
     private static boolean isNonReadmeAction(String actionName)
     {
         ArrayList<String> flaggedActions = getNonReadmeActions();
-        if (flaggedActions!=null && flaggedActions.contains(actionName)) {
-            return true;
-        }
-        return false;
+        return flaggedActions.contains(actionName);
     }
 
     /**
@@ -434,11 +428,12 @@ public final class MoeEditor extends JPanel
     @OnThread(Tag.Any)
     private static ArrayList<String> getNonReadmeActions ()
     {
-        if (readMeActions==null) {
-            readMeActions=new ArrayList<String>();
+        if (readMeActions == null) {
+            readMeActions = new ArrayList<>();
             readMeActions.add("next-error");
             readMeActions.add("autoindent");
             readMeActions.add("insert-method");
+            readMeActions.add("add-javadoc");
             readMeActions.add("toggle-interface-view");
         }
         return readMeActions;
@@ -453,7 +448,7 @@ public final class MoeEditor extends JPanel
     private static ArrayList<String> getEditActions()
     {
         if (editActions == null) {
-            editActions=new ArrayList<String>();
+            editActions = new ArrayList<>();
             editActions.add("save");
             editActions.add("reload");
             editActions.add("print");
@@ -465,6 +460,7 @@ public final class MoeEditor extends JPanel
             editActions.add("comment-block");
             editActions.add("uncomment-block");
             editActions.add("insert-method");
+            editActions.add("add-javadoc");
             editActions.add("replace");
             editActions.add("go-to-line");
             editActions.add("paste-from-clipboard");
@@ -709,16 +705,19 @@ public final class MoeEditor extends JPanel
     @Override
     public void setVisible(boolean vis)
     {
+        if (swingTabbedEditor == null)
+            swingTabbedEditor = defaultSwingTabbedEditor.get();
+
         if (vis) {
             sourcePane.setFont(PrefMgr.getStandardEditorFont());
             checkBracketStatus();
         }
-
-        
         swingTabbedEditor.setEditorVisible(vis, this);
         if (vis)
         {
             swingTabbedEditor.bringToFront();
+            if (callbackOnOpen != null)
+                callbackOnOpen.run();
         }
     }
 
@@ -1078,13 +1077,7 @@ public final class MoeEditor extends JPanel
         // This may be a callback in response to a modification event.
         // If we try to remove breakpoints during the modification notification,
         // AbstractDocument throws an exception.
-        getSourceDocument().scheduleUpdate(new Runnable() {
-            @Override
-            public void run()
-            {
-                clearAllBreakpoints();
-            }
-        });
+        getSourceDocument().scheduleUpdate(() -> clearAllBreakpoints());
     }
 
     /**
@@ -1139,8 +1132,7 @@ public final class MoeEditor extends JPanel
     {
         if (readOnly) {
             saveState.setState(StatusLabel.READONLY);
-            updateUndoControls();
-            updateRedoControls();
+            updateUndoRedoControls();
         }
         sourcePane.setEditable(!readOnly);
     }
@@ -1488,25 +1480,37 @@ public final class MoeEditor extends JPanel
     }
 
     /**
-     * Update the state of controls bound to "undo".
+     * Update the enabled state of controls bound to "undo" and "redo" to reflect
+     * current editor state.
      */
-    public void updateUndoControls()
+    public void updateUndoRedoControls()
     {
-        boolean canUndo = undoManager.canUndo();
-        displayMenuItem("undo", canUndo);
-        displayToolbarItem("undo", canUndo);
+        updateUndoRedoControls(undoManager.canUndo(), undoManager.canRedo());
     }
 
     /**
-     * Update the state of controls bound to "redo".
+     * Update the enabled state of controls bound to "undo" and "redo".
      */
-    public void updateRedoControls()
+    private void updateUndoRedoControls(boolean canUndo, boolean canRedo)
     {
-        boolean canRedo = undoManager.canRedo();
-        displayMenuItem("redo", canRedo);
-        displayToolbarItem("redo", canRedo);
+        setEnabled(undoMenuItem, canUndo);
+        setEnabled(redoMenuItem, canRedo);
+        setEnabled(undoButton, canUndo);
+        setEnabled(redoButton, canRedo);
     }
 
+    /**
+     * Enable or disable a menu item or toolbar button; with null-check.
+     * @param item The item to modify
+     * @param enable The new enabled status
+     */
+    private void setEnabled(AbstractButton item, boolean enable)
+    {
+        if (item != null) {
+            item.setEnabled(enable);
+        }
+    }
+    
     /**
      * Check whether the source file has changed on disk. If it has, reload.
      */
@@ -1911,16 +1915,16 @@ public final class MoeEditor extends JPanel
             found = doFind(s, ignoreCase, wrap);
         }
 
-        StringBuffer msg = new StringBuffer(Config.getString("editor.find.find.label") + " ");
+        StringBuilder msg = new StringBuilder(Config.getString("editor.find.find.label") + " ");
         msg.append(backward ? Config.getString("editor.find.backward") : Config.getString("editor.find.forward"));
         if (ignoreCase || wrap) {
             msg.append(" (");
         }
         if (ignoreCase) {
-            msg.append(Config.getString("editor.find.ignoreCase").toLowerCase() + ", ");
+            msg.append(Config.getString("editor.find.ignoreCase").toLowerCase()).append(", ");
         }
         if (wrap) { 
-            msg.append(Config.getString("editor.find.wrapAround").toLowerCase() + ", ");
+            msg.append(Config.getString("editor.find.wrapAround").toLowerCase()).append(", ");
         }
         if (ignoreCase || wrap) { 
             msg.replace(msg.length() - 2, msg.length(), "): ");
@@ -2215,7 +2219,7 @@ public final class MoeEditor extends JPanel
      * (This is reliant on the use of j2sdk1.4 and Java Unified Print Service
      * implementation JSR 6)
      * 
-     * @param flag  true to enable printing from menu.
+     * @param flag  true to setEnabled printing from menu.
      */
     public void enablePrinting(boolean flag)
     {
@@ -2330,7 +2334,7 @@ public final class MoeEditor extends JPanel
                 document=htmlDocument;
             }
         }
-        catch (Exception exc) {
+        catch (IOException | BadLocationException exc) {
             info.warning(Config.getString("editor.info.docDisappeared"), getDocPath());
             Debug.reportError("loading class interface failed: " + exc);
             if (fis != null) {
@@ -2385,16 +2389,11 @@ public final class MoeEditor extends JPanel
         //if the view is source view need to decide whether to display 
         //the undo and redo according to the undoManager; if it
         //is the documentation view then they are always disabled
-        if (sourceView){
-            if (undoManager.canUndo())
-                canUndo=true;   
-            if (undoManager.canRedo())
-                canRedo=true;
+        if (sourceView) {
+            canUndo = undoManager.canUndo();
+            canRedo = undoManager.canRedo();
         }
-        displayMenuItem("undo", canUndo);
-        displayToolbarItem("undo", canUndo);
-        displayMenuItem("redo", canRedo);
-        displayToolbarItem("redo", canRedo);
+        updateUndoRedoControls(canUndo, canRedo);
     }
 
     // --------------------------------------------------------------------
@@ -2408,15 +2407,14 @@ public final class MoeEditor extends JPanel
     private void displayMenubar(boolean sourceView)
     {
         JMenuBar menuBar = swingTabbedEditor.getJMenuBar(this); 
-        JMenu menu=null;
-        Component[] menubarComponent = menuBar.getComponents();
-        for (int i=0;i<menubarComponent.length; i++ ){
-            if (menubarComponent[i] instanceof JMenu){
-                menu=(JMenu)menubarComponent[i]; 
-                for (int j=0; j<menu.getMenuComponentCount(); j++){
-                    if (menu.getMenuComponent(j) instanceof JMenuItem){
-                        if (isEditAction(((JMenuItem)menu.getMenuComponent(j)).getName())){                  
-                            ((JMenuItem)menu.getMenuComponent(j)).setEnabled(sourceView);
+        Component[] menus = menuBar.getComponents();
+        for (Component menu : menus) {
+            if (menu instanceof JMenu) {
+                JMenu jmenu = (JMenu) menu; 
+                for (int j=0; j<jmenu.getMenuComponentCount(); j++){
+                    if (jmenu.getMenuComponent(j) instanceof JMenuItem){
+                        if (isEditAction(((JMenuItem)jmenu.getMenuComponent(j)).getName())){                  
+                            ((JMenuItem)jmenu.getMenuComponent(j)).setEnabled(sourceView);
                         }
                     }
                 }
@@ -2432,25 +2430,10 @@ public final class MoeEditor extends JPanel
      */
     private void displayToolbar(boolean sourceView)
     {
-        JPanel toolbar=null;
-        Component contentPaneItem;
-        JButton actionButton;
-        Component[] c = this.getComponents();
-        for (int i=0;i<c.length; i++ ){
-            contentPaneItem=c[i];
-            if(contentPaneItem.getName()!=null && contentPaneItem.getName().equals("toolbar")) {
-                toolbar=(JPanel)contentPaneItem;
-            }
-        }
-
-        if (toolbar==null) {
-            return;
-        }
-        
-        Component[] toolbarComponent = toolbar.getComponents();
-        for (int i=0;i<toolbarComponent.length; i++ ) {
-            if (toolbarComponent[i] instanceof JButton) {                   
-                actionButton=(JButton)toolbarComponent[i];
+        Component[] buttons = toolbar.getComponents();
+        for (Component button : buttons) {
+            if (button instanceof JButton) {
+                JButton actionButton = (JButton) button;
                 if (isEditAction(actionButton.getName())) {
                     actionButton.setEnabled(sourceView);
                 }
@@ -2459,65 +2442,52 @@ public final class MoeEditor extends JPanel
     }
 
     /**
-     * This method changes the display of the menubar based on the interface that is selected
+     * Find a toolbar button by its item name.
      * 
-     * @param sourceView true if called from sourceView setup; false from documentation View setup
+     * @return sourceView true if called from sourceView setup; false from documentation View setup
      */
-    private void displayMenuItem(String itemName, boolean sourceView)
+    private JButton findToolbarButton(String itemName)
+    {
+        // find the item
+        Component[] buttons = toolbar.getComponents();
+        for (Component button : buttons) {
+            if (button instanceof JButton) {
+                JButton actionButton = (JButton) button;
+                if (actionButton.getName().equals(itemName)) {
+                    return actionButton;
+                }
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Find a menu item with a given item name by searching through the menus.
+     * 
+     * @return The menu item searched for, or null if not found.
+     */
+    private JMenuItem findMenuItem(String itemName)
     {
         JMenuBar menuBar = swingTabbedEditor.getJMenuBar(this); 
-        JMenu menu=null;
+        JMenu jmenu;
         JMenuItem menuItem;
         Component[] menubarComponent = menuBar.getComponents();
-        for (int i=0;i<menubarComponent.length; i++ ){
-            if (menubarComponent[i] instanceof JMenu){
-                menu=(JMenu)menubarComponent[i]; 
-                for (int j=0; j<menu.getMenuComponentCount(); j++){
-                    if (menu.getMenuComponent(j) instanceof JMenuItem){
-                        menuItem=(JMenuItem)menu.getMenuComponent(j);
+        for (Component menu : menubarComponent) {
+            if (menu instanceof JMenu) {
+                jmenu = (JMenu) menu; 
+                for (int j=0; j<jmenu.getMenuComponentCount(); j++){
+                    if (jmenu.getMenuComponent(j) instanceof JMenuItem){
+                        menuItem = (JMenuItem)jmenu.getMenuComponent(j);
                         if (menuItem.getName().equals(itemName)){                   
-                            menuItem.setEnabled(sourceView);
-                            return;
+                            return menuItem;
                         }
                     }
                 }
             }
         }
+        return null;
     }
 
-    /**
-     * This method enables/disables the display of the toolbar item specified
-     * 
-     * @param sourceView true if called from sourceView setup; false from documentation View setup
-     */
-    private void displayToolbarItem(String itemName, boolean sourceView)
-    {
-        JPanel toolbar=null;
-        Component contentPaneItem;
-        Component[] c = this.getComponents();
-        for (int i=0;i<c.length; i++ ){
-            contentPaneItem=c[i];
-            if(contentPaneItem.getName()!=null && contentPaneItem.getName().equals("toolbar")) { 
-                toolbar=(JPanel)contentPaneItem;
-            }
-        }
-
-        if (toolbar==null) {
-            return;
-        }
-
-        Component[] toolbarComponent = toolbar.getComponents();
-        for (int i=0;i<toolbarComponent.length; i++ ){
-            if (toolbarComponent[i] instanceof JButton){                
-                JButton actionButton=(JButton)toolbarComponent[i];
-                if (actionButton.getName().equals(itemName)){
-                    actionButton.setEnabled(sourceView);
-                    return;
-                }
-            }
-        }
-    }
-    
     /**
      * We want to display the interface view. This will generate the
      * documentation if necessary.
@@ -2923,8 +2893,8 @@ public final class MoeEditor extends JPanel
     }
 
     /**
-     * Toggle the editor's 'compiled' status. If compiled, enable the breakpoint
-     * function.
+     * Toggle the editor's 'compiled' status. If compiled, setEnabled the breakpoint
+ function.
      */
     private void setCompileStatus(boolean compiled)
     {
@@ -3019,7 +2989,8 @@ public final class MoeEditor extends JPanel
     {
         if (madeChangeOnCurrentLine)
         {
-            swingTabbedEditor.scheduleCompilation(true);
+            if (swingTabbedEditor != null)
+                swingTabbedEditor.scheduleCompilation(true);
             madeChangeOnCurrentLine = false;
         }
     }
@@ -3286,9 +3257,15 @@ public final class MoeEditor extends JPanel
 
         // create menubar and menus
 
-        JMenuBar menubar = createMenuBar();
+        menubar = createMenuBar();
         menubar.setName("menubar");
-        swingTabbedEditor.setJMenuBar(this, menubar);
+        // Bit awkward, but we hack the move menu into the top, along with a separator:
+        JMenu moveMenu = new JMenu();
+        moveMenu.setName("move.tab");
+        // Add in reverse order:
+        menubar.getMenu(0).add(new JSeparator(), 0);
+        menubar.getMenu(0).add(moveMenu, 0);
+        swingTabbedEditor.setJMenuBar(this, menubar, moveMenu);
 
         // create toolbar
 
@@ -3336,11 +3313,10 @@ public final class MoeEditor extends JPanel
     private JMenuBar createMenuBar()
     {
         JMenuBar menubar = new JMenuBar();
-        JMenu menu = null;
 
         String[] menuKeys = getResource("menubar").split(" ");
-        for (int i = 0; i < menuKeys.length; i++) {
-            menu = createMenu(menuKeys[i]);
+        for (String menuKey : menuKeys) {
+            JMenu menu = createMenu(menuKey);
             if (menu != null) {
                 menubar.add(menu);
             }
@@ -3363,14 +3339,13 @@ public final class MoeEditor extends JPanel
         String actionName;
         popup = new JPopupMenu();
         String [] popupKeys=getResource("popupmenu").split(" ");
-        for (int i=0; i< popupKeys.length; i++){
-            label = Config.getString("editor." + popupKeys[i] + LabelSuffix);
-            actionName = getResource(popupKeys[i] + ActionSuffix);
+        for (String popupKey : popupKeys) {
+            label = Config.getString("editor." + popupKey + LabelSuffix);
+            actionName = getResource(popupKey + ActionSuffix);
             action = actions.getActionByName(actionName);
-            if (action == null) {               
-                Debug.message("Moe: cannot find action " + popupKeys[i]);
-            }
-            else {
+            if (action == null) {
+                Debug.message("Moe: cannot find action " + popupKey);
+            } else {
                 menuItem=new JMenuItem(action);
                 menuItem.setText(label);
                 popup.add(menuItem);
@@ -3410,27 +3385,23 @@ public final class MoeEditor extends JPanel
         String[] itemKeys = itemString.split(" ");
 
         // create menu item for each item
-        for (int i = 0; i < itemKeys.length; i++) {
-            if (itemKeys[i].equals("-")) {
+        for (String itemKey : itemKeys) {
+            if (itemKey.equals("-")) {
                 menu.addSeparator();
-            }
-            else {
-                Action action = actions.getActionByName(itemKeys[i]);
+            } else {
+                Action action = actions.getActionByName(itemKey);
                 if (action == null) {
-                    Debug.message("Moe: cannot find action " + itemKeys[i]);
-                }
-                else {
+                    Debug.message("Moe: cannot find action " + itemKey);
+                } else {
                     item = menu.add(action);
-                    label = Config.getString("editor." + itemKeys[i] + LabelSuffix);
-                    if (label != null) {
-                        item.setText(label);
-                    }
+                    label = Config.getString("editor." + itemKey + LabelSuffix);
+                    item.setText(label);
                     KeyStroke[] keys = actions.getKeyStrokesForAction(action);
                     if (keys != null) {
                         item.setAccelerator(chooseKey(keys));
                     }
-                    item.setName(itemKeys[i]); 
-                    if (isNonReadmeAction(itemKeys[i])){
+                    item.setName(itemKey);
+                    if (isNonReadmeAction(itemKey)) {
                         item.setEnabled(sourceIsCode);
                     }
                 }               
@@ -3473,8 +3444,8 @@ public final class MoeEditor extends JPanel
     private void addToolbarGroup(JComponent toolbar, String group)
     {
         String[] toolKeys = group.split(":");
-        for (int i = 0; i < toolKeys.length; i++) {
-            toolbar.add(createToolbarButton(toolKeys[i]));
+        for (String toolKey : toolKeys) {
+            toolbar.add(createToolbarButton(toolKey));
             if(!Config.isMacOSLeopard()) toolbar.add(Box.createHorizontalStrut(3));
         }
     }
@@ -3763,7 +3734,7 @@ public final class MoeEditor extends JPanel
 
     /**
      * Enables/disables the once and all buttons on the replace panel
-     * @param enable  True to enable; false to disable
+     * @param enable  True to setEnabled; false to disable
      */
     protected void enableReplaceButtons(boolean enable)
     {
@@ -3970,7 +3941,7 @@ public final class MoeEditor extends JPanel
     
     private NodeAndPosition<ParsedNode> findClassNode()
     {
-        NodeAndPosition<ParsedNode> root = new NodeAndPosition<ParsedNode>(sourceDocument.getParser(), 0, 
+        NodeAndPosition<ParsedNode> root = new NodeAndPosition<>(sourceDocument.getParser(), 0, 
                 sourceDocument.getParser().getSize());
         for (NodeAndPosition<ParsedNode> nap : iterable(root)) {
             if (nap.getNode().getNodeType() == ParsedNode.NODETYPE_TYPEDEF)
@@ -4092,6 +4063,19 @@ public final class MoeEditor extends JPanel
             showErrorOverlay(null, 0);
         }
         
+    }
+
+    /**
+     * Sets the parent SwingTabbedEditor reference.
+     */
+    public void setParent(SwingTabbedEditor swingTabbedEditor)
+    {
+        // If we are closing, force a compilation in case there are pending changes:
+        if (swingTabbedEditor == null)
+            this.swingTabbedEditor.scheduleCompilation(false);
+        this.swingTabbedEditor = swingTabbedEditor;
+        if (this.swingTabbedEditor != null)
+            this.swingTabbedEditor.setJMenuBar(this, menubar, (JMenu)menubar.getMenu(0).getItem(0));
     }
 
     private static class ErrorDisplay extends JFrame
@@ -4262,7 +4246,7 @@ public final class MoeEditor extends JPanel
      */
     class ToolbarAction extends AbstractAction implements PropertyChangeListener
     {
-        private Action subAction;
+        private final Action subAction;
 
         public ToolbarAction(Action subAction, String label)
         {
@@ -4286,14 +4270,14 @@ public final class MoeEditor extends JPanel
             if (evt.getPropertyName().equals("enabled")) {
                 Object newVal = evt.getNewValue();
                 if (newVal instanceof Boolean) {
-                    boolean state = ((Boolean) newVal).booleanValue();
+                    boolean state = ((Boolean) newVal);
                     setEnabled(state);
                 }
             }
         }
     }
 
-/**
+    /**
      * PopulateCompletionsWorker creates a thread that searches for code completion suggestions and populate 
      * the JList incrementally.
      */

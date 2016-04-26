@@ -170,6 +170,8 @@ public class ClassTarget extends DependentTarget
     private boolean isDragging = false;
     private boolean isMoveable = true;
     private SourceType sourceAvailable;
+    // Part of keeping track of number of editors opened, for Greenfoot phone home:
+    private boolean hasBeenOpened = false;
     
     // Whether the source has been modified since it was last compiled. This
     // starts off as "true", which is a lie, but it prevents setting breakpoints
@@ -697,7 +699,7 @@ public class ClassTarget extends DependentTarget
                 props.put(prefix + ".naviview.expanded", String.valueOf(isNaviviewExpanded()));
         }
         
-        props.put(prefix + ".showInterface", new Boolean(openWithInterface).toString());
+        props.put(prefix + ".showInterface", Boolean.valueOf(openWithInterface).toString());
         props.put(prefix + ".typeParameters", getTypeParameters());
 
         getRole().save(props, 0, prefix);
@@ -986,8 +988,8 @@ public class ClassTarget extends DependentTarget
             if (sourceAvailable == SourceType.Java)
                 editor = EditorManager.getEditorManager().openClass(filename, docFilename,
                         project.getProjectCharset(),
-                        getBaseName(), project.getSwingTabbedEditor(), this, isCompiled(), resolver,
-                        project.getJavadocResolver());
+                        getBaseName(), project::getDefaultSwingTabbedEditor, this, isCompiled(), resolver,
+                        project.getJavadocResolver(), this::recordEditorOpen);
                 else if (sourceAvailable == SourceType.Stride)
                 {
                     final CompletableFuture<Editor> q = new CompletableFuture<>();
@@ -996,8 +998,9 @@ public class ClassTarget extends DependentTarget
                     File javaSourceFile = getJavaSourceFile();
                     JavadocResolver javadocResolver = project.getJavadocResolver();
                     Package pkg = getPackage();
+                    final Runnable openCallback = this::recordEditorOpen;
                     Platform.runLater(() -> {
-                        q.complete(new FrameEditor(project.getFXTabbedEditor(), frameSourceFile, javaSourceFile, this, resolver, javadocResolver, pkg));
+                        q.complete(new FrameEditor(frameSourceFile, javaSourceFile, this, resolver, javadocResolver, pkg, openCallback));
                     });
 
                     try {
@@ -1013,6 +1016,30 @@ public class ClassTarget extends DependentTarget
             }
         }
         return editor;
+    }
+
+    /**
+     * Records that the editor for this class target has been opened
+     * (i.e. actually made visible on screen).  Further calls after
+     * the first call will be ignored.
+     */
+    private void recordEditorOpen()
+    {
+        if (!hasBeenOpened)
+        {
+            hasBeenOpened = true;
+            switch (sourceAvailable)
+            {
+                case Java:
+                    Config.recordEditorOpen(Config.SourceType.Java);
+                    break;
+                case Stride:
+                    Config.recordEditorOpen(Config.SourceType.Stride);
+                    break;
+                default:
+                    break;
+            }
+        }
     }
 
     /**

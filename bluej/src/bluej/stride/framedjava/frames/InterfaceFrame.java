@@ -88,7 +88,7 @@ public class InterfaceFrame extends DocumentedSingleCanvasFrame
             s.setPromptText("interface type");
             return s;
         }, () -> getCanvas().getFirstCursor().requestFocus(), editor);
-        extendsTypes.forEach(t -> this.extendsList.addTypeSlotAtEnd(t.getContent()));
+        extendsTypes.forEach(t -> this.extendsList.addTypeSlotAtEnd(t.getContent(), false));
 
         getHeaderRow().bindContentsConcat(FXCollections.<ObservableList<HeaderItem>>observableArrayList(
                 FXCollections.observableArrayList(paramInterfaceName),
@@ -233,11 +233,13 @@ public class InterfaceFrame extends DocumentedSingleCanvasFrame
         canvas.getLastCursor().insertBlockAfter(frame); 
     }
 
+    /*
     @Override
     public boolean acceptsType(FrameCanvas canvas, Class<? extends Frame> blockClass)
     {
         return getEditor().getDictionary().isValidInterfaceMethod(blockClass);
     }
+    */
 
 //  @Override
 //  public List<ExtensionDescription> getAvailableInnerExtensions()
@@ -284,7 +286,7 @@ public class InterfaceFrame extends DocumentedSingleCanvasFrame
     public List<ExtensionDescription> getAvailableInnerExtensions(FrameCanvas canvas, FrameCursor cursor)
     {
         ExtensionDescription extendsExtension = new ExtensionDescription(GreenfootFrameDictionary.EXTENDS_EXTENSION_CHAR, "Add extends declaration", () -> {
-            extendsList.addTypeSlotAtEnd("");
+            extendsList.addTypeSlotAtEnd("", true);
         });
         
         return Arrays.asList(extendsExtension);

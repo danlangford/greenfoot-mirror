@@ -21,6 +21,8 @@
  */
 package bluej.editor.stride;
 
+import javax.swing.*;
+
 import bluej.BlueJTheme;
 import java.awt.Rectangle;
 import java.io.IOException;
@@ -35,18 +37,23 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import bluej.pkgmgr.TabbedEditorWindow;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.StringExpression;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.ReadOnlyStringProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.geometry.Bounds;
@@ -106,19 +113,19 @@ import bluej.utility.javafx.JavaFXUtil;
  *
  * It is also responsible for changing the menus on the window when the tab changes.
  */
-public @OnThread(Tag.FX) class FXTabbedEditor
+public @OnThread(Tag.FX) class FXTabbedEditor implements TabbedEditorWindow
 {
     /** Are we currently showing the frame catalogue/cheat sheet? */
     private final SimpleBooleanProperty showingCatalogue = new SimpleBooleanProperty(true);
     /** The associated project (one window always maps to single project */
     private final Project project;
-    /** The menu calculations for each tab (used when different tab selected to swap out menus) */
-    private final IdentityHashMap<Tab, Callable<List<Menu>>> tabMenus = new IdentityHashMap<>();
     /** The frames which are currently being dragged, if any */
     private final ArrayList<Frame> dragSourceFrames = new ArrayList<Frame>();
     /** Relative to window overlay, not to scene */
     private final SimpleDoubleProperty mouseDragXProperty = new SimpleDoubleProperty();
     private final SimpleDoubleProperty mouseDragYProperty = new SimpleDoubleProperty();
+    /** The starting size of the window.  May be null. */
+    private final Rectangle startSize;
     /** The actual window */
     private Stage stage;
     /** The scene within the stage */
@@ -142,15 +149,21 @@ public @OnThread(Tag.FX) class FXTabbedEditor
     private ScheduledFuture<?> hoverTabTask;
     /** The picture being shown of the currently dragged frames */
     private ImageView dragIcon = null;
-    /** A map from (web view) tab to the URL currently being shown in that tab */
-    private IdentityHashMap<Tab, ReadOnlyStringProperty> tabAddresses = new IdentityHashMap<>();
+    /** Cached so it can be read from any thread: */
+    private String projectTitle;
+    /** Atomic caches to be read from Swing thread: */
+    private AtomicInteger locationX = new AtomicInteger(0);
+    private AtomicInteger locationY = new AtomicInteger(0);
+    private AtomicInteger locationWidth = new AtomicInteger(700);
+    private AtomicInteger locationHeight = new AtomicInteger(700);
 
     // Neither the constructor nor any initialisers should do any JavaFX work until
     // initialise is called.
     @OnThread(Tag.Any)
-    public FXTabbedEditor(Project project)
+    public FXTabbedEditor(Project project, Rectangle startSize)
     {
         this.project = project;
+        this.startSize = startSize;
     }
 
     /**
@@ -165,12 +178,11 @@ public @OnThread(Tag.FX) class FXTabbedEditor
             throw new IllegalStateException("Unexpected call of initialise from FX thread");
         
         Object o = new Object();
-        final String windowTitle = project.getProjectName() + " - Stride";
+        projectTitle = project.getProjectName();
         synchronized (o)
         {
             Platform.runLater(() -> {
                 stage = new Stage();
-                stage.setTitle(windowTitle);
                 //add the greenfoot icon to the Stride editor.
                 stage.getIcons().add(BlueJTheme.getApplicationFxIcon("greenfoot", true));
                 
@@ -259,17 +271,8 @@ public @OnThread(Tag.FX) class FXTabbedEditor
         tabPane.getStyleClass().add("tabbed-editor");
 
         tabPane.getSelectionModel().selectedItemProperty().addListener((a, b, selTab) -> {
-            if (tabMenus.containsKey(selTab)) {
-                List<Menu> menus;
-                try {
-                    menus = tabMenus.get(selTab).call();
-                    menuBar.getMenus().setAll(menus);
-                }
-                catch (Exception e) {
-                    Debug.reportError(e);
-                }
-
-            }
+            if (selTab != null)
+                updateMenusForTab((FXTab)selTab);
             if (isWindowVisible())
             {
                 if (!(selTab instanceof FrameEditorTab))
@@ -280,17 +283,18 @@ public @OnThread(Tag.FX) class FXTabbedEditor
         });
         
         tabPane.getTabs().addListener((ListChangeListener<? super Tab>) e -> {
-            // When tabs change, make sure stale entry not left in tabAddresses set:
-
-            // Need to take copy to prevent concurrent modification:
-            List<Tab> tabAddressKeysToRemove = tabAddresses.entrySet().stream().map(ta -> ta.getKey()).collect(Collectors.toList());
-            // Now remove all those which are still open:
-            tabAddressKeysToRemove.removeIf(tabPane.getTabs()::contains);
-            // Now, tabAddressKeysToRemove has all the old tabs.  Get rid of them:
-            tabAddressKeysToRemove.forEach(tabAddresses::remove);
-
             if (tabPane.getTabs().isEmpty())
+            {
                 stage.close();
+                project.removeFXTabbedEditor(this);
+            }
+        });
+
+        stage.setOnHidden(e -> {
+            // Close all tabs, which also trigger above code to call removeFXTabbedEditor on us
+            // Must take a copy to avoid concurrent modification:
+            List<Tab> tabs = new ArrayList<>(tabPane.getTabs());
+            tabs.forEach(t -> close((FXTab)t));
         });
         
         // Add shortcuts for Ctrl-1, Ctrl-2 etc and Ctrl-Tab and Ctrl-Shift-Tab to move between tabs
@@ -339,14 +343,20 @@ public @OnThread(Tag.FX) class FXTabbedEditor
         });
         
         Config.loadFXFonts();
+
+        stage.titleProperty().bind(Bindings.concat(
+            JavaFXUtil.apply(tabPane.getSelectionModel().selectedItemProperty(), t -> ((FXTab)t).windowTitleProperty(), "Unknown")
+                ," - ", projectTitle));
+
+        JavaFXUtil.addChangeListener(stage.xProperty(), x -> locationX.set(x.intValue()));
+        JavaFXUtil.addChangeListener(stage.yProperty(), y -> locationY.set(y.intValue()));
+        JavaFXUtil.addChangeListener(stage.widthProperty(), w -> locationWidth.set(w.intValue()));
+        JavaFXUtil.addChangeListener(stage.heightProperty(), h -> locationHeight.set(h.intValue()));
     }
 
-    /**
-     * Show the frame catalogue/cheat sheet
-     */
-    public void showCatalogue()
+    private void updateMenusForTab(FXTab selTab)
     {
-        showingCatalogue.set(true);
+        menuBar.getMenus().setAll(selTab.getMenus());
     }
 
     /**
@@ -358,20 +368,19 @@ public @OnThread(Tag.FX) class FXTabbedEditor
     }
 
     /**
-     * Adds the given FrameEditorTab to this FXTabbedEditor window
-     * @param panel The FrameEditorTab to add
+     * Adds the given FXTab to this FXTabbedEditor window
+     * @param panel The FXTab to add
      * @param visible Whether to make the FXTabbedEditor window visible 
      * @param toFront Whether to bring the tab to the front (i.e. select the tab)
      */
     @OnThread(Tag.FX)
-    public void addFrameEditor(final FrameEditorTab panel, boolean visible, boolean toFront)
+    public void addTab(final FXTab panel, boolean visible, boolean toFront)
     {
-        tabMenus.put(panel, panel::getMenus);
+        panel.setParent(this);
         // This is ok to call multiple times:
-        panel.initialiseFX(scene);
+        panel.initialiseFX();
         if (!tabPane.getTabs().contains(panel)) {
             tabPane.getTabs().add(panel);
-            //ScenicView.show(scene);
             if (toFront)
             {
                 setWindowVisible(visible, panel);
@@ -449,7 +458,15 @@ public @OnThread(Tag.FX) class FXTabbedEditor
         if (visible)
         {
             if (!stage.isShowing()) {
+                if (startSize != null)
+                {
+                    stage.setX(startSize.getX());
+                    stage.setY(startSize.getY());
+                    stage.setWidth(startSize.getWidth());
+                    stage.setHeight(startSize.getHeight());
+                }
                 stage.show();
+                //ScenicView.show(stage.getScene());
             }
             if (!tabPane.getTabs().contains(tab))
             {
@@ -499,22 +516,12 @@ public @OnThread(Tag.FX) class FXTabbedEditor
     /**
      * Removes the given tab from this tabbed editor window
      */
-    public void close(Tab tab)
+    public void close(FXTab tab)
     {
         tabPane.getTabs().remove(tab);
-        tabMenus.remove(tab);
-        tabAddresses.remove(tab);
+        tab.setParent(null);
     }
 
-    /**
-     * Gets an icon to display next to web view tabs
-     */
-    private Node getWebIcon()
-    {
-        Label j = new Label("W");
-        JavaFXUtil.addStyleClass(j, "icon-label");
-        return j;
-    }
 
     /**
      * Opens a web view tab to display the given URL.
@@ -528,14 +535,17 @@ public @OnThread(Tag.FX) class FXTabbedEditor
         try
         {
             URI target = new URI(url);
-            for (Map.Entry<Tab, ReadOnlyStringProperty> e : tabAddresses.entrySet())
+            for (FXTab tab : getFXTabs())
             {
+                if (tab.getWebAddress() == null)
+                    continue;
+
                 // Use URI comparison so that URIs get canonicalised:
-                URI tabURI = new URI(e.getValue().get());
+                URI tabURI = new URI(tab.getWebAddress());
                 if (tabURI.equals(target))
                 {
                     // Focus that tab and stop:
-                    bringToFront(e.getKey());
+                    bringToFront(tab);
                     return;
                 }
             }
@@ -545,23 +555,7 @@ public @OnThread(Tag.FX) class FXTabbedEditor
             Debug.reportError("Error in URI when opening web view tab: \"" + url + "\"");
         }
 
-
-        WebView browser = new WebView();
-        Debug.message("Loading webpage: " + url);
-        browser.getEngine().load(url);
-        Tab tab = new Tab();
-        tab.setGraphic(getWebIcon());
-        tab.setContent(browser);
-        tab.textProperty().bind(browser.getEngine().titleProperty());
-        tabAddresses.put(tab, browser.getEngine().locationProperty());
-        tabMenus.put(tab, () -> {
-            return Arrays.asList(new Menu("Documentation", null, JavaFXUtil.makeMenuItem("Close", () -> close(tab), new KeyCodeCombination(KeyCode.W, KeyCombination.SHORTCUT_DOWN))));
-        });
-        tabPane.getTabs().add(tab);
-        tabPane.getSelectionModel().select(tab);
-        if (!stage.isShowing())
-            stage.show();
-        bringToFront(tab);
+        addTab(new WebTab(url), true, true);
     }
 
     /**
@@ -738,6 +732,47 @@ public @OnThread(Tag.FX) class FXTabbedEditor
         return overlayPane;
     }
 
+    /**
+     * Returns true when, and only when, this editor window has a single tab in it
+     */
+    public boolean hasOneTab()
+    {
+        return tabPane.getTabs().size() == 1;
+    }
+
+    public boolean containsTab(Tab tab)
+    {
+        return tabPane.getTabs().contains(tab);
+    }
+
+    public StringExpression titleProperty()
+    {
+        return stage.titleProperty();
+    }
+
+    private List<FXTab> getFXTabs()
+    {
+        return Utility.mapList(tabPane.getTabs(), t -> (FXTab)t);
+    }
+
+    @OnThread(Tag.Swing)
+    public void setPosition(int x, int y)
+    {
+        Platform.runLater(() -> {
+            stage.setX(x);
+            stage.setY(y);
+        });
+    }
+
+    @OnThread(Tag.Swing)
+    public void setSize(int width, int height)
+    {
+        Platform.runLater(() -> {
+            stage.setWidth(width);
+            stage.setHeight(height);
+        });
+    }
+
     public static enum CodeCompletionState
     {
         NOT_POSSIBLE, SHOWING, POSSIBLE;
@@ -815,5 +850,50 @@ public @OnThread(Tag.FX) class FXTabbedEditor
                 JavaFXUtil.setPseudoclass("bj-hover-long", false, this);
             });
         }
+    }
+
+    @OnThread(Tag.FX)
+    public void moveToNewLater(FXTab tab)
+    {
+        // Because createNewFXTabbedEditor waits for the FX thread, we must use run laters:
+        SwingUtilities.invokeLater(() -> {
+            FXTabbedEditor newWindow = project.createNewFXTabbedEditor();
+            Platform.runLater(() -> moveTabTo(tab, newWindow));
+        });
+    }
+
+    public void moveTabTo(FXTab tab, FXTabbedEditor destination)
+    {
+        close(tab);
+        destination.addTab(tab, true, true);
+    }
+
+    public void updateMoveMenus()
+    {
+        tabPane.getTabs().forEach(t -> updateMenusForTab((FXTab)t));
+    }
+
+    @OnThread(value = Tag.Any, ignoreParent = true)
+    public int getX()
+    {
+        return locationX.get();
+    }
+
+    @OnThread(value = Tag.Any, ignoreParent = true)
+    public int getY()
+    {
+        return locationY.get();
+    }
+
+    @OnThread(value = Tag.Any, ignoreParent = true)
+    public int getWidth()
+    {
+        return locationWidth.get();
+    }
+
+    @OnThread(value = Tag.Any, ignoreParent = true)
+    public int getHeight()
+    {
+        return locationHeight.get();
     }
 }

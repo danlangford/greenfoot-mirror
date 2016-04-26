@@ -282,7 +282,7 @@ public abstract class ExpressionSlot<SLOT_FRAGMENT extends ExpressionSlotFragmen
                 // If we are turning off the hover error, but the caret is in the error,
                 // we do not stop showing it.
                 if (error == null && errorAtCaret.isPresent() && errorAtCaret.get().equals(errorAndFixDisplay.getError())){
-                    hoverErrorCurrentlyShown = error; //update current error
+                    hoverErrorCurrentlyShown = null; //update current error
                     return;
                 }
             }
@@ -467,7 +467,10 @@ public abstract class ExpressionSlot<SLOT_FRAGMENT extends ExpressionSlotFragmen
     public void setText(String text)
     {
         topLevel.blank();
-        topLevel.insert(topLevel.getFirstField(), 0, text);        
+        if (! "".equals(text))
+        {
+            topLevel.insert(topLevel.getFirstField(), 0, text);
+        }
     }
 
     @Override

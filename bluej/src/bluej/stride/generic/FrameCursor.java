@@ -31,6 +31,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 
 import bluej.stride.slots.EditableSlot.MenuItemOrder;
@@ -105,21 +106,27 @@ public class FrameCursor implements RecallableFocus
         if (!editor.isEditable() || !canInsert())
             return false;
 
+        // Ignore accidental caps lock:
+        key = Character.toLowerCase(key);
+
+        if (key == '?')
+        {
+            editor.cheatSheetShowingProperty().set(!editor.cheatSheetShowingProperty().get());
+            return true;
+        }
+
         if (Character.isLetter(key) || Arrays.asList('/', '\\', '*', '=', '+', '-', '\n', ' ').contains(key))
         {
-            if (parentCanvas.getParent().tryRedirectCursor(parentCanvas, key))
-                return true;
-
             List<Entry<?>> available = editor.getDictionary().getFramesForShortcutKey(key).stream()
-                    .filter(t -> parentCanvas.getParent().acceptsType(parentCanvas, t.getBlockClass()))
+                    .filter(t -> parentCanvas.getParent().check(parentCanvas).canInsert(t.getCategory()))
                     .collect(Collectors.toList());
 
             final boolean selection = !editor.getSelection().getSelected().isEmpty();
             // Is it a request to expand/collapse?
             if (false && (key == '+' || key == '-')) {
-                List<Frame> targets = selection ? editor.getSelection().getSelected() : Collections.singletonList(getFrameAfter());
-                targets.stream().filter(Frame::isCollapsible)
-                    .forEach(t -> t.setCollapsed(key == '-')); // otherwise it's plus
+                //List<Frame> targets = selection ? editor.getSelection().getSelected() : Collections.singletonList(getFrameAfter());
+                //targets.stream().filter(Frame::isCollapsible)
+                //    .forEach(t -> t.setCollapsed(key == '-')); // otherwise it's plus
                 return true;
             }
             if (selection) {
@@ -184,15 +191,17 @@ public class FrameCursor implements RecallableFocus
                     // Done
                     return true;
                 }
+                // Otherwise check the frame after us:
+                else if ( getFrameAfter() != null && getFrameAfter().notifyPrefixKey(key, FrameCursor.this) ) {
+                    // Done
+                    return true;
+                }
                 // Otherwise check the frame before us:
                 else if ( before != null && before.notifyExtensionKey(key, FrameCursor.this) ) {
                     // Done
                     return true;
                 }
-                else if ( getFrameAfter() != null && getFrameAfter().notifyPrefixKey(key, FrameCursor.this) ) {
-                    // Done
-                    return true;
-                }
+
 
             }
 
@@ -251,7 +260,7 @@ public class FrameCursor implements RecallableFocus
                 //There's no block matching this
                 consecutiveErrors++;
                 if (consecutiveErrors >= ERROR_COUNT_TRIGGER) {
-                    editor.showCatalogue();
+                    editor.cheatSheetShowingProperty().set(true);
                 }
                 //Ignore one-off mis-typing, just to stop every slip-up triggering a dialog
                 return true;
@@ -259,6 +268,11 @@ public class FrameCursor implements RecallableFocus
         }
         editor.getSelection().clear();
         return false;
+    }
+
+    public static void editorClosing(InteractionManager editor)
+    {
+        shrinkingHeightBindings.remove(editor);
     }
 
     /**
@@ -359,7 +373,7 @@ public class FrameCursor implements RecallableFocus
             growing.node.maxHeightProperty().bind(Bindings.max(HIDE_HEIGHT, new ReadOnlyIntegerWrapper(target).subtract(this)));
         }
     }
-    
+
     private static final Map<InteractionManager, TotalHeightBinding> shrinkingHeightBindings = new IdentityHashMap<>();
     private final InteractionManager editor;
     private Timeline animation;
@@ -673,11 +687,11 @@ public class FrameCursor implements RecallableFocus
         getParentCanvas().insertBlockBefore(b, this);
     }
     
-    public boolean acceptsFrame(Class<? extends Frame> frameClass)
+    public FrameTypeCheck check()
     {
-        return getParentCanvas().getParent().acceptsType(getParentCanvas(), frameClass);
+        return getParentCanvas().getParent().check(getParentCanvas());
     }
-    
+
     public void insertFramesAfter(List<Frame> frames)
     {
         List<Frame> rev = new ArrayList<>(frames);
@@ -818,7 +832,7 @@ public class FrameCursor implements RecallableFocus
         List<MenuItem> items = new ArrayList<MenuItem>();
         List<Entry<GreenfootFrameCategory>> entries = GreenfootFrameDictionary.getDictionary().getAllBlocks();
         for (Entry<GreenfootFrameCategory> entry : entries) {
-            if ( acceptsFrame(entry.getBlockClass()) ) {
+            if ( check().canInsert(entry.getCategory()) ) {
                  items.add(createMenuItem(entry, this));
             }
         }

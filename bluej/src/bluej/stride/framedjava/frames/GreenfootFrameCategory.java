@@ -28,6 +28,8 @@ public enum GreenfootFrameCategory
     CALL,
     ASSIGNMENT,
     VAR,
+    VAR_LOCAL,
+    VAR_FIELD,
     CONDITIONAL,
     LOOP,
     RETURN,

@@ -26,13 +26,17 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javafx.beans.binding.DoubleExpression;
+import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyStringWrapper;
+import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.value.ObservableBooleanValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Border;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
@@ -92,6 +96,11 @@ public class FrameContentRow implements FrameContentItem, SlotParent<HeaderItem>
     private final StackPane stackPane;
 
     /**
+     * Keeps track of whether the mouse is currently hovering over this FrameContentRow or not
+     */
+    private final BooleanProperty mouseHovering = new SimpleBooleanProperty(false);
+
+    /**
      * Quick constructor to create a FrameContentRow with the given content.
      * Has "anon-" style prefix.
      */
@@ -123,6 +132,9 @@ public class FrameContentRow implements FrameContentItem, SlotParent<HeaderItem>
         ConcatMapListBinding.bind(headerRow.getChildren(), headerRowComponents, HeaderItem::getComponents);
 
         StackPane.setMargin(headerRow, new Insets(0, 6, 0, 6));
+
+        stackPane.addEventFilter(MouseEvent.MOUSE_ENTERED, e -> mouseHovering.set(true));
+        stackPane.addEventFilter(MouseEvent.MOUSE_EXITED, e -> mouseHovering.set(false));
     }
 
     /**
@@ -403,5 +415,15 @@ public class FrameContentRow implements FrameContentItem, SlotParent<HeaderItem>
         StackPane paneCopy = new StackPane(hfpCopy);
         return paneCopy;
     }
-    
+
+    public void setVisible(boolean visible)
+    {
+        stackPane.setVisible(visible);
+        stackPane.setManaged(visible);
+    }
+
+    public ObservableBooleanValue mouseHoveringProperty()
+    {
+        return mouseHovering;
+    }
 }

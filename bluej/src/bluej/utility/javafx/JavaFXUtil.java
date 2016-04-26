@@ -46,13 +46,18 @@ import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.beans.binding.BooleanExpression;
 import javafx.beans.binding.DoubleExpression;
+import javafx.beans.binding.ObjectBinding;
 import javafx.beans.binding.StringExpression;
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.Property;
+import javafx.beans.property.ReadOnlyBooleanProperty;
 import javafx.beans.property.ReadOnlyDoubleWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableBooleanValue;
 import javafx.beans.value.ObservableValue;
 import javafx.beans.value.WritableBooleanValue;
 import javafx.collections.FXCollections;
@@ -423,6 +428,80 @@ public class JavaFXUtil
     }
 
     /**
+     * Given an ObservableValue with a source object, and a function to get an ObservableValue property of the source object,
+     * forms a binding that watches for updates of either the source object or the property of the current
+     * source object, to form a virtual observable value for object.property
+     *
+     * If at any time object becomes null, the returned observable will use the default value.  Null will never be passed
+     * to property.
+     *
+     * @param object The source object on which to apply the property
+     * @param property The property to apply to the current source object
+     * @param def The default value to use when source is null
+     * @param <S> The type of the source object
+     * @param <T> The type inside the property
+     * @return An observable corresponding to object.property
+     */
+    public static <S, T> ObservableValue<T> apply(ObservableValue<S> object, FXFunction<S, ObservableValue<T>> property, T def)
+    {
+        // Easier to create new property and use change listeners to update the binding than try
+        // to make an all-in-one binding:
+        ObjectProperty<T> r = new SimpleObjectProperty<>(object.getValue() == null ? def : property.apply(object.getValue()).getValue());
+
+        addChangeListener(object, value -> {
+            r.unbind();
+
+            if (value == null)
+            {
+                r.setValue(def);
+                // r is left unbound;
+            }
+            else
+            {
+                // Bind r to the inner property, until object changes:
+                r.bind(property.apply(value));
+            }
+        });
+
+        return r;
+    }
+
+    /**
+     * Creates a Boolean property which tracks the value of the given source property, but adds
+     * delays to copying the true and/or false values.
+     *
+     * It is possible, if the value keeps flipping backwards and forwards during the delay windows,
+     * that you may not see the change copied for a long time.
+     *
+     * @param source The boolean value to copy into the returned property
+     * @param delayToTrue The delay to wait before copying a true value.  Pass Duration.ZERO for no delay.
+     * @param delayToFalse The delay to wait before copying a false value.  Pass Duration.ZERO for no delay.
+     * @return A property as described.
+     */
+    public static ReadOnlyBooleanProperty delay(ObservableBooleanValue source, Duration delayToTrue, Duration delayToFalse)
+    {
+        SimpleBooleanProperty delayed = new SimpleBooleanProperty(source.get());
+
+        source.addListener(new ChangeListener<Boolean>()
+        {
+            // The task to cancel the previous copy:
+            private FXRunnable cancel = null;
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue)
+            {
+                if (cancel != null)
+                    cancel.run();
+                if (newValue.booleanValue())
+                    cancel = runAfter(delayToTrue, () -> delayed.set(true));
+                else
+                    cancel = runAfter(delayToFalse, () -> delayed.set(false));
+            }
+        });
+
+        return delayed;
+    }
+
+    /**
      * A builder pattern for lists.
      */
     public static class ListBuilder<T>
@@ -496,7 +575,7 @@ public class JavaFXUtil
     }
 
     /**
-     * Makes a ManuItem with the given parameters.
+     * Makes a MenuItem with the given parameters.
      * 
      * @param text The content (label) of the menu item
      * @param run The action to run for the menu item.  May be null for none.
@@ -505,6 +584,24 @@ public class JavaFXUtil
     public static MenuItem makeMenuItem(String text, FXRunnable run, KeyCombination shortcut)
     {
         MenuItem item = new MenuItem(text);
+        if (run != null)
+            item.setOnAction(e -> run.run());
+        if (shortcut != null)
+            item.setAccelerator(shortcut);
+        return item;
+    }
+
+    /**
+     * Makes a MenuItem with the given parameters.
+     *
+     * @param text The content (label) of the menu item, which will be bound to
+     * @param run The action to run for the menu item.  May be null for none.
+     * @param shortcut The shortcut to use.  May be null for none.
+     */
+    public static MenuItem makeMenuItem(StringExpression text, FXRunnable run, KeyCombination shortcut)
+    {
+        MenuItem item = new MenuItem();
+        item.textProperty().bind(text);
         if (run != null)
             item.setOnAction(e -> run.run());
         if (shortcut != null)
@@ -621,8 +718,8 @@ public class JavaFXUtil
     @OnThread(Tag.FX)
     private static class TooltipListener implements EventHandler<InputEvent>, ChangeListener<Boolean>
     {
-        /** The label displaying the tooltip */
-        private final Label l;
+        /** The label displaying the tooltip. Null when not showing. */
+        private Label l;
         private final InteractionManager editor;
         /** The "parent" (not actual scene graph parent, but the node we are showing a tooltip for) */
         private final Node parent;
@@ -647,9 +744,8 @@ public class JavaFXUtil
          * @param parent The node for which to show the tooltip
          * @param requestTooltip The callback (see comments above).
          */
-        private TooltipListener(Label l, InteractionManager editor, Node parent, FXConsumer<FXConsumer<String>> requestTooltip)
+        private TooltipListener(InteractionManager editor, Node parent, FXConsumer<FXConsumer<String>> requestTooltip)
         {
-            this.l = l;
             this.editor = editor;
             this.parent = parent;
             this.requestTooltip = requestTooltip;
@@ -715,6 +811,15 @@ public class JavaFXUtil
 
         private void show()
         {
+            if (showing)
+                hide();
+
+            l = new Label();
+            l.visibleProperty().bind(l.textProperty().isNotEmpty());
+            l.setMouseTransparent(true);
+            l.setWrapText(true);
+            JavaFXUtil.addStyleClass(l, "frame-tooltip");
+
             requestTooltip.accept(l::setText);
             editor.getCodeOverlayPane().addOverlay(l, parent, null, l.heightProperty().negate().subtract(5.0), WidthLimit.LIMIT_WIDTH_AND_SLIDE_LEFT);
             //FadeTransition ft = new FadeTransition(Duration.millis(100), l);
@@ -742,6 +847,7 @@ public class JavaFXUtil
             if (showing)
             {
                 editor.getCodeOverlayPane().removeOverlay(l);
+                l = null;
                 showing = false;
             }
         }
@@ -760,13 +866,7 @@ public class JavaFXUtil
      */
     public static void initializeCustomHelp(InteractionManager editor, Node parent, FXConsumer<FXConsumer<String>> requestTooltip, boolean onHoverToo)
     {
-        final Label l = new Label();
-        l.visibleProperty().bind(l.textProperty().isNotEmpty());
-        l.setMouseTransparent(true);
-        l.setWrapText(true);
-        JavaFXUtil.addStyleClass(l, "frame-tooltip");
-        
-        TooltipListener listener = new TooltipListener(l, editor, parent, requestTooltip);
+        TooltipListener listener = new TooltipListener(editor, parent, requestTooltip);
         parent.addEventHandler(KeyEvent.KEY_PRESSED, listener);
         parent.focusedProperty().addListener(listener);
         if (onHoverToo)
@@ -863,7 +963,7 @@ public class JavaFXUtil
      */
     public static <T> void bindFuture(Future<T> future, FXConsumer<T> andThen)
     {
-        new Thread(() -> {
+        Utility.runBackground(() -> {
             try
             {
                 T x = future.get();
@@ -874,13 +974,18 @@ public class JavaFXUtil
                 Debug.reportError(e);
             }
             
-        }).start();
+        });
     }    
     
     /**
      * Takes a BooleanProperty and a list of item.  Gives back an observable list that contains
      * the list of items when (and only when) the BooleanProperty is true, but is empty in the case
      * that the BooleanProperty is false.  Uses JavaFX bindings to update the list's contents.
+     *
+     * Note that if no reference is maintained to the BooleanExpression, it can get GC-ed,
+     * in which case this methods will no longer update the list.  This may be what you want (once
+     * the property is no longer in use, this listener will get GC-ed too), but if you don't then
+     * make sure you store a reference to the putInList expression.
      * 
      * @param putInList Whether the list should contain the items (true expression) or be empty (false expression)
      * @param items The items to put in the list when putInList is true

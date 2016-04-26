@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012,2013,2014,2015  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2015  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -99,7 +99,7 @@ public final class Config
     public static final String bluejDebugLogName = "bluej-debuglog.txt";
     public static final String greenfootDebugLogName = "greenfoot-debuglog.txt";
     public static final Color ENV_COLOUR = new Color(152,32,32);
-    protected static final int SHORTCUT_MASK =
+    private static final int SHORTCUT_MASK =
         Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
     // Bit ugly having it here, but it's needed by MiscPrefPanel (which may just be in BlueJ)
     // and by Greenfoot
@@ -113,7 +113,6 @@ public final class Config
     private static final String GREENFOOT_DEBUG_DOCK_NAME = "Greenfoot";
     public static Properties moeSystemProps;  // moe (editor) properties
     public static Properties moeUserProps;    // moe (editor) properties
-    public static String compilertype = "javac";  // current compiler (javac, jikes)
 
 
     // bluej configuration properties hierarchy
@@ -151,7 +150,9 @@ public final class Config
     private static List<String> debugVMArgs = new ArrayList<String>();
     /** whether this is the debug vm or not. */
     private static boolean isDebugVm = true; // Default to true, will be corrected on main VM
-    
+    public static final String EDITOR_COUNT_JAVA = "session.numeditors.java";
+    public static final String EDITOR_COUNT_STRIDE = "session.numeditors.stride";
+
     /**
      * Initialisation of BlueJ configuration. Must be called at startup.
      * This method finds and opens the configuration files.<p>
@@ -523,13 +524,39 @@ public final class Config
         return Config.isRaspberryPi;
     }
 
+    private static boolean osVersionNumberAtLeast(int... target)
+    {
+        return versionAtLeast(System.getProperty("os.version"), target);
+    }
+
+    private static boolean javaVersionNumberAtLeast(int... target)
+    {
+        return versionAtLeast(System.getProperty("java.specification.version"), target);
+    }
+
+    private static boolean versionAtLeast(String version, int[] target)
+    {
+        String[] versionChunks = version.split("\\.");
+        for (int i = 0; i < target.length; i++)
+        {
+            if (versionChunks.length <= i)
+                return false; // Play safe
+            if (target[i] < Integer.parseInt(versionChunks[i]))
+                return true;
+            if (target[i] > Integer.parseInt(versionChunks[i]))
+                return false;
+        }
+        // Must be equal
+        return true;
+    }
+
     /**
      * Tell us whether we are running on MacOS 10.5 (Leopard) or later
      */
     public static boolean isMacOSLeopard()
     {
         return osname.startsWith("Mac") &&
-                System.getProperty("os.version").compareTo("10.5") >= 0;
+                osVersionNumberAtLeast(10, 5);
     }
     
     /**
@@ -538,7 +565,7 @@ public final class Config
     public static boolean isMacOSSnowLeopard()
     {
         return osname.startsWith("Mac") &&
-                System.getProperty("os.version").compareTo("10.6") >= 0;
+            osVersionNumberAtLeast(10, 6);
     }
     
     /**
@@ -555,7 +582,7 @@ public final class Config
     public static boolean isModernWinOS()
     {
         return isWinOS()
-                && System.getProperty("os.version").compareTo("6.0") >= 0;
+                && osVersionNumberAtLeast(6, 0);
     }
     
     /**
@@ -579,7 +606,7 @@ public final class Config
      */
     public static boolean isJava15()
     {
-        return System.getProperty("java.specification.version").compareTo("1.5") >= 0;
+        return javaVersionNumberAtLeast(1, 5);
     }
     
     /**
@@ -587,7 +614,7 @@ public final class Config
      */
     public static boolean isJava16()
     {
-        return System.getProperty("java.specification.version").compareTo("1.6") >= 0;
+        return javaVersionNumberAtLeast(1, 6);
     }
     
     /**
@@ -595,7 +622,7 @@ public final class Config
      */
     public static boolean isJava17()
     {
-        return System.getProperty("java.specification.version").compareTo("1.7") >= 0;
+        return javaVersionNumberAtLeast(1, 7);
     }
     
     /**
@@ -722,11 +749,77 @@ public final class Config
      */
     public static void handleExit()
     {
-        final String name = getApplicationName().toLowerCase();
-        saveProperties(name, "properties.heading." + name, userProps);     
+        saveAppProperties();
         saveProperties("moe", "properties.heading.moe", moeUserProps);    
     }
-    
+
+    private static void saveAppProperties()
+    {
+        final String name = getApplicationName().toLowerCase();
+        saveProperties(name, "properties.heading." + name, userProps);
+    }
+
+    /**
+     * Increases the count of editors opened by one for the given source type,
+     * and saves the user properties file.
+     */
+    public static void recordEditorOpen(SourceType sourceType)
+    {
+        // Only record this for Greenfoot, at the moment:
+        if (!Config.isGreenfoot())
+            return;
+        
+        switch (sourceType)
+        {
+            case Java:
+            {
+                int javaEditors = getPropInteger(EDITOR_COUNT_JAVA, 0, userProps);
+                javaEditors += 1;
+                userProps.setProperty(EDITOR_COUNT_JAVA, Integer.toString(javaEditors));
+                saveAppProperties();
+            }
+            break;
+            case Stride:
+            {
+                int strideEditors = getPropInteger(EDITOR_COUNT_STRIDE, 0, userProps);
+                strideEditors += 1;
+                userProps.setProperty(EDITOR_COUNT_STRIDE, Integer.toString(strideEditors));
+                saveAppProperties();
+            }
+            break;
+            default: break;
+        }
+    }
+
+    /**
+     * Gets the editors count as stored in the properties file.  You should usually
+     * use this to get the count from the previous session, then call resetEditorsCount.
+     * 
+     * @return The number of editors that have been opened for that source type
+     *         since the last call to resetEditorsCount.  Returns -1 if the property
+     *         is not found
+     */
+    public static int getEditorCount(SourceType sourceType)
+    {
+        switch (sourceType)
+        {
+            case Java: return getPropInteger(EDITOR_COUNT_JAVA, -1, userProps);
+            case Stride: return getPropInteger(EDITOR_COUNT_STRIDE, -1, userProps);
+            default: return -1;
+        }
+    }
+
+    /**
+     * Resets the editor count (as processed by getEditorCount/recordEditorOpen)
+     * in the properties file.  Also saves the properties file.
+     */
+    public static void resetEditorsCount()
+    {
+        userProps.setProperty(EDITOR_COUNT_JAVA, "0");
+        userProps.setProperty(EDITOR_COUNT_STRIDE, "0");
+        saveAppProperties();
+    }
+
     /**
      * Load a BlueJ definition file. This creates a new properties object.
      * The new properties object can be returned directly, or an empty
@@ -743,7 +836,7 @@ public final class Config
         try {
             defs.load(new FileInputStream(propsFile));
         }
-        catch(Exception e) {
+        catch(IOException e) {
             Debug.reportError("Unable to load definitions file: " + propsFile);
         }
 
@@ -768,7 +861,7 @@ public final class Config
             try{
                 labels.load(new FileInputStream(greenfootLabelFile));
             }
-            catch(Exception e){
+            catch(IOException e){
                 Debug.reportError("Unable to load greenfoot labels file: " + greenfootLabelFile);
             }
 
@@ -1060,6 +1153,18 @@ public final class Config
         int value;
         try {
             value = Integer.parseInt(getPropString(intname, String.valueOf(def)));
+        }
+        catch(NumberFormatException nfe) {
+            return def;
+        }
+        return value;
+    }
+
+    private static int getPropInteger(String intname, int def, Properties props)
+    {
+        int value;
+        try {
+            value = Integer.parseInt(getPropString(intname, String.valueOf(def), props));
         }
         catch(NumberFormatException nfe) {
             return def;
@@ -1362,7 +1467,7 @@ public final class Config
                 return new Color(r, g, b);
             }
         }
-        catch(Exception e) {
+        catch(NumberFormatException e) {
             Debug.reportError("Could not get colour for " + itemname);
         }
 
@@ -1394,7 +1499,7 @@ public final class Config
                 return new Color(r, g, b);
             }
         }
-        catch(Exception e) {
+        catch(NumberFormatException e) {
             Debug.reportError("Could not get colour for " + itemname);
         }
 
@@ -1481,23 +1586,16 @@ public final class Config
      */
     public static Point getLocation(String itemPrefix)
     {
-        try {
-            int x = getPropInteger(itemPrefix + ".x", 16);
-            int y = getPropInteger(itemPrefix + ".y", 16);
+        int x = getPropInteger(itemPrefix + ".x", 16);
+        int y = getPropInteger(itemPrefix + ".y", 16);
 
-            if (x > (screenBounds.width - 16))
-                x = screenBounds.width - 16;
+        if (x > (screenBounds.width - 16))
+            x = screenBounds.width - 16;
 
-            if (y > (screenBounds.height - 16))
-                y = screenBounds.height - 16;
+        if (y > (screenBounds.height - 16))
+            y = screenBounds.height - 16;
 
-            return new Point(x,y);
-        }
-        catch(Exception e) {
-            Debug.reportError("Could not get screen location for " + itemPrefix);
-        }
-
-        return new Point(16,16);
+        return new Point(x,y);
     }
 
     /**
@@ -1834,5 +1932,14 @@ public final class Config
                 }
             }
         }
+    }
+
+    /**
+     * This is almost equivalent to the SourceType in bluej.extensions, but we 
+     * don't want Config to depend on that class so we re-create the same idea here.
+     */
+    public static enum SourceType
+    {
+        Java, Stride;
     }
 }

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011,2013,2014,2015  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2015  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Supplier;
 
 import bluej.Config;
 import bluej.editor.Editor;
@@ -43,19 +44,13 @@ import bluej.pkgmgr.JavadocResolver;
 
 public final class MoeEditorManager extends bluej.editor.EditorManager
 {
-    // public static variables
-
-    protected static MoeEditorManager editorManager;   // the manager object itself
-
-    // private variables
-
-    private Properties resources;
-    private List<MoeEditor> editors; // open editors
+    private final Properties resources;
+    private final List<MoeEditor> editors; // open editors
 
     // user preferences
 
-    private boolean showLineNum;
-    private boolean showToolBar;
+    private final boolean showLineNum;
+    private final boolean showToolBar;
 
     // =========================== PUBLIC METHODS ===========================
 
@@ -67,8 +62,6 @@ public final class MoeEditorManager extends bluej.editor.EditorManager
         showLineNum = false;
 
         resources = Config.moeUserProps;
-
-        editorManager = this;   // make this object publicly available
     }
 
 
@@ -95,14 +88,15 @@ public final class MoeEditorManager extends bluej.editor.EditorManager
                 String docFilename,
                 Charset charset,
                 String windowTitle,
-                SwingTabbedEditor swingTabbedEditor,
+                Supplier<SwingTabbedEditor> swingTabbedEditor,
                 EditorWatcher watcher, 
                 boolean compiled,
                 EntityResolver projectResolver,
-                JavadocResolver javadocResolver)
+                JavadocResolver javadocResolver,
+                Runnable callbackOnOpen)
     {
         return openEditor (filename, docFilename, charset, true, windowTitle, swingTabbedEditor, watcher, compiled,
-                           projectResolver, javadocResolver);
+                           projectResolver, javadocResolver, callbackOnOpen);
     }
 
     // ------------------------------------------------------------------------
@@ -120,9 +114,9 @@ public final class MoeEditorManager extends bluej.editor.EditorManager
      * @returns                 the new editor, or null if there was a problem
      */
     @Override
-    public Editor openText(String filename, Charset charset, String windowTitle, SwingTabbedEditor swingTabbedEditor)
+    public Editor openText(String filename, Charset charset, String windowTitle, Supplier<SwingTabbedEditor> swingTabbedEditor)
     {
-        return openEditor(filename, null, charset, false, windowTitle, swingTabbedEditor, null, false, null, null);
+        return openEditor(filename, null, charset, false, windowTitle, swingTabbedEditor, null, false, null, null, null);
     }
 
     @Override
@@ -195,10 +189,11 @@ public final class MoeEditorManager extends bluej.editor.EditorManager
     private Editor openEditor(String filename, String docFilename,
             Charset charset,
             boolean isCode, String windowTitle,
-            SwingTabbedEditor swingTabbedEditor,
+            Supplier<SwingTabbedEditor> swingTabbedEditor,
             EditorWatcher watcher, boolean compiled, 
             EntityResolver projectResolver,
-            JavadocResolver javadocResolver)
+            JavadocResolver javadocResolver,
+            Runnable callbackOnOpen)
     {
         MoeEditor editor;
 
@@ -207,6 +202,7 @@ public final class MoeEditorManager extends bluej.editor.EditorManager
         mep.setCode(isCode);
         mep.setShowToolbar(showToolBar);
         mep.setShowLineNum(showLineNum);
+        mep.setCallbackOnOpen(callbackOnOpen);
         editor = new MoeEditor(mep, swingTabbedEditor);
         editors.add(editor);
         if (editor.showFile(filename, charset, compiled, docFilename))

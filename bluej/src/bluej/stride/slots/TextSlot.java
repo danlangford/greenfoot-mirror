@@ -40,14 +40,18 @@ import java.util.stream.Stream;
 import bluej.editor.stride.FrameCatalogue;
 import bluej.stride.framedjava.ast.links.PossibleLink;
 import javafx.application.Platform;
+import javafx.beans.binding.BooleanBinding;
 import javafx.beans.binding.BooleanExpression;
 import javafx.beans.binding.DoubleBinding;
 import javafx.beans.binding.StringExpression;
 import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.beans.property.ReadOnlyStringProperty;
 import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -84,6 +88,7 @@ import bluej.stride.generic.InteractionManager;
 import bluej.stride.generic.InteractionManager.FileCompletion;
 import bluej.stride.slots.SuggestionList.SuggestionDetails;
 import bluej.stride.slots.SuggestionList.SuggestionListListener;
+import bluej.utility.Debug;
 import bluej.utility.JavaUtils;
 import bluej.utility.Utility;
 import bluej.utility.javafx.AnnotatableTextField;
@@ -109,9 +114,7 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
     private final FrameContentRow row;
  
     private final SlotTextField field;
-    private SuggestionList suggestionDisplay;
-    private List<FileCompletion> fileCompletions;
-    private Map<KeyCode, Runnable> fileCompletionShortcuts;
+    private final ObjectProperty<SuggestionList> suggestionDisplayProperty = new SimpleObjectProperty<>();
     private final CompletionCalculator completionCalculator;
     private final SimpleDoubleProperty suggestionXOffset = new SimpleDoubleProperty();
     private SLOT_FRAGMENT slotElement;
@@ -119,13 +122,12 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
     
     private final List<CodeError> allErrors = new ArrayList<>();
     private final List<CodeError> shownErrors = new ArrayList<>();
-    private Timer showJavadocTimer = new Timer();
-    private Pane javadocDisplay;
-    private long highlightChangeCounter = 0;
     private StringExpression targetType;
     private final List<Underline> underlines = new ArrayList<>();
     private final ObservableList<String> recentValues = FXCollections.observableArrayList();
     private CodeError hoverErrorCurrentlyShown;
+    // We must keep a reference to this to avoid problems with GC and weak listeners:
+    private BooleanBinding effectivelyFocusedProperty;
 
     protected TextSlot(InteractionManager editor, Frame frameParent, CodeFrame<? extends CodeElement> codeFrameParent, FrameContentRow row, CompletionCalculator completionCalculator, String stylePrefix, List<FrameCatalogue.Hint> hints)
     {
@@ -138,6 +140,29 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
         this.row = row;
         field = new SlotTextField(stylePrefix, row.getOverlay());
         editor.setupFocusableSlotComponent(this, field.getFocusableNode(), completionCalculator != null, hints);
+        
+        // Always disallow semi-colons:
+        listeners.add((slot, oldValue, newValue, parent) -> {
+            if (newValue.contains(";"))
+                return false;
+            else
+                return true;
+        });
+
+        effectivelyFocusedProperty = field.focusedProperty().or(suggestionDisplayProperty.isNotNull());
+    }
+
+    /**
+     * A property reflecting whether the field is "effectively focused"
+     *
+     * "Effectively focused" means that either the field has actual JavaFX GUI
+     * focus, or code completion is showing for this slot, meaning it doesn't
+     * have GUI focus, but for our purposes it is logically the focus owner
+     * within the editor.
+     */
+    public ObservableValue<Boolean> effectivelyFocusedProperty()
+    {
+        return effectivelyFocusedProperty;
     }
 
     public class SlotTextField extends AnnotatableTextField
@@ -191,9 +216,9 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
                     {
                         return executeSuggestion(highlighted);
                     }
-                    else if (suggestionDisplay.eligibleCount() == 1  && getText().length() > 0)
+                    else if (suggestionDisplayProperty.get().eligibleCount() == 1  && getText().length() > 0)
                     {
-                        return executeSuggestion(suggestionDisplay.getFirstEligible());
+                        return executeSuggestion(suggestionDisplayProperty.get().getFirstEligible());
                     }
                     return false;
                 }
@@ -218,7 +243,7 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
                                 return Response.DISMISS;
                             }
                         case RIGHT:
-                            Optional<String> common = suggestionDisplay.getLongestCommonPrefix();
+                            Optional<String> common = suggestionDisplayProperty.get().getLongestCommonPrefix();
                             if (common.isPresent())
                             {
                                 field.replaceText(getStartOfCurWord(), field.getCaretPosition(), common.get());
@@ -256,7 +281,7 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
                 @Override
                 public void hidden()
                 {
-                    suggestionDisplay = null;
+                    suggestionDisplayProperty.set(null);
                     setFakeCaretShowing(false);
                 }
             };
@@ -340,10 +365,6 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
                             row.escape(TextSlot.this);
                             break;
                         default:
-                            if (fileCompletionShortcuts != null && fileCompletionShortcuts.containsKey(event.getCode()))
-                            {
-                                Platform.runLater(fileCompletionShortcuts.get(event.getCode()));
-                            }
                             break;
                     }
             });
@@ -369,7 +390,7 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
                         showErrorAtCaret(getCaretPosition());                        
                     }
                     else {
-                        setTransparent(!getText().isEmpty() && suggestionDisplay == null);
+                        setTransparent(!getText().isEmpty() && suggestionDisplayProperty.get() == null);
                         editor.endRecordingState(TextSlot.this);
                         if (errorAndFixDisplay != null)
                         {
@@ -418,7 +439,7 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
                 {
                     // After update has taken effect, update suggestions:
                     Platform.runLater(() -> {
-                        if (suggestionDisplay != null)
+                        if (suggestionDisplayProperty.get() != null)
                         {
                             String beforeNewPrefix = getText().substring(0, getStartOfCurWord());
                             if (!beforeNewPrefix.equals(lastBeforePrefix))
@@ -516,8 +537,8 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
         private void updateSuggestions(boolean initialState)
         {
             String prefix = getCurWord();
-            suggestionDisplay.calculateEligible(prefix, true, initialState);
-            suggestionDisplay.updateVisual(prefix, false);
+            suggestionDisplayProperty.get().calculateEligible(prefix, true, initialState);
+            suggestionDisplayProperty.get().updateVisual(prefix, false);
             lastBeforePrefix = getText().substring(0, getStartOfCurWord());
         }
         
@@ -526,24 +547,15 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
             suggestionXOffset.set(calculateCaretPosition(getStartOfCurWord()));
             FXConsumer<SuggestionList> handler = s ->
             {
-                suggestionDisplay = s;
+                suggestionDisplayProperty.set(s);
                 updateSuggestions(true);
-                suggestionDisplay.highlightFirstEligible();
-                suggestionDisplay.show(field.getNode(), suggestionXOffset, field.heightProperty());
+                suggestionDisplayProperty.get().highlightFirstEligible();
+                suggestionDisplayProperty.get().show(field.getNode(), suggestionXOffset, field.heightProperty());
                 field.setFakeCaretShowing(true);
             };
-            if (Config.isGreenfoot() && getStartOfCurWord() > 0 && field.textProperty().get().charAt(getStartOfCurWord() - 1) == '\"')
-            {
-                // They are just inside a string; complete image file names:
-                fileCompletions = editor.getAvailableFilenames();
-                handler.accept(new SuggestionList(editor, Utility.mapList(fileCompletions, f -> new SuggestionDetails(f.getFile().getName(), null, f.getType(), SuggestionList.SuggestionShown.COMMON)), null, SuggestionList.SuggestionShown.RARE, TextSlot.this::previewFileCompletion, listener));
-            }
-            else
-            {
-                // TODO we shouldn't need to regen whole code repeatedly if they only modify this slot:
-                editor.regenerateAndReparse(null);
-                completionCalculator.withCalculatedSuggestionList(getSlotElement().getPosInSourceDoc(field.getCaretPosition()), codeFrameParent.getCode(), listener, (targetType == null || getStartOfCurWord() != 0) ? null : targetType.get(), handler);
-            }
+            // TODO we shouldn't need to regen whole code repeatedly if they only modify this slot:
+            editor.regenerateAndReparse(null);
+            completionCalculator.withCalculatedSuggestionList(getSlotElement().getPosInSourceDoc(field.getCaretPosition()), codeFrameParent.getCode(), listener, (targetType == null || getStartOfCurWord() != 0) ? null : targetType.get(), handler);
         }
 
 
@@ -567,91 +579,6 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
             }
             
             return TextOverlayPosition.nodeToOverlay(field.getNode(), x, 0, getBaseline(), field.heightProperty().get());
-        }
-    }
-    
-    private void previewFileCompletion(Integer index)
-    {
-        hideJavadocDisplay();
-        
-        if (index >= 0)
-        {
-            FileCompletion fc = fileCompletions.get(index);
-            javadocDisplay = new BorderPane(fc.getPreview(300, 300));
-            JavaFXUtil.addStyleClass(javadocDisplay, "suggestion-file-preview");
-            CodeOverlayPane.setDropShadow(javadocDisplay);
-            
-            fileCompletionShortcuts = fc.getShortcuts();
-            editor.getCodeOverlayPane().addOverlay(javadocDisplay, field.getNode(), suggestionXOffset.subtract(suggestionDisplay.typeWidthProperty()).add(suggestionDisplay.widthProperty()), field.heightProperty());
-        }
-    }
-    
-    private synchronized void showJavadocForSuggestion(AssistContentThreadSafe ac)
-    {
-        showJavadocTimer.cancel();
-        hideJavadocDisplay();
-        highlightChangeCounter += 1;
-        //TODO do the display on a timer and cancel when user moves selection        
-        if (ac != null)
-        {
-            // Schedule the Javadoc to show after a delay, assuming they don't move before then:
-            showJavadocTimer = new Timer();
-            final long ourCounter = highlightChangeCounter;
-            TimerTask tt = new TimerTask() { public void run() {
-                // We have to do the actual manipulation on the platform thread:
-                Platform.runLater(() -> { synchronized (TextSlot.this) {
-                    // By now, we could be running when we no longer need the Javadoc; check that
-                    // no-one has closed the display or changed the highlight in the meantime:
-                    if (suggestionDisplay != null && highlightChangeCounter == ourCounter)
-                    {
-                        javadocDisplay = new Pane();
-                        WebView webView = new WebView();
-                        javadocDisplay.getChildren().add(webView);
-                        String header = (ac.getType() == null ? "" : Utility.escapeAngleBrackets(ac.getType()))
-                                          + " <b>" + ac.getName() + "</b>";
-                        if (ac.getParams() != null)
-                        {
-                            header += "(" + ac.getParams().stream().map(p -> { 
-                               String type = Utility.escapeAngleBrackets(p.getUnqualifiedType());
-                               if (p.getFormalName() != null)
-                                   return type + "&nbsp;" + p.getFormalName();
-                               else
-                                   return type;
-                            }).collect(Collectors.joining(", ")) + ")";
-                        }
-                        header += "<br><br>"; // TODO make this proper HTML spacing
-                        JavaFXUtil.addStyleClass(javadocDisplay, "suggestion-javadoc");
-                        webView.getEngine().setJavaScriptEnabled(false);
-                        // Match font in WebView with that of Label:
-                        Font font = new Label().getFont();
-                        String start = "<html><body style='font-family:" + font.getFamily() + ";font-size:" + font.getSize() + ";'>";
-                        String end = "</body></html>";
-                        String javadoc = ac.getJavadoc() != null ? ac.getJavadoc() : "";
-                        webView.getEngine().loadContent(start + header + JavaUtils.javadocToHtml(javadoc.replace("\n\n", "<br><br>")) + end);
-                        
-                        webView.setMaxWidth(400);
-                        webView.setMaxHeight(300);
-                        // Workaround to get transparent background, from:
-                        // http://stackoverflow.com/questions/12421250/transparent-background-in-the-webview-in-javafx
-                        webView.setBlendMode(BlendMode.DARKEN);
-                        
-                        CodeOverlayPane.setDropShadow(javadocDisplay);
-                        
-                        editor.getCodeOverlayPane().addOverlay(javadocDisplay, field.getNode(), suggestionXOffset.subtract(suggestionDisplay.typeWidthProperty()).add(suggestionDisplay.widthProperty()), field.heightProperty());
-                    }
-                }});
-            }};
-            showJavadocTimer.schedule(tt, 500);
-        }
-    }
-
-    private synchronized void hideJavadocDisplay()
-    {
-        if (javadocDisplay != null)
-        {
-            editor.getCodeOverlayPane().removeOverlay(javadocDisplay);
-            fileCompletionShortcuts = null;
-            javadocDisplay = null;
         }
     }
 
@@ -797,7 +724,7 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
             // If we are turning off the hover error, but the caret is in the error,
             // we do not stop showing it.
             if (error == null && field.isFocused() && errorAtCaret.isPresent() && errorAtCaret.get().equals(errorAndFixDisplay.getError())){
-                hoverErrorCurrentlyShown = error; //update current error
+                hoverErrorCurrentlyShown = null; //update current error
                 return;
             }
             errorAndFixDisplay.hide();
@@ -888,30 +815,9 @@ public abstract class TextSlot<SLOT_FRAGMENT extends TextSlotFragment> implement
     // Returns true if should be dismissed
     private boolean executeSuggestion(int highlighted)
     {
-        if (fileCompletions != null && highlighted != -1)
-        {
-            FileCompletion fc = fileCompletions.get(highlighted);
-            field.replaceText(getStartOfCurWord(), field.getCaretPosition(), fc.getFile().getName());
-            if (field.getCaretPosition() == field.getLength() || field.textProperty().get().charAt(field.getCaretPosition()) != '\"')
-            {
-                field.replaceText(field.getCaretPosition(), field.getCaretPosition(), "\"");
-            }
-            return true;
-        }
-        else
-        {
-            return field.executeCompletion(completionCalculator, highlighted, getStartOfCurWord());
-        }
+        return field.executeCompletion(completionCalculator, highlighted, getStartOfCurWord());
     }
 
-    private void hideSuggestionDisplay__()
-    {
-        // Cancel timer first, to make sure it is not making the display at the same time:
-        showJavadocTimer.cancel();
-        hideJavadocDisplay();
-        fileCompletions = null;
-    }
-    
     public boolean isEmpty()
     {
         return field.textProperty().get().isEmpty();

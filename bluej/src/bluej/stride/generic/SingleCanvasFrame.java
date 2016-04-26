@@ -38,6 +38,8 @@ import javafx.scene.control.Label;
 import javafx.scene.effect.BlendMode;
 import javafx.scene.paint.Color;
 
+import bluej.stride.framedjava.frames.GreenfootFrameCategory;
+import bluej.stride.framedjava.frames.GreenfootFrameDictionary;
 import bluej.utility.javafx.FXConsumer;
 import bluej.utility.javafx.JavaFXUtil;
 import bluej.utility.javafx.SharedTransition;
@@ -49,10 +51,6 @@ import bluej.utility.javafx.SharedTransition;
 public abstract class SingleCanvasFrame extends Frame implements CanvasParent
 {
     protected FrameCanvas canvas;
-    
-    //Context menu
-    protected CustomMenuItem dissolveMenu;
-    protected CustomMenuItem expandMenu;
     
     private Sidebar sidebar;
     
@@ -71,7 +69,7 @@ public abstract class SingleCanvasFrame extends Frame implements CanvasParent
         
         canvas = createCanvas(editor, stylePrefix);
 
-        sidebar = SidebarHelper.addSidebar(editor, getSidebarContainer(), getNode().layoutBoundsProperty(), stylePrefix);
+        sidebar = Sidebar.addSidebar(editor, getSidebarContainer(), getNode().layoutBoundsProperty(), stylePrefix);
 
         contents.setAll(getHeaderRow(), canvas);
 
@@ -80,62 +78,7 @@ public abstract class SingleCanvasFrame extends Frame implements CanvasParent
 
         //canvas.getChildren().add(0, new CursorBlock());
         //header.getChildren().add(new ParameterSlot(prevRedirect, canvas.getChildren().get(0), b));
-        
-        //Context menu
-        final SingleCanvasFrame thisContainer = this;
-        dissolveMenu = new CustomMenuItem(new Label("Delete outer '" + caption + "'"));
-        expandMenu = new CustomMenuItem(new Label("Expand out / flatten"));
-        //menu.getItems().add(1, dissolveMenu);
-        //menu.getItems().add(2, expandMenu);
-        
-        //Bring in front of everything
-        //previewMask.toFront();
-        
-        //Dissolve (with hover preview)
-        /*
-        dissolveMenu.setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent e) {
-                thisContainer.dissolve();
-            }
-        });
-        dissolveMenu.getContent().setOnMouseEntered(new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent e) {
-                //Preview on
-                thisContainer.setPreviewMode(PreviewMode.DISSOLVE);
-            }
-        });
-            dissolveMenu.getContent().setOnMouseExited(new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent e) {
-                //Preview off
-                thisContainer.setPreviewMode(PreviewMode.NONE);
-            }
-        });
-            */
-        
-        //Disable that preview for demo, needs polishing
-//        expandMenu.getContent().setOnMouseEntered(new EventHandler<MouseEvent>() {
-//            @Override
-//            public void handle(MouseEvent e) {
-//                //Preview on
-//                thisContainer.setPreviewMode(PreviewMode.EXPAND_OUT);
-//            }
-//        });
-//            expandMenu.getContent().setOnMouseExited(new EventHandler<MouseEvent>() {
-//            @Override
-//            public void handle(MouseEvent e) {
-//                //Preview off
-//                thisContainer.setPreviewMode(PreviewMode.NONE);
-//            }
-//        });
-        expandMenu.setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent e) {
-                thisContainer.expandContents();
-            }
-        });
+
     }
 
     private static class PlusMinus extends Canvas
@@ -332,9 +275,6 @@ public abstract class SingleCanvasFrame extends Frame implements CanvasParent
         }
     }
     */
-    
-    @Override
-    public abstract boolean acceptsType(FrameCanvas canvas, Class<? extends Frame> blockClass);
 
     protected FrameCanvas createCanvas(InteractionManager editor, String stylePrefix)
     {
@@ -382,4 +322,18 @@ public abstract class SingleCanvasFrame extends Frame implements CanvasParent
             content.add(0, sidebar.getNode());
         return content;
     }
+    
+    @Override
+    public FrameTypeCheck check(FrameCanvas child)
+    {
+        if (child == this.canvas)
+        {
+            return GreenfootFrameDictionary.checkStatement();
+        }
+        else
+        {
+            throw new IllegalStateException("Asking about unknown child of SingleCanvasFrame");
+        }
+    }
+    
 }

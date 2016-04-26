@@ -262,9 +262,6 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
     // Operator 0 is between field 0 and field 1.  Operator N trails field N.
     // Can be null when the operator is effectively a bracket.
     private final ObservableList<Operator> operators = FXCollections.observableArrayList();
-
-    private final ObservableList<Node> extraPrefix;
-    private final ObservableList<Node> extraSuffix;
     
     //private final FlowPane components = new FlowPane();    
     //private final HBox components = new HBox();
@@ -277,13 +274,17 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
     
     private final StringProperty textProperty = new SimpleStringProperty();
     private final BooleanProperty previewingJavaRange = new SimpleBooleanProperty(false);
-    private final Label startRangeLabel;
-    private final Label endRangeLabel;
+    private final StringProperty startRangeText = new SimpleStringProperty(lang.stride.Utility.class.getName() + "(");
+    private final StringProperty endRangeText = new SimpleStringProperty(")");
     /**
      * The caret position for the start of the selection (null if and only if no selection)
      */
     private CaretPos anchorPos;
     private EditableSlot bindedSlot;
+    /**
+     * Keeps track of whether we have queued a task to update the prompts:
+     */
+    private boolean queuedUpdatePrompts;
 
     /**
      * Create top-level InfixExpression, just inside the ExpressionSlot
@@ -314,11 +315,26 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
         // When starting, add just one empty field:
         fields.add(makeNewField(initialContent, false));
 
-        startRangeLabel = new Label(lang.stride.Utility.class.getName() + "(");
-        endRangeLabel = new Label(")");
-        extraPrefix = JavaFXUtil.listBool(previewingJavaRange, startRangeLabel);
-        extraSuffix = JavaFXUtil.listBool(previewingJavaRange, endRangeLabel);
-        
+        final ObservableList<Node> extraPrefix = FXCollections.observableArrayList();
+        final ObservableList<Node> extraSuffix = FXCollections.observableArrayList();
+
+        JavaFXUtil.addChangeListener(previewingJavaRange, previewing -> {
+            if (previewing)
+            {
+                Label start = new Label();
+                start.textProperty().bind(startRangeText);
+                extraPrefix.setAll(start);
+                Label end = new Label();
+                end.textProperty().bind(endRangeText);
+                extraSuffix.setAll(end);
+            }
+            else
+            {
+                extraPrefix.clear();
+                extraSuffix.clear();
+            }
+        });
+
         new DeepListBinding<Node>(components) {
 
             @Override
@@ -1536,6 +1552,10 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
             final Operator next = pos.index >= operators.size() ? null : operators.get(pos.index);
             int posInField = pos.subPos.index;
             
+            if (c == ';')
+                // No semi-colons allowed, except in string literals:
+                return pos;
+            
             if (Character.isWhitespace(c) && !f.getText().substring(0, posInField).equals("new"))
             {
                 // No whitespace allowed in slots (except string literals, handled later, and after "new")
@@ -1759,7 +1779,7 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
                 {
                     // end of operand, File it away:
 
-                    if (cur == operators.size() && beginningSlot == 0 && surroundingBracket.equals("("))
+                    if (cur == operators.size() && beginningSlot == 0 && surroundingBracket.isPresent() && surroundingBracket.get() == '(')
                     {
                         // Item took up whole length of bracket; may well be a type:
                         r.add(new PossibleTypeLink(curOperand,
@@ -2398,9 +2418,9 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
                         b.getContent().insertAtPos(new CaretPos(0, new CaretPos(0, null)), commas.toString());
                     }
                     // else if there are brackets with content, leave them alone.
-                    
+
                     // We use a runLater as we need to request focus after the suggestion window has been hidden:
-                    Platform.runLater(() -> 
+                    Platform.runLater(() ->
                         b.focusAtStart()
                     );
                 }
@@ -2528,22 +2548,32 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
         return editor;
     }
 
-    //package-visible
-    void updatePromptsInMethodCalls(ExpressionSlotField from)
+    /**
+     * Queues a call to update prompts in method calls.  Will not
+     * queue more than one such call at any time.
+     */
+    void queueUpdatePromptsInMethodCalls()
     {
-        int index = findField(from);
-        if (index < 0)
+        if (!queuedUpdatePrompts)
         {
-            Debug.printCallStack("Asking to update prompts for non-existing field");
-            return;
+            queuedUpdatePrompts = true;
+            Platform.runLater(this::updatePromptsInMethodCalls);
         }
+    }
+
+
+    //package-visible
+    private void updatePromptsInMethodCalls()
+    {
+        queuedUpdatePrompts = false;
+
         // We look for method calls, which means we need to look for brackets preceded by non-empty fields:
-        // We look at the given field onwards, because e.g. getWorl().addObject() should update
+        // We look from the first field onwards, because e.g. getWorl().addObject() should update
         // the addObject call if "getWorl" gets editing to "getWorld".
         // However, we only check at the current level; a method can't affect the prompts
         // for further calls inside its parameters.
         // TODO: updating later calls doesn't seem to work right, for some reason?
-        for (int i = index; i < fields.size(); i++)
+        for (int i = 0; i < fields.size(); i++)
         {
             if (i < fields.size() - 1 && 
                     fields.get(i) instanceof ExpressionSlotField &&
@@ -2572,7 +2602,7 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
             return;
 
         slot.withParamNamesForPos(absPosOfMethodName, methodName,
-            poss -> setPromptsFromParamNames(poss));
+            poss -> setPromptsFromParamNames(poss, methodName));
     }
 
     // package-visible
@@ -2585,7 +2615,7 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
             return; // Nothing needs prompts
         
         slot.withParamNamesForConstructor(
-            poss -> setPromptsFromParamNames(poss));
+            poss -> setPromptsFromParamNames(poss, "<con>"));
     }
 
     /**
@@ -2599,10 +2629,16 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
      *                       If possibilities is empty, there are no methods found.
      *                       If possibilities is not size 1, there are multiple overloads for that name.
      */
-    private void setPromptsFromParamNames(List<List<String>> possibilities)
+    private void setPromptsFromParamNames(List<List<String>> possibilities, String debugName)
     {
         List<ExpressionSlotField> curParams = getSimpleParameters();
-        int curArity = curParams.size();
+        int curArity;
+        // There is a special case if we have a single empty parameter; this looks
+        // like arity 1, but actually because it's empty, it's arity 0:
+        if (curParams.size() == 1 && curParams.get(0).isEmpty())
+            curArity = 0;
+        else
+            curArity = curParams.size();
         // Arity is fixed if any params are non-empty (i.e. null or !isEmpty())
         boolean arityFlexible = curParams.stream().allMatch(f -> f != null && f.isEmpty());
         
@@ -2629,6 +2665,7 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
             {
                 // No fixed arity; we know field must be near-blank, so just
                 // replace it with the right number of commas (may be zero):
+                boolean wasFocused = isFocused();
                 blank();
                 for (int i = 0; i < match.size() - 1; i++)
                 {
@@ -2636,6 +2673,8 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
                     insertChar(getEndPos(), ',', false);
                 }
                 curParams = getSimpleParameters();
+                if (wasFocused)
+                    getFirstField().requestFocus();
             }
             
             for (int i = 0; i < match.size(); i++)
@@ -2838,16 +2877,16 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
                     {
                         Operator rangeOp = operators.stream().filter(op -> op != null && op.get().equals("..")).findFirst().get();
                         previewingJavaRange.set(true);
-                        startRangeLabel.setText("");
-                        endRangeLabel.setText("; " + forLoopVarName.get() + "++");
+                        startRangeText.set("");
+                        endRangeText.set("; " + forLoopVarName.get() + "++");
                         rangeOp.setJavaPreviewRangeOverride("; " + forLoopVarName.get() + " <=");
                         break;
                     }
                     //Otherwise fall-through to case for general ranges:
                 case RANGE_NON_CONSTANT:
                     previewingJavaRange.set(true);
-                    startRangeLabel.setText(lang.stride.Utility.class.getName() + "(");
-                    endRangeLabel.setText(")");
+                    startRangeText.set(lang.stride.Utility.class.getName() + "(");
+                    endRangeText.set(")");
                     break;
                 default:
                     previewingJavaRange.set(false);
@@ -3026,3 +3065,4 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
         public int counter = 0;
     }
 }
+

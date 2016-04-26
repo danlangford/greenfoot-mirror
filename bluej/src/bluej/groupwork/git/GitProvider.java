@@ -33,11 +33,10 @@ import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
 import java.io.File;
-import java.io.IOException;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.LsRemoteCommand;
-import org.eclipse.jgit.api.TransportConfigCallback;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.transport.JschConfigSessionFactory;
 import org.eclipse.jgit.transport.OpenSshConfig;
 import org.eclipse.jgit.transport.SshSessionFactory;
@@ -51,30 +50,36 @@ import org.eclipse.jgit.util.FS;
  *
  * @author Fabio Hedayioglu
  */
-public class GitProvider implements TeamworkProvider {
+public class GitProvider implements TeamworkProvider 
+{
 
     @Override
-    public String getProviderName() {
+    public String getProviderName() 
+    {
         return "Git";
     }
 
     @Override
-    public String[] getProtocols() {
+    public String[] getProtocols() 
+    {
         return new String[]{"https", "http", "ssh", "git"};
     }
 
     @Override
-    public String getProtocolKey(int protocol) {
+    public String getProtocolKey(int protocol) 
+    {
         return getProtocols()[protocol];
     }
 
     @Override
-    public String getProtocolLabel(String protocolKey) {
+    public String getProtocolLabel(String protocolKey) 
+    {
         return protocolKey;
     }
 
     @Override
-    public TeamworkCommandResult checkConnection(TeamSettings settings) {
+    public TeamworkCommandResult checkConnection(TeamSettings settings) 
+    {
 
         try {
             String gitUrl = makeGitUrl(settings);
@@ -104,13 +109,9 @@ public class GitProvider implements TeamworkProvider {
                     }
                 };
                 
-                lsRemoteCommand.setTransportConfigCallback(new TransportConfigCallback() {
-                    @Override
-                    public void configure(Transport t) {
-                        SshTransport sshTransport = (SshTransport) t;
-                        sshTransport.setSshSessionFactory(sshSessionFactory);
-                    }
-
+                lsRemoteCommand.setTransportConfigCallback((Transport t) -> {
+                    SshTransport sshTransport = (SshTransport) t;
+                    sshTransport.setSshSessionFactory(sshSessionFactory);
                 });
             }
             
@@ -123,17 +124,15 @@ public class GitProvider implements TeamworkProvider {
         //if we got here, it means the command was successful.
         return new TeamworkCommandResult();
     }
-
+    
     @Override
-    public Repository getRepository(File projectDir, TeamSettings settings) {
+    public Repository getRepository(File projectDir, TeamSettings settings)
+    {
         try {
-            Git client = Git.open(projectDir);
-            return new GitRepository(projectDir, settings.getProtocol(), makeGitUrl(settings), client, settings.getUserName(), settings.getPassword());
+            FileRepositoryBuilder builder = new FileRepositoryBuilder();
+            return new GitRepository(projectDir, settings.getProtocol(), makeGitUrl(settings), builder, settings.getUserName(), settings.getPassword(), settings.getYourName(), settings.getYourEmail());
         } catch (UnsupportedSettingException e) {
             Debug.reportError("GitProvider.getRepository", e);
-            return null;
-        } catch (IOException ex) {
-            Debug.reportError("GitRepository.getRepository", ex);
             return null;
         }
     }
@@ -147,7 +146,8 @@ public class GitProvider implements TeamworkProvider {
      * @throws bluej.groupwork.UnsupportedSettingException
      */
     protected String makeGitUrl(TeamSettings settings)
-            throws UnsupportedSettingException {
+            throws UnsupportedSettingException 
+    {
         String protocol = settings.getProtocol();
         String server = settings.getServer();
         String prefix = settings.getPrefix();
@@ -159,6 +159,18 @@ public class GitProvider implements TeamworkProvider {
         gitUrl += prefix;
 
         return gitUrl;
+    }
+
+    @Override
+    public boolean needsEmail()
+    {
+        return true;
+    }
+
+    @Override
+    public boolean needsName()
+    {
+        return true;
     }
 
 }

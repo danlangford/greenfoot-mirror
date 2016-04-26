@@ -72,10 +72,10 @@ public class BetterVBox extends Pane
             n.resizeRelocate((int) padding.getLeft() + (int)getLeftMarginFor(n), y, w, h);
             y += h + spacingProperty.get() + getBottomMarginFor(n);
         }
-        if (getHeight() != 0 && y > getHeight() - (int)padding.getBottom())
-        {
+        //if (getHeight() != 0 && y > getHeight() - (int)padding.getBottom())
+        //{
             //Debug.message("Warning in BetterVBox size calculation; overpainted: " + y + " on " + getHeight());
-        }
+        //}
     }
 
     @Override
@@ -116,7 +116,7 @@ public class BetterVBox extends Pane
         final Insets padding = getPadding();
         final double contentWidth = width - (int)padding.getLeft() - (int)padding.getRight();
         double reqMin = (getMinHeight() == Region.USE_COMPUTED_SIZE || getMinHeight() == Region.USE_PREF_SIZE) ? 0 : getMinHeight();
-        return Math.max(reqMin, getManagedChildren().stream().mapToDouble(n -> getTopMarginFor(n) + getBottomMarginFor(n) + n.prefHeight(contentWidth)).sum()) + (int)padding.getTop() + (int)padding.getBottom();
+        return Math.max(reqMin, getManagedChildren().stream().mapToDouble(n -> getTopMarginFor(n) + getBottomMarginFor(n) + n.prefHeight(contentWidth - getLeftMarginFor(n) - getRightMarginFor(n))).sum()) + (int)padding.getTop() + (int)padding.getBottom();
     }
 
     @Override

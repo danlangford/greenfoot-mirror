@@ -180,7 +180,7 @@ public class FrameCatalogue extends VBox
                 item.setMinWidth(CATALOGUE_FRAME_WIDTH);
                 item.setMaxWidth(CATALOGUE_FRAME_WIDTH);
                 item.setMinHeight(30.0);
-                JavaFXUtil.initializeCustomTooltipCatalogue(editor.getFXTabbedEditor(), item, "Click, or press \'" + keyTooltipName(e.getShortcuts()) + "\' to insert " + e.getName().toLowerCase() + " frame", Duration.millis(1500));
+                JavaFXUtil.initializeCustomTooltipCatalogue(editor.getParent(), item, "Click, or press \'" + keyTooltipName(e.getShortcuts()) + "\' to insert " + e.getName().toLowerCase() + " frame", Duration.millis(1500));
                 ImageView imageView = new ImageView(image);
                 //imageView.setFitWidth(Math.min(CATALOGUE_FRAME_WIDTH, image.getWidth()));
                 //imageView.setFitHeight(Math.min(30.0, image.getHeight()));
@@ -213,7 +213,7 @@ public class FrameCatalogue extends VBox
                 standardItems.add(item);
 
                 catalogueUpdate.add((c, code, hasSelection, birdseye) -> {
-                    boolean show = c != null && c.canInsert() && c.acceptsFrame(e.getBlockClass()) && (!hasSelection || e.validOnSelection());
+                    boolean show = c != null && c.canInsert() && c.check().canInsert(e.getCategory()) && (!hasSelection || e.validOnSelection());
                     item.setVisible(show);
                     item.setManaged(show);
 
@@ -411,7 +411,8 @@ public class FrameCatalogue extends VBox
 
         if (c != null)
         {
-            Frame frameBefore = c.getFrameBefore();
+            final Frame frameBefore = c.getFrameBefore();
+            final Frame frameAfter = c.getFrameAfter();
 
             Set<Character> keysAlreadyUsed = new HashSet<>();
 
@@ -421,6 +422,22 @@ public class FrameCatalogue extends VBox
                 for (ExtensionDescription ext : parent.getAvailableInnerExtensions(c.getParentCanvas(), c))
                 {
                     if (!keysAlreadyUsed.contains(ext.getShortcutKey()) && (frameBefore == null || ext.worksThroughout()) && ext.showInCatalogue())
+                    {
+                        Node item = makeTextItem(getDisplayShortcut("" + ext.getShortcutKey()), ext.getDescription(), true);
+                        setupClick(item, c, ext::activate);
+                        extensionItems.add(item);
+                        keysAlreadyUsed.add(ext.getShortcutKey());
+                    }
+                }
+            }
+
+
+
+            if (frameAfter != null && frameAfter.isFrameEnabled())
+            {
+                for (ExtensionDescription ext : frameAfter.getAvailablePrefixes())
+                {
+                    if (!keysAlreadyUsed.contains(ext.getShortcutKey()) && ext.showInCatalogue())
                     {
                         Node item = makeTextItem(getDisplayShortcut("" + ext.getShortcutKey()), ext.getDescription(), true);
                         setupClick(item, c, ext::activate);

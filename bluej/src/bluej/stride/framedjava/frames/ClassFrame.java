@@ -34,14 +34,18 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import bluej.stride.generic.FrameTypeCheck;
 import bluej.stride.slots.EditableSlot.MenuItemOrder;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.BooleanBinding;
 import javafx.beans.binding.DoubleBinding;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyDoubleWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableBooleanValue;
 import javafx.beans.value.ObservableStringValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
@@ -52,6 +56,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
+import javafx.util.Duration;
 import javax.swing.SwingUtilities;
 
 import bluej.editor.stride.BirdseyeManager;
@@ -107,123 +112,16 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
 {
     private final SlotLabel abstractLabel = new SlotLabel("abstract");
     private final FrameContentRow importRow;
+    private final BooleanBinding showInheritedToggle;
     private BooleanProperty abstractModifier = new SimpleBooleanProperty(false);
     
     private TextSlot<NameDefSlotFragment> paramClassName;
     private final InteractionManager editor;
+
+    private final SimpleBooleanProperty headerHasKeyboardFocus = new SimpleBooleanProperty(false);
     
     private final SimpleBooleanProperty showingExtends;
     private final TextSlot<TypeSlotFragment> extendsSlot;
-    private class InheritedCanvas
-    {
-        public final String superClassName;
-        public final FrameCanvas canvas;
-        public final FrameContentRow precedingDivider;
-        public final SlotLabel precedingDividerLabel;
-        public final TriangleLabel optionalCollapse;
-
-        // Note that java.lang.Object is treated as a special case: it gets a triangle label
-        public InheritedCanvas(String superClassName, boolean single)
-        {
-            this.canvas = new FrameCanvas(editor, new CanvasParent() {
-
-                @Override
-                public FrameCursor findCursor(double sceneX, double sceneY, FrameCursor prevCursor, FrameCursor nextCursor, List<Frame> exclude, boolean isDrag, boolean canDescend)
-                {
-                    return null;
-                }
-
-                @Override
-                public boolean acceptsType(FrameCanvas canvasBase, Class<? extends Frame> frameClass)
-                {
-                    return Arrays.asList(InheritedMethodFrame.class, InheritedFieldFrame.class).contains(frameClass);
-                }
-
-                @Override
-                public List<ExtensionDescription> getAvailableInnerExtensions(FrameCanvas canvas, FrameCursor cursor)
-                {
-                    return Collections.emptyList();
-                }
-
-                @Override
-                public Frame getFrame()
-                {
-                    return ClassFrame.this;
-                }
-
-                @Override
-                public InteractionManager getEditor()
-                {
-                    return editor;
-                }
-
-                @Override
-                public void modifiedCanvasContent()
-                {
-                    // No need to do anything on modification, as it was programmatic
-                }
-            }, "class-inherited-"){
-
-                @Override
-                public FrameCursor findClosestCursor(double sceneX, double sceneY, List<Frame> exclude, boolean isDrag, boolean canDescend)
-                {
-                    return null;
-                }
-
-                @Override
-                public FrameCursor getFirstCursor()
-                {
-                    return null;
-                }
-
-                @Override
-                public FrameCursor getLastCursor()
-                {
-                    return null;
-                }
-            };
-            this.superClassName = superClassName;
-            if (single)
-            {
-                this.precedingDividerLabel = null;
-                this.precedingDivider = null;
-                this.optionalCollapse = null;
-            }
-            else
-            {
-                if (superClassName.equals("java.lang.Object"))
-                {
-                    this.precedingDividerLabel = new SlotLabel("Inherited from Object", "class-inherited-label");
-                    this.optionalCollapse = new TriangleLabel(editor, t -> canvas.growUsing(t.getProgress()), t -> canvas.shrinkUsing(t.getOppositeProgress()), new SimpleBooleanProperty(false));
-                    this.precedingDivider = new FrameContentRow(ClassFrame.this, precedingDividerLabel, optionalCollapse);
-                }
-                else
-                {
-                    this.precedingDividerLabel = new SlotLabel("Inherited from " + superClassName, "class-inherited-label");
-                    this.precedingDivider = new FrameContentRow(ClassFrame.this, precedingDividerLabel);
-                    this.optionalCollapse = null;
-                }
-            }
-        }
-
-        public void grow(SharedTransition t)
-        {
-            if (optionalCollapse == null || optionalCollapse.expandedProperty().get())
-                canvas.growUsing(t.getProgress());
-            precedingDividerLabel.growVertically(t);
-            this.precedingDividerLabel.setLeftPadding(this.canvas.leftMargin().get());
-            if (optionalCollapse != null)
-                optionalCollapse.setVisible(true);
-        }
-
-        public void shrink(SharedTransition t)
-        {
-            canvas.shrinkUsing(t.getOppositeProgress());
-            precedingDividerLabel.shrinkVertically(t);
-            if (optionalCollapse != null)
-                optionalCollapse.setVisible(false);
-        }
-    }
 
     private final ObservableList<InheritedCanvas> extendsInheritedCanvases = FXCollections.observableArrayList(); // May be empty
     private final FrameCanvas importCanvas;
@@ -341,6 +239,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         paramClassName.setPromptText("class name");
         paramClassName.setText(className);
 
+
         documentationPromptTextProperty().bind(new SimpleStringProperty("Write a description of your ").concat(paramClassName.textProperty()).concat(" class here..."));
 
         this.fieldsCanvas = new FrameCanvas(editor, this, "class-fields-");
@@ -354,7 +253,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
             @Override
             public void backSpacePressedAtStart(HeaderItem slot)
             {
-                removeExtends();
+                extendsSlot.setText("");
             }
         });
         extendsSlot.addValueListener(SlotTraversalChars.IDENTIFIER);
@@ -362,13 +261,27 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         if (extendsName != null) {
             extendsSlot.setText(extendsName);
         }
-        
+        // We must make the showing immediate when you get keyboard focus, as otherwise there
+        // are problems with focusing the extends slot and then it disappears.
+        // We no longer show on mouse hover:
+        ObservableBooleanValue keyMouseHeader = JavaFXUtil.delay(headerHasKeyboardFocus, Duration.ZERO, Duration.millis(100));
+        showingExtends.bind(extendsSlot.textProperty().isNotEmpty().or(keyMouseHeader));
+
         implementsSlot = new Implements(this, () -> {
             TypeTextSlot s = new TypeTextSlot(editor, this, getHeaderRow(), new TypeCompletionCalculator(editor, Kind.INTERFACE), "class-");
             s.setPromptText("interface type");
             return s;
         }, () -> fieldsCanvas.getFirstCursor().requestFocus(), editor);
-        implementsList.forEach(t -> implementsSlot.addTypeSlotAtEnd(t.getContent()));
+        implementsList.forEach(t -> implementsSlot.addTypeSlotAtEnd(t.getContent(), false));
+
+        JavaFXUtil.addChangeListener(keyMouseHeader, keyMouse -> {
+            if (keyMouse)
+                implementsSlot.ensureAtLeastOneSlot();
+            else
+                implementsSlot.clearIfSingleEmpty();
+        });
+
+        headerHasKeyboardFocus.bind(BooleanBinding.booleanExpression(paramClassName.effectivelyFocusedProperty()).or(BooleanBinding.booleanExpression(extendsSlot.effectivelyFocusedProperty())).or(implementsSlot.focusedProperty()));
 
         inheritedLabel = new TriangleLabel(editor, t -> extendsInheritedCanvases.forEach(c -> c.grow(t)),
             t -> extendsInheritedCanvases.forEach(c -> c.shrink(t)), new SimpleBooleanProperty(false));
@@ -379,11 +292,15 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         });
         JavaFXUtil.addChangeListener(inheritedLabel.expandedProperty(), b -> editor.updateErrorOverviewBar());
 
+        // We must keep hold of an explicit reference to this binding, rather than inlining it.
+        // If you do not keep this stored in a field, it will get GC-ed.
+        showInheritedToggle = showingExtends.and(Bindings.isNotEmpty(extendsInheritedCanvases));
         getHeaderRow().bindContentsConcat(FXCollections.<ObservableList<HeaderItem>>observableArrayList(
                 JavaFXUtil.listBool(abstractModifier, abstractLabel),
                 FXCollections.observableArrayList(headerCaptionLabel),
                 FXCollections.observableArrayList(paramClassName),
-                JavaFXUtil.listBool(showingExtends, extendsLabel, extendsSlot, inheritedLabel),
+                JavaFXUtil.listBool(showingExtends, extendsLabel, extendsSlot),
+                JavaFXUtil.listBool(showInheritedToggle, inheritedLabel),
                 implementsSlot.getHeaderItems()
             ));
 
@@ -476,7 +393,8 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         List<CodeElement> methods = getMembers(methodsCanvas);
         List<ImportElement> imports = Utility.mapList(getMembers(importCanvas), e -> (ImportElement)e);
         element = new ClassElement(this, projectResolver, abstractModifier.get(), paramClassName.getSlotElement(),
-                    showingExtends.get() ? extendsSlot.getSlotElement() : null, implementsSlot.getTypes(), fields, constructors, methods,
+                    showingExtends.get() && !extendsSlot.getText().equals("") ? extendsSlot.getSlotElement() : null,
+                    implementsSlot.getTypes(), fields, constructors, methods,
                     new JavadocUnit(getDocumentation()), imports, frameEnabledProperty.get());
     }
 
@@ -500,9 +418,58 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
     @Override
     public List<FrameOperation> getContextOperations()
     {
-        return Arrays.asList(new CustomFrameOperation(getEditor(), "addRemoveAbstract", Arrays.asList("Toggle abstract"), MenuItemOrder.TOGGLE_ABSTRACT, this, () ->  abstractModifier.set(!abstractModifier.get())));
+        ArrayList<FrameOperation> ops = new ArrayList<>();
+        ops.add(new CustomFrameOperation(getEditor(), "addRemoveAbstract", Arrays.asList("Toggle abstract"), MenuItemOrder.TOGGLE_ABSTRACT, this, () ->  abstractModifier.set(!abstractModifier.get())));
+
+        if (extendsSlot.isEmpty())
+        {
+            ops.add(new CustomFrameOperation(getEditor(), "addExtends", Arrays.asList("Add 'extends'"), MenuItemOrder.TOGGLE_EXTENDS, this, () -> {
+
+                showAndFocusExtends();
+            }));
+        }
+        else
+        {
+            CustomFrameOperation op = new CustomFrameOperation(getEditor(), "removeExtends", Arrays.asList("Remove 'extends " + extendsSlot.getText() + "'"), MenuItemOrder.TOGGLE_EXTENDS, this, () -> {
+                extendsSlot.setText("");
+            });
+            op.setWideCustomItem(true);
+            ops.add(op);
+        }
+
+        ops.add(new CustomFrameOperation(getEditor(), "addImplements", Arrays.asList("Add 'implements'"), MenuItemOrder.TOGGLE_IMPLEMENTS, this, () -> {
+            implementsSlot.addTypeSlotAtEnd("", true);
+        }));
+
+        final List<TypeSlotFragment> types = implementsSlot.getTypes();
+        for (int i = 0; i < types.size(); i++)
+        {
+            final int index = i;
+            TypeSlotFragment type = types.get(i);
+            CustomFrameOperation removeOp = new CustomFrameOperation(getEditor(), "removeImplements", Arrays.asList("Remove 'implements " + type.getContent() + "'"), MenuItemOrder.TOGGLE_IMPLEMENTS, this, () -> {
+                implementsSlot.removeIndex(index);
+            });
+            removeOp.setWideCustomItem(true);
+            ops.add(removeOp);
+        }
+
+        return ops;
     }
-    
+
+    /**
+     * Show the extends slot, and focus it.
+     */
+    private void showAndFocusExtends()
+    {
+        // This is a bit of a hack.  We can't request focus on extendsSlot until it's part of the
+        // scene, but it only gets added to the scene when it's non-empty, or when the header has
+        // keyboard focus.  We could set content, focus it, then empty it, or we can take this
+        // route of first focusing the class name, thus showing the extends slot, then moving
+        // the focus to the extends slot:
+        paramClassName.requestFocus();
+        extendsSlot.requestFocus();
+    }
+
     @Override
     public List<FrameOperation> getCutCopyPasteOperations(InteractionManager editor)
     {
@@ -521,23 +488,16 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         ExtensionDescription extendsExtension = null;
         if (!showingExtends.get()) {
             extendsExtension = new ExtensionDescription(GreenfootFrameDictionary.EXTENDS_EXTENSION_CHAR, "Add extends declaration", () -> {
-                    addExtends();
-                    extendsSlot.requestFocus();
+                showAndFocusExtends();
             });
         }
         ExtensionDescription implementsExtension = new ExtensionDescription(GreenfootFrameDictionary.IMPLEMENTS_EXTENSION_CHAR, "Add implements declaration", () -> {
-            implementsSlot.addTypeSlotAtEnd("");
+            implementsSlot.addTypeSlotAtEnd("", true);
         });
         
         return Utility.nonNulls(Arrays.asList(abstractExtension, extendsExtension, implementsExtension));
     }
-
-    private void addExtends()
-    {
-        showingExtends.set(true);
-        editor.modifiedFrame(this);
-    }
-    
+/*
     private void removeExtends()
     {
         showingExtends.set(false);
@@ -545,7 +505,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         extendsSlot.setText("");
         editor.modifiedFrame(this);
     }
-
+*/
     @Override
     public void saved()
     {
@@ -565,9 +525,9 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
             }
 
             @Override
-            public boolean acceptsType(FrameCanvas canvasBase, Class<? extends Frame> frameClass)
+            public FrameTypeCheck check(FrameCanvas canvasBase)
             {
-                return Arrays.asList(ImportFrame.class).contains(frameClass);
+                return GreenfootFrameDictionary.checkImport();
             }
             
             @Override
@@ -672,7 +632,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         // Add available frames:
         withInheritedItems(new HashSet<CompletionKind>(Arrays.asList(CompletionKind.FIELD, CompletionKind.METHOD)), membersByClass ->
         {
-            if (membersByClass.equals(curMembersByClass))
+            if (inheritedEquals(membersByClass, curMembersByClass))
             {
                 // Same as before, so nothing to do:
                 return;
@@ -687,7 +647,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
             Collections.reverse(classNames);
 
             classNames.forEach(cls -> {
-                InheritedCanvas section = new InheritedCanvas(cls, classNames.size() == 1);
+                InheritedCanvas section = new InheritedCanvas(this, editor, cls, classNames.size() == 1);
                 // If triangle already folded in, make sure everything is collapsed:
                 if (inheritedLabel.expandedProperty().get() == false)
                 {
@@ -723,6 +683,75 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
             extendsInheritedCanvases.forEach(s -> s.canvas.getCursors().forEach(c -> c.getNode().setFocusTraversable(false)));
             curMembersByClass = membersByClass;
         });
+    }
+
+    /**
+     * Checks if two sets of inherited items are the same, in terms of the information they would
+     * produce in the inherited canvas.
+     * @param a One of the sets, mapping super-class name to items
+     * @param b The other set
+     * @return True if they are equal in that they would produce the same display in the inherited canvas.
+     */
+    private static boolean inheritedEquals(Map<String, List<AssistContentThreadSafe>> a, Map<String, List<AssistContentThreadSafe>> b)
+    {
+        // Must be same size:
+        if (a.size() != b.size())
+            return false;
+
+        Set<String> ak = a.keySet();
+        Set<String> bk = b.keySet();
+
+        // Must have same set of super-classes:
+        if (!ak.equals(bk))
+            return false;
+
+        for (String k : ak)
+        {
+            List<AssistContentThreadSafe> av = a.get(k);
+            List<AssistContentThreadSafe> bv = b.get(k);
+
+            // Each super-class must have same number of items:
+            if (av.size() != bv.size())
+                return false;
+
+            for (int i = 0; i < av.size(); i++)
+            {
+                AssistContentThreadSafe ax = av.get(i);
+                AssistContentThreadSafe bx = bv.get(i);
+
+                // The inherited canvas signature/info differs by field and method, and contains:
+                //   Field: access permission, type, name
+                //   Method: access permission, return type, name, params
+
+                // Check the items present in both fields and methods:
+                if (ax.getKind() != bx.getKind()
+                    || ax.getAccessPermission() != bx.getAccessPermission()
+                    || !ax.getName().equals(bx.getName())
+                    || !ax.getType().equals(bx.getType()))
+                    return false;
+
+                // For methods, check the params:
+                if (ax.getKind() == CompletionKind.METHOD)
+                {
+                    List<ParamInfo> ap = ax.getParams();
+                    List<ParamInfo> bp = bx.getParams();
+
+                    // Must have same number of params:
+                    if (ap.size() != bp.size())
+                        return false;
+
+                    // For params, need to check that name and type matches
+                    for (int j = 0; j < ap.size(); j++)
+                    {
+                        if (!ap.get(j).getFormalName().equals(bp.get(j).getFormalName()) ||
+                            !ap.get(j).getQualifiedType().equals(bp.get(j).getQualifiedType()))
+                            return false;
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     public void withInheritedItems(Set<CompletionKind> kinds, FXConsumer<Map<String, List<AssistContentThreadSafe>>> handler)
@@ -1080,35 +1109,18 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
     }
 
     @Override
-    public boolean acceptsType(FrameCanvas canvas, Class<? extends Frame> frameClass)
+    public FrameTypeCheck check(FrameCanvas canvas)
     {
         if (canvas == fieldsCanvas)
-            return editor.getDictionary().isValidField(frameClass);
+            return GreenfootFrameDictionary.checkField();
         else if (canvas == methodsCanvas)
-            return editor.getDictionary().isValidClassMethod(frameClass);
+            return GreenfootFrameDictionary.checkClassMethod();
         else if (canvas == constructorsCanvas)
-            return editor.getDictionary().isValidConstructor(frameClass);
-        return false;
+            return GreenfootFrameDictionary.checkConstructor();
+        else
+            throw new IllegalStateException("Asking about canvas unknown to ClassFrame");
     }
-
-    @Override
-    public boolean tryRedirectCursor(FrameCanvas canvas, char c)
-    {
-        if ((canvas == constructorsCanvas || canvas == methodsCanvas) && c == GreenfootFrameDictionary.VAR_CHAR)
-        {
-            return fieldsCanvas.getLastCursor().keyTyped((FrameEditorTab)editor, fieldsCanvas, c, true);
-        }
-        else if ((canvas == fieldsCanvas || canvas == methodsCanvas) && c == GreenfootFrameDictionary.CONSTRUCTOR_CHAR)
-        {
-            return constructorsCanvas.getLastCursor().keyTyped((FrameEditorTab)editor, constructorsCanvas, c, true);
-        }
-        else if ((canvas == constructorsCanvas || canvas == fieldsCanvas) && (c == GreenfootFrameDictionary.METHOD_CHAR || c == GreenfootFrameDictionary.ABSTRACT_METHOD_CHAR))
-        {
-            return methodsCanvas.getLastCursor().keyTyped((FrameEditorTab)editor, methodsCanvas, c, true);
-        }
-        return false;
-    }
-
+    
     @Override
     public CanvasKind getChildKind(FrameCanvas c)
     {
@@ -1149,15 +1161,26 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
     {
         String targetExtends = target.getExtends();
         if (targetExtends != null) {
-            if (!showingExtends.get()) {
-                addExtends();
-            }
             if (!extendsSlot.getText().equals(targetExtends)) {
                 extendsSlot.setText(targetExtends);
             }
         }
         else if (showingExtends.get()) {
-            removeExtends();
+            extendsSlot.setText("");
         }
+    }
+
+    @Override
+    protected FrameContentRow makeHeader(String stylePrefix)
+    {
+        return new FrameContentRow(this, stylePrefix) {
+            @Override
+            public boolean focusRightEndFromNext()
+            {
+                implementsSlot.ensureAtLeastOneSlot();
+                Utility.findLast(implementsSlot.getTypeSlots()).get().requestFocus(Focus.RIGHT);
+                return true;
+            }
+        };
     }
 }
