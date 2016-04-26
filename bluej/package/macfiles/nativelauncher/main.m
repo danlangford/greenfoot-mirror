@@ -83,8 +83,10 @@ int launch(char *commandName) {
     // chdir([NSHomeDirectory() UTF8String]);
 
     // Get the main bundle's info dictionary and Java dictionary
+    // Note, this dictionary must not be named just "Java" - otherwise OS X 
+    // insists that Java 6 be installed before allowing the application to run.
     NSDictionary *infoDictionary = [mainBundle infoDictionary];
-	NSDictionary *javaDictionary = [infoDictionary objectForKey:@"Java"];
+	NSDictionary *javaDictionary = [infoDictionary objectForKey:@"JavaProps"];
 	if (javaDictionary == nil) {
         [[NSException exceptionWithName:@JAVA_LAUNCH_ERROR
             reason:NSLocalizedString(@"NoJavaDictionary", @UNSPECIFIED_ERROR)
@@ -92,11 +94,12 @@ int launch(char *commandName) {
 	}
 
     // Locate the JLI_Launch() function
-    NSString *runtime = [javaDictionary objectForKey:@JVM_RUNTIME_KEY];
+    // NSString *runtime = [javaDictionary objectForKey:@JVM_RUNTIME_KEY];
 
     const char *libjliPath = NULL;
     NSString *runtimePath = nil;
     
+    /*
     if (runtime != nil) {
         runtimePath = [[[NSBundle mainBundle] builtInPlugInsPath] stringByAppendingPathComponent:runtime];
         libjliPath = [[runtimePath stringByAppendingPathComponent:@"Contents/Home/jre/lib/jli/libjli.dylib"] fileSystemRepresentation];
@@ -105,6 +108,10 @@ int launch(char *commandName) {
     	runtimePath = @"/System/Library/Frameworks/JavaVM.framework/Versions/CurrentJDK";
         libjliPath = LIBJLI_DYLIB;
     }
+    */
+    
+    runtimePath = [[[NSBundle mainBundle] privateFrameworksPath] stringByAppendingPathComponent:@"jdk.framework/Versions/A"];
+    libjliPath = [[runtimePath stringByAppendingPathComponent:@"Contents/Home/jre/lib/jli/libjli.dylib"] fileSystemRepresentation];
 
     void *libJLI = dlopen(libjliPath, RTLD_LAZY);
 

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011,2012  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011,2012,2013,2014  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -36,7 +36,6 @@ import java.awt.MediaTracker;
 import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
-import java.awt.geom.Rectangle2D;
 import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
 import java.awt.image.ImageObserver;
@@ -51,7 +50,7 @@ import java.net.URL;
  * and/or drawn by using various drawing methods.
  * 
  * @author Poul Henriksen
- * @version 2.4
+ * @version 2.6
  */
 public class GreenfootImage
 {
@@ -166,56 +165,44 @@ public class GreenfootImage
      */
     public GreenfootImage(String string, int size, Color foreground, Color background)
     {
-        String[] lines = string.replaceAll("\r", "").split("\n");
-        image = GraphicsUtilities.createCompatibleTranslucentImage(1, 1);
-        Graphics2D g = (Graphics2D)image.getGraphics();
-        Font font = g.getFont().deriveFont((float)size);
-        g.setFont(font);
-        
-        // If you ask for a height of size 40, you may well get a font of size 48
-        // (I did on my Ubuntu system).  So we compensate if that happens by
-        // scaling down our request to one that we expect should get the right size.
-        // We don't loop because it may not converge.
-        if (g.getFontMetrics().getHeight() != size) {
-            font = g.getFont().deriveFont((float)size * (float)size / (float)g.getFontMetrics().getHeight());
-            g.setFont(font);
-        }
-        
-        Rectangle2D[] bounds = new Rectangle2D[lines.length];
-        int maxX = 1; int y = 0;
-        for (int i = 0; i < lines.length;i++) {
-            bounds[i] = g.getFontMetrics().getStringBounds(lines[i], g);
-            maxX = Math.max(maxX, (int)Math.ceil(bounds[i].getWidth()));
-            y += Math.ceil(bounds[i].getHeight());
-        }
-        y = Math.max(y, 1);
-        g.dispose();
-        image = GraphicsUtilities.createCompatibleTranslucentImage(maxX, y);
-        g = (Graphics2D)image.getGraphics();
-        g.setFont(font);
-        g.setColor(background == null ? new Color(0, 0, 0, 0) : background);
-        g.fillRect(0, 0, image.getWidth(), image.getHeight());
-        g.setColor(foreground == null ? Color.BLACK : foreground);
-        y = 0;
-        for (int i = 0; i < lines.length;i++) {
-            g.drawString(lines[i], ((maxX - (int)bounds[i].getWidth()) / 2) - (int)bounds[i].getX(), y - (int)bounds[i].getY());
-            y += Math.ceil(bounds[i].getHeight());
-        }
-        g.dispose();
+        this(string, size, foreground, background, null);
     }
     
+    /**
+     * Creates an image with the given string drawn as text using the given font size, with the given foreground
+     * color on the given background color.  If the string has newline characters, it
+     * is split into multiple lines which are drawn horizontally-centred.
+     * 
+     * @param string the string to be drawn
+     * @param size the requested height in pixels of each line of text (the actual height may be different by a pixel or so)
+     * @param foreground the color of the text.  Since Greenfoot 2.2.0, passing null will use black.
+     * @param background the color of the image behind the text.  Since Greenfoot 2.2.0, passing null with leave the background transparent.
+     * @param outline the colour of the outline that will be drawn around the text.  Passing null will draw no outline.
+     * @since 2.4.0
+     */
+    public GreenfootImage(String string, int size, Color foreground, Color background, Color outline)
+    {
+        String[] lines = GraphicsUtilities.splitLines(string);
+        GraphicsUtilities.MultiLineStringDimensions d = GraphicsUtilities.getMultiLineStringDimensions(lines, Font.BOLD, size);
+        image = GraphicsUtilities.createCompatibleTranslucentImage(d.getWidth(), d.getHeight());
+        Graphics2D g = (Graphics2D)image.getGraphics();
+        g.setColor(background == null ? new Color(0, 0, 0, 0) : background);
+        g.fillRect(0, 0, image.getWidth(), image.getHeight());
+        GraphicsUtilities.drawOutlinedText(g, d, foreground, outline);
+        g.dispose();
+    }
+
     //Package-visible:
     GreenfootImage(byte[] imageData)
     {
         try {
             image = GraphicsUtilities.loadCompatibleTranslucentImage(imageData);
         } catch (IOException ex) {
-            throw new IllegalArgumentException("Could not load image from: " + imageFileName);
+            throw new IllegalArgumentException("Could not load image" + (imageFileName != null ? (" from: " + imageFileName) : ""));
         }
     }  
 
-    private GreenfootImage() {        
-    } 
+    private GreenfootImage() { }
     
     /**
      * Create a copy-on-write image based on this image. If the new image is
@@ -243,7 +230,6 @@ public class GreenfootImage
         this.copyOnWrite = true;
         this.image = cachedImage.image;
         copyStates(cachedImage, this);
-
     }
     
     /**
@@ -326,7 +312,6 @@ public class GreenfootImage
     
     /**
      * Remember to call dispose() when no longer using the graphics object.
-     * 
      */
     private Graphics2D getGraphics()
     {
@@ -411,7 +396,6 @@ public class GreenfootImage
 
     /**
      * Mirrors the image vertically (the top of the image becomes the bottom, and vice versa).
-     * 
      */
     public void mirrorVertically()
     {
@@ -423,7 +407,6 @@ public class GreenfootImage
 
     /**
      * Mirrors the image horizontally (the left of the image becomes the right, and vice versa).
-     * 
      */
     public void mirrorHorizontally()
     {
@@ -434,8 +417,7 @@ public class GreenfootImage
     }
 
     /**
-     * Fill the entire image with the current drawing dcolor.
-     * 
+     * Fill the entire image with the current drawing color.
      */
     public void fill()
     {
@@ -537,7 +519,7 @@ public class GreenfootImage
     }
     
     /**
-     * Sets the color at the given pixel to the given color.
+     * Sets the given pixel to the given color.
      */
     public void setColorAt(int x, int y, Color color) {
         setRGBAt(x, y, color.getRGB());
@@ -638,12 +620,10 @@ public class GreenfootImage
 
     /**
      * Clears the image.
-     * 
      */
     public void clear()
     {
         Graphics2D g = getGraphics();
-        //TODO clearRect might be very slow on mac with Sun Rendere
         g.clearRect(0, 0, getWidth(), getHeight());
         g.dispose();
     }
@@ -679,7 +659,14 @@ public class GreenfootImage
     public void drawString(String string, int x, int y)
     {
         Graphics2D g = getGraphics();
-        g.drawString(string, x, y);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        int height = g.getFontMetrics(g.getFont()).getHeight();
+        
+        String[] lines = GraphicsUtilities.splitLines(string);
+        for (int i = 0; i < lines.length; i++) {
+            g.drawString(lines[i], x, y + (i * height));
+        }
+        
         g.dispose();
     }
 
@@ -700,7 +687,7 @@ public class GreenfootImage
      * Draw a filled shape directly on the image. Shapes are specified by the
      * <a href="http://java.sun.com/javase/6/docs/api/java/awt/Shape.html">shape
      * interface</a>.
-     * @param shape the shape to be drawn.
+     * @param shape the shape to be filled.
      */
     public void fillShape(Shape shape)
     {
@@ -732,11 +719,11 @@ public class GreenfootImage
      * color.
      * 
      * @param x the <i>x </i> coordinate of the upper left corner of the oval to
-     *            be filled.
+     *            be drawn.
      * @param y the <i>y </i> coordinate of the upper left corner of the oval to
-     *            be filled.
-     * @param width the width of the oval to be filled.
-     * @param height the height of the oval to be filled.
+     *            be drawn.
+     * @param width the width of the oval to be drawn.
+     * @param height the height of the oval to be drawn.
      */
     public void drawOval(int x, int y, int width, int height)
     {
@@ -761,9 +748,9 @@ public class GreenfootImage
      * The area inside the polygon is defined using an even-odd fill rule, also
      * known as the alternating rule.
      * 
-     * @param xPoints a an array of <code>x</code> coordinates.
-     * @param yPoints a an array of <code>y</code> coordinates.
-     * @param nPoints a the total number of points.
+     * @param xPoints an array of <code>x</code> coordinates.
+     * @param yPoints an array of <code>y</code> coordinates.
+     * @param nPoints the total number of points.
      */
     public void fillPolygon(int[] xPoints, int[] yPoints, int nPoints)
     {
@@ -893,6 +880,4 @@ public class GreenfootImage
             e.printStackTrace();
         }
     }
-
-   
 }

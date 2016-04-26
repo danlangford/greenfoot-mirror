@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 2010,2011,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -45,14 +45,14 @@ import java.awt.Color;
 public class CodeCompleteCellRenderer extends JPanel implements ListCellRenderer
 {
     /** label showing the return type */
-    private JLabel typeLabel = new JLabel();
+    private final JLabel typeLabel = new JLabel();
     /** label showing method name and parameters */
-    private JLabel descriptionLabel = new JLabel();
+    private final JLabel descriptionLabel = new JLabel();
     
-    private Dimension rtypeSize;
-    private String immediateType;
-    private Font cfont;
-    private Font cfontBold;
+    private final Dimension rtypeSize;
+    private final String immediateType;
+    private final Font cfont;
+    private final Font cfontBold;
     
     CodeCompleteCellRenderer(String immediateType)
     {
@@ -69,22 +69,22 @@ public class CodeCompleteCellRenderer extends JPanel implements ListCellRenderer
         typeLabel.setPreferredSize(rtypeSize);
         typeLabel.setForeground(new Color(90, 80, 45));
         add(typeLabel);
-        
+
         add(descriptionLabel);
         add(Box.createHorizontalGlue());
         setBorder(new javax.swing.border.EmptyBorder(2, 2, 2, 2));
 
         this.immediateType = immediateType;
     }
-    
+
     public Component getListCellRendererComponent(JList list, Object value,
             int index, boolean isSelected, boolean cellHasFocus)
     {
-        if (value != null) {
+        if (value != null && list.isValid() && index <= list.getLastVisibleIndex() && index >= list.getFirstVisibleIndex()) {
             AssistContent content = (AssistContent) value;
             typeLabel.setText(content.getReturnType().toString());
             descriptionLabel.setText(content.getDisplayName());
-            
+
             if (content.getDeclaringClass().equals(immediateType)) {
                 descriptionLabel.setFont(cfontBold);
             }
@@ -92,18 +92,22 @@ public class CodeCompleteCellRenderer extends JPanel implements ListCellRenderer
                 descriptionLabel.setFont(cfont);
             }
         }
-        
+
         if (isSelected) {
             setBackground(list.getSelectionBackground());
             setForeground(list.getSelectionForeground());
-            setOpaque(true);
+            if (!Config.isRaspberryPi()) {
+                setOpaque(true);
+            }
         }
         else {
             setBackground(list.getBackground());
             setForeground(list.getForeground());
-            setOpaque(false);
+            if (!Config.isRaspberryPi()) {
+                setOpaque(false);
+            }
         }
-        
+
         return this;
     }
 }

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -25,12 +25,15 @@ import bluej.Config;
 import bluej.prefmgr.PrefMgr;
 import bluej.utility.DialogManager;
 import bluej.utility.BlueJFileReader;
-
 import bluej.utility.Utility;
+
 import java.awt.*;              // MenuBar, MenuItem, Menu, Button, etc.
 import java.awt.event.*;        // New Event model
+
 import javax.swing.*;           // all the GUI components
+
 import java.io.*;
+
 import javax.swing.border.EmptyBorder;
 
 /**
@@ -40,8 +43,7 @@ import javax.swing.border.EmptyBorder;
  *
  * @author Michael Kolling
  */
-public final class Info extends JPanel
-    implements ActionListener
+public final class Info extends JPanel implements ActionListener
 {
     static final ImageIcon helpImage = Config.getFixedImageAsIcon("help.png");
 
@@ -71,18 +73,19 @@ public final class Info extends JPanel
         body.setBackground(MoeEditor.infoColor);
         body.setBorder(new EmptyBorder(0,6,0,4));
         line1 = new JLabel() {
+            @Override
             public void setBounds(int x, int y, int width, int height)
             {
                 super.setBounds(x,y,width,height);
                 if (originalMsg != null) {
                     rebreakLine();
                 }
-            };
+            }
         };
         line2 = new JLabel();
         body.add(line1);
         body.add(line2);
-        body.setOpaque(false);
+        if (!Config.isRaspberryPi()) body.setOpaque(false);
         add(body, BorderLayout.CENTER);
 
         helpButton = new JButton(helpImage);
@@ -113,7 +116,7 @@ public final class Info extends JPanel
     }
 
     /**
-     * display a one- or two-line message (using '\n' to separate multiple lines)
+     * display a one- or two-line message (using '\n' to separate multiple lines).
      */
     public void message(String msg)
     {
@@ -121,6 +124,20 @@ public final class Info extends JPanel
         rebreakLine();
         isClear = false;
         hideHelp();
+    }
+    
+    /**
+     * Like message(String), but the message may be displayed in a pop-up dialog if the user
+     * has enabled this preference (e.g. for blind users with screen readers)
+     */
+    public void messageImportant(String msg)
+    {
+        message(msg);
+        if (PrefMgr.getFlag(PrefMgr.ACCESSIBILITY_SUPPORT))
+        {
+            // Pop up in a dialog:
+            DialogManager.showTextWithCopyButton(this.getTopLevelAncestor(), msg, "BlueJ");
+        }
     }
     
     /**
@@ -220,7 +237,13 @@ public final class Info extends JPanel
     public void warning(String msg)
     {
         message (msg);
-        MoeEditorManager.editorManager.beep();
+        MoeEditorManager.beep();
+    }
+    
+    public void warningImportant(String msg)
+    {
+        messageImportant(msg);
+        MoeEditorManager.beep();
     }
 
     /**
@@ -229,7 +252,7 @@ public final class Info extends JPanel
     public void warning(String msg1, String msg2)
     {
         message (msg1, msg2);
-        MoeEditorManager.editorManager.beep();
+        MoeEditorManager.beep();
     }
 
     /**
@@ -272,6 +295,7 @@ public final class Info extends JPanel
 
     // ---- ActionListener interface ----
 
+    @Override
     public void actionPerformed(ActionEvent evt)
     {
         displayHelp(helpGroup);
@@ -285,7 +309,8 @@ public final class Info extends JPanel
         String line;
         if (i<0) {
             line = originalMsg;
-        } else {
+        }
+        else {
             line = originalMsg.substring(0,i);   
         }
         

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -41,6 +41,8 @@ import java.util.Properties;
 import java.util.Set;
 
 import bluej.Config;
+import bluej.collect.DataCollectionCompileObserverWrapper;
+import bluej.collect.DataCollector;
 import bluej.compiler.CompileObserver;
 import bluej.compiler.Diagnostic;
 import bluej.compiler.EventqueueCompileObserver;
@@ -322,10 +324,12 @@ public final class Package extends Graph
         String retName = "";
 
         while (!currentPkg.isUnnamedPackage()) {
-            if (retName == "")
+            if (retName.equals("")) {
                 retName = currentPkg.getBaseName();
-            else
+            }
+            else {
                 retName = currentPkg.getBaseName() + "." + retName;
+            }
 
             currentPkg = currentPkg.getParent();
         }
@@ -1107,6 +1111,8 @@ public final class Package extends Graph
         findSpaceForVertex(t);
         t.analyseSource();
         
+        DataCollector.addClass(this, destFile);
+
         return NO_ERROR;
     }
 
@@ -1196,7 +1202,7 @@ public final class Package extends Graph
      * The standard compile user function: Find and compile all uncompiled
      * classes.
      */
-    public void compile()
+    public void compile(CompileObserver compObserver)
     {
         if (!checkCompile()) {
             return;
@@ -1206,9 +1212,7 @@ public final class Package extends Graph
 
         try {
             // build the list of targets that need to be compiled
-            for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
-                Target target = it.next();
-
+            for (Target target : targets.toArray()) {
                 if (target instanceof ClassTarget) {
                     ClassTarget ct = (ClassTarget) target;
                     if (ct.isInvalidState() && ! ct.isQueued()) {
@@ -1221,7 +1225,7 @@ public final class Package extends Graph
 
             project.removeClassLoader();
             project.newRemoteClassLoaderLeavingBreakpoints();
-            doCompile(toCompile, new PackageCompileObserver());
+            doCompile(toCompile, new PackageCompileObserver(compObserver));
         }
         catch (IOException ioe) {
             // Abort compile
@@ -1233,17 +1237,26 @@ public final class Package extends Graph
     }
     
     /**
-     * Compile a single class.
+     * The standard compile user function: Find and compile all uncompiled
+     * classes.
      */
-    public void compile(ClassTarget ct)
+    public void compile()
     {
-        compile(ct, false);
+        compile((CompileObserver)null);
     }
     
     /**
      * Compile a single class.
      */
-    public void compile(ClassTarget ct, boolean forceQuiet)
+    public void compile(ClassTarget ct)
+    {
+        compile(ct, false, null);
+    }
+    
+    /**
+     * Compile a single class.
+     */
+    public void compile(ClassTarget ct, boolean forceQuiet, CompileObserver compObserver)
     {
         if (!checkCompile()) {
             return;
@@ -1277,15 +1290,15 @@ public final class Package extends Graph
             if (ct != null) {
                 CompileObserver observer;
                 if (forceQuiet) {
-                    observer = new QuietPackageCompileObserver();
+                    observer = new QuietPackageCompileObserver(compObserver);
                 } else {
-                    observer = new PackageCompileObserver();
+                    observer = new PackageCompileObserver(compObserver);
                 }
                 searchCompile(ct, observer);
             }
 
             if (assocTarget != null) {
-                searchCompile(assocTarget, new QuietPackageCompileObserver());
+                searchCompile(assocTarget, new QuietPackageCompileObserver(null));
             }
         }
     }
@@ -1300,7 +1313,7 @@ public final class Package extends Graph
         }
 
         ct.setInvalidState(); // to force compile
-        searchCompile(ct, new QuietPackageCompileObserver());
+        searchCompile(ct, new QuietPackageCompileObserver(null));
     }
 
     /**
@@ -1342,7 +1355,7 @@ public final class Package extends Graph
             // Clear-down the compiler Warning dialog box singleton
             bluej.compiler.CompilerWarningDialog.getDialog().reset();
 
-            doCompile(compileTargets, new PackageCompileObserver());
+            doCompile(compileTargets, new PackageCompileObserver(null));
         }
         catch (IOException ioe) {
             showMessageWithText("file-save-error-before-compile", ioe.getLocalizedMessage());
@@ -1355,14 +1368,17 @@ public final class Package extends Graph
      */
     public void saveFilesInEditors() throws IOException
     {
-        for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
-            Target target = it.next();
+        // Because we call editor.save() on targets, which can result in
+        // a renamed class target, we need to iterate through a copy of
+        // the collection - hence the toArray() call here:
+        for (Target target : targets.toArray()) {
             if (target instanceof ClassTarget) {
                 ClassTarget ct = (ClassTarget) target;
                 Editor ed = ct.getEditor();
                 // Editor can be null eg. class file and no src file
-                if(ed != null)
+                if(ed != null) {
                     ed.save();
+                }
             }
         }
     }
@@ -1434,7 +1450,7 @@ public final class Package extends Graph
             srcFiles[i++] = ct.getSourceFile();
         }
         
-        JobQueue.getJobQueue().addJob(srcFiles, observer, project.getClassLoader(), project.getProjectDir(),
+        JobQueue.getJobQueue().addJob(srcFiles, new DataCollectionCompileObserverWrapper(project, observer), project.getClassLoader(), project.getProjectDir(),
                 ! PrefMgr.getFlag(PrefMgr.SHOW_UNCHECKED), project.getProjectCharset());
     }
 
@@ -1944,31 +1960,6 @@ public final class Package extends Graph
         return names;
     }
 
-    /**
-     * Given a file name, find the target that represents that file.
-     * 
-     * @return The target with the given file name or <null>if not found.
-     */
-    public ClassTarget getTargetFromFilename(String filename)
-    {
-        getProject().convertPathToPackageName(filename);
-
-        for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
-            Target t = it.next();
-            if (!(t instanceof ClassTarget)) {
-                continue;
-            }
-
-            ClassTarget ct = (ClassTarget) t;
-
-            if (filename.equals(ct.getSourceFile().getPath())) {
-                return ct;
-            }
-        }
-
-        return null;
-    }
-
     public void setShowUses(boolean state)
     {
         showUses = state;
@@ -2158,7 +2149,7 @@ public final class Package extends Graph
         lastSourceName = sourcename;
 
         if (!showEditorMessage(new File(getPath(), sourcename).getPath(), lineNo, msg, false, bringToFront,
-                true, null) && !breakpoint) {
+                true, null) && breakpoint) {
             showMessageWithText("break-no-source", sourcename);
         }
 
@@ -2203,7 +2194,7 @@ public final class Package extends Graph
         ClassTarget t = null;
 
         // check if the error is from a file belonging to another package
-        if (packageName != getQualifiedName()) {
+        if (! packageName.equals(getQualifiedName())) {
 
             Package pkg = getProject().getPackage(packageName);
             
@@ -2265,7 +2256,7 @@ public final class Package extends Graph
         ClassTarget t = null;
 
         // check if the error is from a file belonging to another package
-        if (packageName != getQualifiedName()) {
+        if (! packageName.equals(getQualifiedName())) {
 
             Package pkg = getProject().getPackage(packageName);
             
@@ -2321,24 +2312,25 @@ public final class Package extends Graph
      */
     public void hitHalt(DebuggerThread thread)
     {
-        showSourcePosition(thread);
+        int frame = thread.getSelectedFrame();
+        if (showSource(thread.getClassSourceName(frame), thread.getLineNumber(frame), thread.getName(), false)) {
+            getProject().getExecControls().setVisible(true);
+        }
 
         getProject().getExecControls().showHide(true);
         getProject().getExecControls().makeSureThreadIsSelected(thread);
     }
 
     /**
-     * showSourcePosition - The debugger display needs updating.
+     * Display a source file from this package at the specified position.
      */
-    public void showSourcePosition(DebuggerThread thread)
+    public void showSourcePosition(String sourceName, int lineNumber)
     {
-        int frame = thread.getSelectedFrame();
-        if (showSource(thread.getClassSourceName(frame), thread.getLineNumber(frame), thread.getName(), false)) {
+        if (showSource(sourceName, lineNumber, null, false)) {
             getProject().getExecControls().setVisible(true);
-            //getProject().getExecControls().makeSureThreadIsSelected(thread);
         }
     }
-
+    
     /**
      * Display an exception message. This is almost the same as "errorMessage"
      * except for different help texts.
@@ -2402,17 +2394,21 @@ public final class Package extends Graph
     }
 
     /**
-     * Use the resource name in order to return the classpath of the jar file.
-     * If it is not a jar file it returns the original resource
-     * @param fullName resource (full path of the resource)
-     * @return A string indicating the classpath of the jar file (if applicable
-     * and if not, it returns the original String)
+     * Use the resource name in order to return the path of the jar file
+     * containing the given resource.
+     * <p>
+     * If it is not in a jar file it returns the original resource path
+     * (URL).
+     * 
+     * @param c  The class to get the path to
+     * @return A string indicating the path of the jar file (if applicable
+     * and if not, it returns the path/URL to the resource)
      */
     protected static String getResourcePath(Class<?> c)
     { 
         URL srcUrl = c.getResource(c.getSimpleName()+".class");
         try {
-            if (srcUrl!=null){
+            if (srcUrl != null) {
                 if (srcUrl.getProtocol().equals("file")) {
                     File srcFile = new File(srcUrl.toURI());
                     return srcFile.toString();
@@ -2430,6 +2426,9 @@ public final class Package extends Graph
                         return srcUrl.toString().substring(4, classIndex);
                     }
                 }
+            }
+            else {
+                return null;
             }
         }
         catch (URISyntaxException uriSE) {
@@ -2483,6 +2482,17 @@ public final class Package extends Graph
     private class QuietPackageCompileObserver
         implements CompileObserver
     {
+        protected CompileObserver chainObserver;
+        
+        /**
+         * Construct a new QuietPackageCompileObserver. The chained observer (if
+         * specified) is notified when the compilation ends.
+         */
+        public QuietPackageCompileObserver(CompileObserver chainObserver)
+        {
+            this.chainObserver = chainObserver;
+        }
+        
         private void markAsCompiling(File[] sources)
         {
             for (int i = 0; i < sources.length; i++) {
@@ -2631,7 +2641,11 @@ public final class Package extends Graph
             // Send a compilation done event to extensions.
             int eventId = successful ? CompileEvent.COMPILE_DONE_EVENT : CompileEvent.COMPILE_FAILED_EVENT;
             CompileEvent aCompileEvent = new CompileEvent(eventId, sources);
-            ExtensionsManager.getInstance().delegateEvent(aCompileEvent);        
+            ExtensionsManager.getInstance().delegateEvent(aCompileEvent);
+            
+            if (chainObserver != null) {
+                chainObserver.endCompile(sources, successful);
+            }
         }
     }
     
@@ -2743,8 +2757,7 @@ public final class Package extends Graph
             
             LinkedList<String> maybeTheyMeant = new LinkedList<String>();
             CodeSuggestions suggests = e.getParsedNode().getExpressionType(pos, e.getSourceDocument());
-            AssistContent[] values = ParseUtils.getPossibleCompletions(suggests, "",
-                    project.getJavadocResolver());
+            AssistContent[] values = ParseUtils.getPossibleCompletions(suggests, project.getJavadocResolver());
             if (values != null) {
                 for (AssistContent a : values) {
                     String name = chopAtOpeningBracket(a.getDisplayName());
@@ -2799,6 +2812,15 @@ public final class Package extends Graph
     private class PackageCompileObserver extends QuietPackageCompileObserver
     {
         private boolean hadError;
+        
+        /**
+         * Construct a new PackageCompileObserver. The chained observer (if specified)
+         * is notified when the compilation ends.
+         */
+        public PackageCompileObserver(CompileObserver chainObserver)
+        {
+            super(chainObserver);
+        }
         
         @Override
         public void startCompile(File[] sources)
@@ -2874,6 +2896,20 @@ public final class Package extends Graph
             
             return true;
         }
+        
+        @Override
+        public void endCompile(File[] sources, boolean successful)
+        {
+            super.endCompile(sources, successful);
+            
+            // Display status dialog for accessibility. If chainObserver is set, we assume
+            // that the chained observer will fulfill this responsibility instead.
+            if (successful && chainObserver == null && PrefMgr.getFlag(PrefMgr.ACCESSIBILITY_SUPPORT)) {
+                if (getEditor().isVisible()) {
+                    DialogManager.showText(getEditor(), Config.getString("pkgmgr.accessibility.compileDone"));
+                }
+            }
+        }
     }
 
     // ---- end of bluej.compiler.CompileObserver interfaces ----
@@ -2884,10 +2920,12 @@ public final class Package extends Graph
      */
     public void closeAllEditors()
     {
-        for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
-            Target t = it.next();
-            if (t instanceof EditableTarget) {
-                EditableTarget et = (EditableTarget) t;
+        // ToArray has been used here rather than Iterator, to avoid
+        // ConcurrentModificationException which happened on closing
+        // BlueJ main frame after renaming a class without compile.
+        for (Target target : targets.toArray()) {
+            if (target instanceof EditableTarget) {
+                EditableTarget et = (EditableTarget) target;
                 if (et.editorOpen()) {
                     et.getEditor().close();
                 }

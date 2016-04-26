@@ -27,7 +27,6 @@
 ## text files in that directory. If you make a language version for
 ## a new language, please send it to support@greenfoot.org
 #####################################################################
-
 bluej.language=english
 #bluej.language=chinese
 #bluej.language=czech
@@ -44,7 +43,6 @@ bluej.language=english
 ## If you have a translated version of the Greenfoot API documentation
 ## you can change this URL to point at it.
 #####################################################################
-
 #greenfoot.url.javadoc=file:///Greenfoot/labels/german/greenfoot/API/index.html
 
 #####################################################################
@@ -90,7 +88,6 @@ greenfoot.gameserver.createAccount.address=http://www.greenfoot.org/users/new
 ## Normally it should not be necessary to change this.
 ##
 #####################################################################
-
 bluej.compiler.options=-source 1.6 -target 1.6
 
 #####################################################################
@@ -112,15 +109,23 @@ bluej.vm.args=-Xincgc -Dawt.useSystemAAFontSettings=on
 ## for your system if it exists. If defined here, this overrides the
 ## default.
 #####################################################################
-
 #greenfoot.editor.image=/Applications/Adobe Photoshop CS3/Adobe Photoshop CS3.app
 
 greenfoot.image.create.width=150
 greenfoot.image.create.height=150
 
 #####################################################################
-## Command-line arguments for the Java Virtual Machine when
-## launching Greenfoot on Windows. 
+## The VM that the windows client should use. When Greenfoot is
+## bundled with a JDK, this will refer to the bundled JDK.
+## Otherwise this can be used to specify an arbitrary JDK that
+## Greenfoot should use.
+##
+## NOTE: this setting is _only_ used under windows, and only when
+##       Greenfoot is launched with the standard windows launcher
 #####################################################################
 
+# This setting is an example only (unless the JDK is bundled):
+#greenfoot.windows.vm=X\:\\Programming Apps\\JDK_1.7.0_55
+
+# command line arguments, if any:
 #greenfoot.windows.vm.args=

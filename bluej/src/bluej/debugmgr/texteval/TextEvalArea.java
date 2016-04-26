@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009, 2013, 2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -34,11 +34,11 @@ import bluej.prefmgr.PrefMgr;
  * A customised text area for use in the BlueJ Java text evaluation.
  *
  * @author  Michael Kolling
- * @version $Id: TextEvalArea.java 7725 2010-05-24 17:05:43Z nccb $
  */
 public final class TextEvalArea extends JScrollPane
     implements KeyListener, FocusListener
 {
+    private static final Color TRANSPARANT = new Color(0f, 0f, 0f, 0.0f);
     private static final Color selectionColour = Config.getSelectionColour();
 
     private TextEvalPane text;
@@ -171,14 +171,17 @@ public final class TextEvalArea extends JScrollPane
         }
         text.setFont(font);
         text.setSelectionColor(selectionColour);
-        text.setOpaque(false);
+        if (!Config.isRaspberryPi()) text.setOpaque(false);
+        
+        if (!Config.isRaspberryPi()) setBackground(TRANSPARANT);
+        if (!Config.isRaspberryPi()) viewport.setBackground(TRANSPARANT);
         //To get fill working properly under Nimbus L&F, set background to transparent, too:
-        text.setBackground(new Color(0,0,0,0));
+        if (!Config.isRaspberryPi()) text.setBackground(TRANSPARANT);
 
         setViewportView(text);
         updateBackground(frame.isEmptyFrame());
 
-        setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_ALWAYS);
+        setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_AS_NEEDED);
         setPreferredSize(new Dimension(300,100));
     }
     
@@ -191,12 +194,19 @@ public final class TextEvalArea extends JScrollPane
             
             int w = getWidth();
             int h = getHeight();
-           
-            GradientPaint gp = new GradientPaint(
-                w/4, 0, new Color(235, 230, 200),
-                w, h, new Color(209, 203, 179));
+            
+            Color color1 = new Color(235, 230, 200);
+            Color color2 = new Color(209, 203, 179);
+            if (!Config.isRaspberryPi()){
+                GradientPaint gp = new GradientPaint(
+                    w/4, 0, color1,
+                    w, h, color2);
+                g2d.setPaint(gp);
+            }else{
+                g2d.setPaint(new Color(222, 216, 189));
+            }
 
-            g2d.setPaint(gp);
+            
             // We don't draw the outermost pixel, so that when the border is empty, it
             // shows the gradient from the window beneath (grey)
             // rather than our gradient (beige) outside the grey bevel border
@@ -209,7 +219,12 @@ public final class TextEvalArea extends JScrollPane
         this.frameEmpty = frameEmpty;
         
         getViewport().setOpaque(frameEmpty);
-        setOpaque(frameEmpty);
+        if (!Config.isRaspberryPi()) setOpaque(frameEmpty);
         
+    }
+
+    public JComponent getFocusableComponent()
+    {
+        return text;
     }
 }

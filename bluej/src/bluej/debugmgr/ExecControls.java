@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -79,6 +79,7 @@ import javax.swing.tree.TreeSelectionModel;
 
 import bluej.BlueJTheme;
 import bluej.Config;
+import bluej.collect.DataCollector;
 import bluej.debugger.Debugger;
 import bluej.debugger.DebuggerClass;
 import bluej.debugger.DebuggerField;
@@ -422,7 +423,7 @@ public class ExecControls extends JFrame
                 break;
             }
             
-            if (Config.isGreenfoot() && className.startsWith("greenfoot.core.")) {
+            if (Config.isGreenfoot() && className.startsWith("greenfoot.core.Simulation")) {
                 break;
             }
             
@@ -472,7 +473,8 @@ public class ExecControls extends JFrame
             selectedThread.setSelectedFrame(index);
                 
             if (! autoSelectionEvent) {
-                project.showSource(selectedThread);
+                project.showSource(selectedThread.getClass(index), selectedThread.getClassSourceName(index),
+                        selectedThread.getLineNumber(index));
             }
             
             currentFrame = index;
@@ -570,14 +572,19 @@ public class ExecControls extends JFrame
     
         setJMenuBar(makeMenuBar());
 
-        JPanel contentPane = new GradientFillPanel(new BorderLayout(6,6));
+        JPanel contentPane;
+        if (!Config.isRaspberryPi()) {
+            contentPane = new GradientFillPanel(new BorderLayout(6,6));
+        }else{
+            contentPane = new JPanel(new BorderLayout(6,6));
+        }
         setContentPane(contentPane);
         contentPane.setBorder(BorderFactory.createEmptyBorder(8,8,8,8));
 
         // Create the control button panel
 
         JPanel buttonBox = new JPanel();
-        buttonBox.setOpaque(false);
+        if (!Config.isRaspberryPi()) buttonBox.setOpaque(false);
         {
             buttonBox.setLayout(new GridLayout(1,0));
 
@@ -660,13 +667,13 @@ public class ExecControls extends JFrame
                                                  staticScrollPane, instanceScrollPane);
         innerVarPane.setDividerSize(6);
         innerVarPane.setBorder(null);
-        innerVarPane.setOpaque(false);
+        if (!Config.isRaspberryPi()) innerVarPane.setOpaque(false);
 
         JSplitPane varPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
                                             innerVarPane, localScrollPane);
         varPane.setDividerSize(6);
         varPane.setBorder(null);
-        varPane.setOpaque(false);
+        if (!Config.isRaspberryPi()) varPane.setOpaque(false);
 
         // Create stack listing panel
 
@@ -676,18 +683,18 @@ public class ExecControls extends JFrame
         stackList.setFixedCellWidth(150);
         JScrollPane stackScrollPane = new JScrollPane(stackList);
         JLabel lbl = new JLabel(stackTitle);
-        lbl.setOpaque(true);
+        if (!Config.isRaspberryPi()) lbl.setOpaque(true);
         stackScrollPane.setColumnHeaderView(lbl);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
                                               stackScrollPane, varPane);
         splitPane.setDividerSize(6);
         splitPane.setBorder(null);
-        splitPane.setOpaque(false);
+        if (!Config.isRaspberryPi()) splitPane.setOpaque(false);
 
         // Create thread panel
         JPanel threadPanel = new JPanel(new BorderLayout());
-        threadPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) threadPanel.setOpaque(false);
 
 
         MouseListener treeMouseListener = new MouseAdapter() {
@@ -733,13 +740,13 @@ public class ExecControls extends JFrame
 
         JScrollPane threadScrollPane = new JScrollPane(threadTree);
         lbl = new JLabel(threadTitle);
-        lbl.setOpaque(true);
+        if (!Config.isRaspberryPi()) lbl.setOpaque(true);
         threadScrollPane.setColumnHeaderView(lbl);
         threadPanel.add(threadScrollPane, BorderLayout.CENTER);
         //threadPanel.setMinimumSize(new Dimension(100,100));
 
         flipPanel = new JPanel();
-        flipPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) flipPanel.setOpaque(false);
         {
             flipPanel.setLayout(cardLayout = new CardLayout());
 
@@ -757,7 +764,7 @@ public class ExecControls extends JFrame
         /* JSplitPane */ mainPanel = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
                                               threadPanel, flipPanel);
             ((JSplitPane)mainPanel).setDividerSize(6);
-            mainPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) mainPanel.setOpaque(false);
         }
         
         contentPane.add(mainPanel, BorderLayout.CENTER);
@@ -908,6 +915,7 @@ public class ExecControls extends JFrame
             project.removeStepMarks();
             if (selectedThread.isSuspended()) {
                 selectedThread.cont();
+                DataCollector.debuggerContinue(project, selectedThread.getName());
             }
         }
     }
@@ -929,6 +937,7 @@ public class ExecControls extends JFrame
                 // if we press this whilst we are already
                 // restarting the remote VM
                 project.restartVM();
+                DataCollector.debuggerTerminate(project);
             }
             catch (IllegalStateException ise) { }
         }
@@ -965,4 +974,16 @@ public class ExecControls extends JFrame
             debugger.hideSystemThreads(systemThreadItem.isSelected());
         }
     }
+
+    @Override
+    public void setVisible(boolean b)
+    {
+        if (b != isVisible())
+        {
+            DataCollector.debuggerChangeVisible(project, b);
+        }
+        super.setVisible(b);
+    }
+    
+    
 }

@@ -10,7 +10,7 @@ elif [ -x /usr/bin/arch ]; then
     ARCH=`/usr/bin/arch`
 fi
 
-for VMNAME in java-7-sun java-7-openjdk java-6-sun java-6-openjdk ; do
+for VMNAME in java-7-oracle jdk-7-oracle java-7-sun java-7-openjdk java-6-oracle java-6-sun java-6-openjdk ; do
     if [ -e /usr/lib/jvm/$VMNAME/lib/tools.jar ]; then
 	    JAVAPATH="/usr/lib/jvm/$VMNAME"
 	    break
@@ -32,5 +32,10 @@ if [ x"$JAVAPATH" = x"" ]; then
 	exit 1
 fi
 	
+#SPECIAL CASE for the Raspberry Pi
+if grep -q "BCM2708" /proc/cpuinfo; then
+    export J2D_PIXMAPS=shared
+fi
+
 CP="/usr/share/bluej/bluej.jar:$JAVAPATH/lib/tools.jar"
 "$JAVAPATH/bin/java" -Dawt.useSystemAAFontSettings=on -cp "$CP" bluej.Boot  "$@"

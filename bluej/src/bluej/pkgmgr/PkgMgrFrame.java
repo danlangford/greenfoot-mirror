@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -33,19 +33,22 @@ import java.awt.Image;
 import java.awt.Insets;
 import java.awt.KeyboardFocusManager;
 import java.awt.Point;
+import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.FocusEvent;
-import java.awt.event.FocusListener;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.event.WindowFocusListener;
 import java.awt.print.PageFormat;
 import java.awt.print.Paper;
 import java.awt.print.PrinterJob;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
@@ -53,6 +56,7 @@ import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.swing.AbstractAction;
 import javax.swing.AbstractButton;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
@@ -81,6 +85,7 @@ import bluej.BlueJEvent;
 import bluej.BlueJEventListener;
 import bluej.BlueJTheme;
 import bluej.Config;
+import bluej.collect.DataCollector;
 import bluej.debugger.Debugger;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.ExceptionDescription;
@@ -95,8 +100,8 @@ import bluej.debugmgr.objectbench.ObjectWrapper;
 import bluej.debugmgr.texteval.TextEvalArea;
 import bluej.extmgr.ExtensionsManager;
 import bluej.extmgr.MenuManager;
-import bluej.extmgr.ToolsMenuObject;
-import bluej.extmgr.ViewMenuObject;
+import bluej.extmgr.ToolsExtensionMenu;
+import bluej.extmgr.ViewExtensionMenu;
 import bluej.groupwork.actions.CheckoutAction;
 import bluej.groupwork.actions.TeamActionGroup;
 import bluej.groupwork.ui.ActivityIndicator;
@@ -166,7 +171,7 @@ import bluej.views.MethodView;
  * The main user interface frame which allows editing of packages
  */
 public class PkgMgrFrame extends JFrame
-    implements BlueJEventListener, MouseListener, PackageEditorListener, FocusListener
+    implements BlueJEventListener, MouseListener, PackageEditorListener
 {
     private static Font pkgMgrFont = PrefMgr.getStandardFont();
 
@@ -176,6 +181,9 @@ public class PkgMgrFrame extends JFrame
     private static boolean testToolsShown = wantToSeeTestingTools();
     private static boolean teamToolsShown = wantToSeeTeamTools();
     private static boolean javaMEtoolsShown = wantToSeeJavaMEtools();
+    
+    /** Frame most recently having focus */
+    private static PkgMgrFrame recentFrame = null;
 
     // instance fields:
 
@@ -299,6 +307,8 @@ public class PkgMgrFrame extends JFrame
 
     private ExportManager exporter;
 
+    private NoProjectMessagePanel noProjectMessagePanel = new NoProjectMessagePanel();
+
     /**
      * Open a PkgMgrFrame with no package. Packages can be installed into this
      * frame using the methods openPackage/closePackage.
@@ -308,6 +318,26 @@ public class PkgMgrFrame extends JFrame
         PkgMgrFrame frame = new PkgMgrFrame();
         frames.add(frame);
         BlueJEvent.addListener(frame);
+        
+        frame.addWindowFocusListener(new WindowFocusListener() {
+            
+            @Override
+            public void windowLostFocus(WindowEvent e)
+            {
+                // Nothing to do...
+            }
+            
+            @Override
+            public void windowGainedFocus(WindowEvent e)
+            {
+                Window w = e.getWindow();
+                if (w instanceof PkgMgrFrame) {
+                    // This *should* always be the case
+                    recentFrame = (PkgMgrFrame) w;
+                }
+            }
+        });
+        
         return frame;
     }
 
@@ -454,19 +484,26 @@ public class PkgMgrFrame extends JFrame
      */
     public static PkgMgrFrame getMostRecent()
     {
+        if (recentFrame != null) {
+            return recentFrame;
+        }
+        
         PkgMgrFrame[] allFrames = getAllFrames();
 
         // If there are no frames open, yet...
-        if (allFrames.length < 1)
+        if (allFrames.length < 1) {
             return null;
+        }
 
         // Assume that the most recent is the first one. Not really the best
         // thing to do...
         PkgMgrFrame mostRecent = allFrames[0];
 
-        for (int i = 0; i < allFrames.length; i++)
-            if (allFrames[i].getFocusOwner() != null)
+        for (int i = 0; i < allFrames.length; i++) {
+            if (allFrames[i].getFocusOwner() != null) {
                 mostRecent = allFrames[i];
+            }
+        }
 
         return mostRecent;
     }
@@ -654,13 +691,14 @@ public class PkgMgrFrame extends JFrame
         this.pkg = null;
         this.editor = null;
         objbench = new ObjectBench(this);
+        addCtrlTabShortcut(objbench);
         if(!Config.isGreenfoot()) {
             teamActions = new TeamActionGroup(false);
             teamActions.setAllDisabled();
 
             setupActionDisableSet();
             makeFrame();
-            updateWindowTitle();
+            updateWindow();
             setStatus(bluej.Boot.BLUEJ_VERSION_TITLE);
         }
     }
@@ -684,12 +722,13 @@ public class PkgMgrFrame extends JFrame
 
         if(! Config.isGreenfoot()) {
             this.editor = new PackageEditor(pkg, this);
+            editor.getAccessibleContext().setAccessibleName(Config.getString("pkgmgr.graphEditor.title"));
             editor.setFocusable(true);
             editor.setTransferHandler(new FileTransferHandler(this));
-            editor.addMouseListener(this); // This mouse listener MUST be before
-            editor.addFocusListener(this); //  the editor's listener itself!
-            editor.startMouseListening();
+            editor.addMouseListener(this);  // This mouse listener MUST be before
+            editor.startMouseListening();   //  the editor's listener itself!
             pkg.setEditor(this.editor);
+            addCtrlTabShortcut(editor);
             
             classScroller.setViewportView(editor);
             
@@ -701,6 +740,13 @@ public class PkgMgrFrame extends JFrame
                 String height_str = p.getProperty("package.editor.height", Integer.toString(DEFAULT_HEIGHT));
                 
                 classScroller.setPreferredSize(new Dimension(Integer.parseInt(width_str), Integer.parseInt(height_str)));
+                
+                String objectBench_height_str = p.getProperty("objectbench.height");
+                String objectBench_width_str = p.getProperty("objectbench.width");
+                if (objectBench_height_str != null && objectBench_width_str != null) {
+                    objbench.setPreferredSize(new Dimension(Integer.parseInt(objectBench_width_str),
+                            Integer.parseInt(objectBench_height_str)));
+                }
                 
                 String x_str = p.getProperty("package.editor.x", "30");
                 String y_str = p.getProperty("package.editor.y", "30");
@@ -733,15 +779,15 @@ public class PkgMgrFrame extends JFrame
             editor.requestFocus();
             
             enableFunctions(true); // changes menu items
-            updateWindowTitle();
+            updateWindow();
             setVisible(true);
             
             updateTextEvalBackground(isEmptyFrame());
                     
-            this.toolsMenuManager.setAttachedObject(new ToolsMenuObject(pkg));
+            this.toolsMenuManager.setMenuGenerator(new ToolsExtensionMenu(pkg));
             this.toolsMenuManager.addExtensionMenu(pkg.getProject());
 
-            this.viewMenuManager.setAttachedObject(new ViewMenuObject(pkg));
+            this.viewMenuManager.setMenuGenerator(new ViewExtensionMenu(pkg));
             this.viewMenuManager.addExtensionMenu(pkg.getProject());
         
             teamActions = pkg.getProject().getTeamActions();
@@ -759,6 +805,8 @@ public class PkgMgrFrame extends JFrame
             }                
         }
         
+        DataCollector.packageOpened(pkg);
+
         extMgr.packageOpened(pkg);
     }
     
@@ -819,19 +867,21 @@ public class PkgMgrFrame extends JFrame
             classScroller.setViewportView(null);
             classScroller.setBorder(Config.normalBorder);
             editor.removeMouseListener(this);
-            editor.removeFocusListener(this);
-            this.toolsMenuManager.setAttachedObject(new ToolsMenuObject(pkg));
-            this.viewMenuManager.setAttachedObject(new ViewMenuObject(pkg));
+            this.toolsMenuManager.setMenuGenerator(new ToolsExtensionMenu(pkg));
+            this.viewMenuManager.setMenuGenerator(new ViewExtensionMenu(pkg));
             
             getObjectBench().removeAllObjects(getProject().getUniqueId());
             clearTextEval();
             updateTextEvalBackground(true);
             showJavaMEcontrols(false);
-            showTestingTools(wantToSeeTestingTools());
+            
+            editor.graphClosed();
         }
 
         getPackage().closeAllEditors();
         
+        DataCollector.packageClosed(pkg);
+
         Project proj = getProject();
 
         editor = null;
@@ -889,11 +939,11 @@ public class PkgMgrFrame extends JFrame
     /**
      * Set the window title to show the current package name.
      */
-    protected final String updateWindowTitle()
+    private void updateWindowTitle()
     {
+        
         if (isEmptyFrame()) {
             setTitle("BlueJ");
-            return "BlueJ";
         }
         else {
             String title = Config.getString("pkgmgr.title") + getProject().getProjectName();
@@ -905,8 +955,20 @@ public class PkgMgrFrame extends JFrame
                 title = title + " (" + Config.getString("team.project.marker") + ")";
 
             setTitle(title);
-            return title;
         }
+    }
+    
+    /**
+     * Update the window title and show needed messages
+     */
+    private void updateWindow()
+    {
+        
+        if (isEmptyFrame()) {
+            classScroller.setViewportView(noProjectMessagePanel);
+            repaint();
+        }
+        updateWindowTitle();
     }
 
     /**
@@ -922,7 +984,6 @@ public class PkgMgrFrame extends JFrame
         });
         
     }
-    
        
     /**
      * Start the activity indicator. Call from any thread.
@@ -998,26 +1059,18 @@ public class PkgMgrFrame extends JFrame
     {}
 
 
-    /**
-     * The graph editor received keyboard focus.
-     */
-    public void focusGained(FocusEvent e)
+    @Override
+    public void pkgEditorGotFocus()
     {
         classScroller.setBorder(Config.focusBorder);
-        editor.setHasFocus(true);
     }
-
-    /**
-     * The graph editor lost keyboard focus.
-     */
-    public void focusLost(FocusEvent e)
+    
+    
+    @Override
+    public void pkgEditorLostFocus()
     {
-        if (!e.isTemporary()) {
-            classScroller.setBorder(Config.normalBorder);
-            editor.setHasFocus(false);
-        }
+        classScroller.setBorder(Config.normalBorder);
     }
-
 
     /**
      * Deal with an event generated by a target in the package we are currently
@@ -1077,6 +1130,7 @@ public class PkgMgrFrame extends JFrame
                         tryAgain = false; // cancelled
                     }
                     else if (JavaNames.isIdentifier(newObjectName)) {
+                        DataCollector.benchGet(getPackage(), newObjectName, e.getDebuggerObject().getClassName(), getTestIdentifier());
                         putObjectOnBench(newObjectName, e.getDebuggerObject(), e.getIType(), e.getInvokerRecord());
                         tryAgain = false;
                     }
@@ -1213,13 +1267,15 @@ public class PkgMgrFrame extends JFrame
 
         if (editor != null) {
             editor.revalidate();
-            editor.scrollRectToVisible(target.getRectangle());
+            editor.scrollRectToVisible(target.getBounds());
             editor.repaint();
         }
 
         if (target.getRole() instanceof UnitTestClassRole) {
             pkg.compileQuiet(target);
         }
+        
+        DataCollector.addClass(pkg, target.getSourceFile());
         
         return true;
     }
@@ -1243,12 +1299,20 @@ public class PkgMgrFrame extends JFrame
         if (newnameFile == null)
             return false;
 
-        if(newnameFile.exists()) {
-            Debug.message("Attempt to create project with existing directory: " + newnameFile.getAbsolutePath());
-            DialogManager.showErrorWithText(null, "directory-exists", newnameFile.getPath());
-            return false;
+        if (newnameFile.exists()) {
+            if (! newnameFile.isDirectory()) {
+                DialogManager.showError(null, "directory-exists-file");
+                return false;
+            }
+            else if (newnameFile.list().length > 0) {
+                Debug.message("Attempt to create project with existing non-empty directory: " + newnameFile.getAbsolutePath());
+                DialogManager.showError(null, "directory-exists-non-empty");
+                return false;
+            }
+            // directory exists but is empty - fall through:
         }
-        else if( ! newProject( newnameFile.getAbsolutePath(), isJavaMEproject ) ) {
+        
+        if (! newProject(newnameFile.getAbsolutePath(), isJavaMEproject)) {
             DialogManager.showErrorWithText(null, "cannot-create-directory", newnameFile.getPath());
             return false;
         }
@@ -1442,10 +1506,9 @@ public class PkgMgrFrame extends JFrame
                 testRecordingEnded(); // disable test controls
                 closePackage();
                 
-                updateWindowTitle();
                 updateRecentProjects();
                 enableFunctions(false); // changes menu items
-                updateWindowTitle();
+                updateWindow();
                 toolsMenuManager.addExtensionMenu(null);
                 viewMenuManager.addExtensionMenu(null);
             }
@@ -1479,15 +1542,19 @@ public class PkgMgrFrame extends JFrame
         }
         
         if(!Config.isGreenfoot()) {
-            Dimension d = classScroller.getSize(null);
+            Dimension d = classScroller.getSize();
     
             p.put("package.editor.width", Integer.toString(d.width));
             p.put("package.editor.height", Integer.toString(d.height));
-    
+            
             Point point = getLocation();
     
             p.put("package.editor.x", Integer.toString(point.x));
             p.put("package.editor.y", Integer.toString(point.y));
+            
+            d = objbench.getSize();
+            p.put("objectbench.width", Integer.toString(d.width));
+            p.put("objectbench.height", Integer.toString(d.height));
     
             p.put("package.showUses", Boolean.toString(isShowUses()));
             p.put("package.showExtends", Boolean.toString(isShowExtends()));
@@ -1694,10 +1761,11 @@ public class PkgMgrFrame extends JFrame
     public void showCopyright()
     {
         JOptionPane.showMessageDialog(this, new String[]{
-                "BlueJ \u00a9 2000-2011 Michael K\u00F6lling, John Rosenberg.", " ",
+                Config.getString("menu.help.copyright.line0"), " ",
                 Config.getString("menu.help.copyright.line1"), Config.getString("menu.help.copyright.line2"),
-                Config.getString("menu.help.copyright.line3"), Config.getString("menu.help.copyright.line4"),}, Config
-                .getString("menu.help.copyright.title"), JOptionPane.INFORMATION_MESSAGE);
+                Config.getString("menu.help.copyright.line3"), Config.getString("menu.help.copyright.line4"),
+                },
+                Config.getString("menu.help.copyright.title"), JOptionPane.INFORMATION_MESSAGE);
     }
 
     /**
@@ -2055,12 +2123,12 @@ public class PkgMgrFrame extends JFrame
     public void doRemove()
     {
         Component permanentFocusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getPermanentFocusOwner();
-        if (permanentFocusOwner == editor) { // focus in diagram
+        if (permanentFocusOwner == editor || Arrays.asList(editor.getComponents()).contains(permanentFocusOwner)) { // focus in diagram
             if (!(doRemoveTargets() || doRemoveDependency())) {
                 DialogManager.showError(this, "no-class-selected");
             }
         }
-        else if (permanentFocusOwner == objbench) { // focus in object bench
+        else if (permanentFocusOwner == objbench || objbench.getObjects().contains(permanentFocusOwner)) { // focus in object bench
             objbench.removeSelectedObject(pkg.getId());
         }
         else {
@@ -2167,6 +2235,8 @@ public class PkgMgrFrame extends JFrame
         if (testTarget != null) {
             testRecordingEnded();
             
+            DataCollector.endTestMethod(getPackage(), testIdentifier);
+            
             if (testTarget.getRole() instanceof UnitTestClassRole) {
                 UnitTestClassRole utcr = (UnitTestClassRole) testTarget.getRole();
                 
@@ -2193,6 +2263,8 @@ public class PkgMgrFrame extends JFrame
     {
         testRecordingEnded();
         
+        DataCollector.cancelTestMethod(getPackage(), testIdentifier);
+
         // remove objects from object bench (may have been put there
         // when testing was started)
         getProject().removeClassLoader();
@@ -2242,6 +2314,7 @@ public class PkgMgrFrame extends JFrame
         this.testTargetMethod = testName;
         this.testTarget = testClass;
         this.testIdentifier = nextTestIdentifier.incrementAndGet(); // Allocate next test identifier
+        DataCollector.startTestMethod(getPackage(), testIdentifier, testClass.getSourceFile(), testName);
     }
 
     /**
@@ -2365,6 +2438,7 @@ public class PkgMgrFrame extends JFrame
         if (!isEmptyFrame())
         {
             getProject().restartVM();
+            DataCollector.restartVM(getProject());
         }
     }
 
@@ -2435,7 +2509,7 @@ public class PkgMgrFrame extends JFrame
      */
     public void updateSharedStatus(boolean shared)
     {
-        updateWindowTitle();
+        updateWindow();
     }
     
     /**
@@ -2605,7 +2679,11 @@ public class PkgMgrFrame extends JFrame
         // paintComponent method to use a gradient fill (no other way to do it)
         // Hence this code, that sets the content pane to be a standard JPanel with
         // the same layout as before, but with paintComponent performing a gradient fill:
-        setContentPane(new GradientFillPanel(getContentPane().getLayout()));
+        if (!Config.isRaspberryPi()){
+            setContentPane(new GradientFillPanel(getContentPane().getLayout()));
+        }else{
+            setContentPane(new JPanel(getContentPane().getLayout()));
+        }
         // To let that gradient fill show through, all the other panes that sit
         // on top of the frame must have setOpaque(false) called, hence all the calls
         // of that type throughout the code below
@@ -2616,7 +2694,7 @@ public class PkgMgrFrame extends JFrame
         // create the main panel holding the diagram and toolbar on the left
 
         JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
-        mainPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) mainPanel.setOpaque(false);
 
         // Install keystroke to restart the VM
         Action action = RestartVMAction.getInstance();
@@ -2626,10 +2704,10 @@ public class PkgMgrFrame extends JFrame
 
         // create the left hand side toolbar
         JPanel toolPanel = new JPanel();
-        toolPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) toolPanel.setOpaque(false);
         {
             buttonPanel = new JPanel();
-            buttonPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) buttonPanel.setOpaque(false);
             {
                 buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.Y_AXIS));
                 buttonPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 0, 5));
@@ -2654,7 +2732,7 @@ public class PkgMgrFrame extends JFrame
             }
 
             testPanel = new JPanel();
-            testPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) testPanel.setOpaque(false);
             {
                 testPanel.setLayout(new BoxLayout(testPanel, BoxLayout.Y_AXIS));
 
@@ -2698,7 +2776,7 @@ public class PkgMgrFrame extends JFrame
             testItems.add(testPanel);
             
             teamPanel = new JPanel();
-            teamPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) teamPanel.setOpaque(false);
             {
                 teamPanel.setLayout(new BoxLayout(teamPanel, BoxLayout.Y_AXIS));
 
@@ -2724,7 +2802,7 @@ public class PkgMgrFrame extends JFrame
             teamItems.add(teamPanel);
 
             javaMEPanel = new JPanel();
-            javaMEPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) javaMEPanel.setOpaque(false);
             {
                 javaMEPanel.setLayout(new BoxLayout(javaMEPanel, BoxLayout.Y_AXIS));
 
@@ -2770,7 +2848,7 @@ public class PkgMgrFrame extends JFrame
         classScroller.setFocusable(false);
         classScroller.getVerticalScrollBar().setUnitIncrement(10);
         classScroller.getHorizontalScrollBar().setUnitIncrement(20);
-        classScroller.setOpaque(false);
+        if (!Config.isRaspberryPi()) classScroller.setOpaque(false);
         mainPanel.add(classScroller, BorderLayout.CENTER);
 
         itemsToDisable.add(objbench);
@@ -2779,13 +2857,13 @@ public class PkgMgrFrame extends JFrame
         splitPane.setBorder(null);
         splitPane.setResizeWeight(1.0);
         splitPane.setDividerSize(5);
-        splitPane.setOpaque(false);
+        if (!Config.isRaspberryPi()) splitPane.setOpaque(false);
         contentPane.add(splitPane, BorderLayout.CENTER);
 
         // create the bottom status area
 
         JPanel statusArea = new JPanel(new BorderLayout());
-        statusArea.setOpaque(false);
+        if (!Config.isRaspberryPi()) statusArea.setOpaque(false);
         {
             statusArea.setBorder(BorderFactory.createEmptyBorder(2, 0, 4, 6));
 
@@ -2855,8 +2933,9 @@ public class PkgMgrFrame extends JFrame
             objectBenchSplitPane.setBorder(null);
             objectBenchSplitPane.setResizeWeight(1.0);
             objectBenchSplitPane.setDividerSize(5);
-            objectBenchSplitPane.setOpaque(false);
+            if (!Config.isRaspberryPi()) objectBenchSplitPane.setOpaque(false);
             itemsToDisable.add(textEvaluator);
+            addCtrlTabShortcut(textEvaluator.getFocusableComponent());
         }
         else {
             objectBenchSplitPane.setLeftComponent(objbench);
@@ -3032,8 +3111,10 @@ public class PkgMgrFrame extends JFrame
 
             // If this is the first frame create the extension tools menu now.
             // (Otherwise, it will be created during project open.)
-            if (frames.size() <= 1)
+            if (frames.size() <= 1) {
+                toolsMenuManager.setMenuGenerator(new ToolsExtensionMenu(null));
                 toolsMenuManager.addExtensionMenu(null);
+            }
         }
 
         menu = new JMenu(Config.getString("menu.view"));
@@ -3243,6 +3324,66 @@ public class PkgMgrFrame extends JFrame
         return pkg.getProject().isJavaMEProject();
     }        
     
+    /**
+     * Adds shortcuts for Ctrl-TAB and Ctrl-Shift-TAB to the given pane, which move to the
+     * next/previous pane of the main three (package editor, object bench, code pad) that are visible
+     */
+    private void addCtrlTabShortcut(final JComponent toPane)
+    {
+        toPane.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_TAB, InputEvent.CTRL_DOWN_MASK), "nextPMFPane");
+        toPane.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_TAB, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK), "prevPMFPane");
+        toPane.getActionMap().put("nextPMFPane", new AbstractAction() {
+            
+            @Override
+            public void actionPerformed(ActionEvent e)
+            {
+                movePaneFocus(toPane, +1);
+            }
+        });
+        toPane.getActionMap().put("prevPMFPane", new AbstractAction() {
+            
+            @Override
+            public void actionPerformed(ActionEvent e)
+            {
+                movePaneFocus(toPane, -1);
+            }
+        });
+    }
+    
+    /**
+     * Moves focus from given pane to prev (-1)/next (+1) pane.
+     */
+    private void movePaneFocus(final JComponent fromPane, int direction)
+    {
+        List<JComponent> visiblePanes = new ArrayList<JComponent>();
+        if (editor != null)
+        {
+            // editor is null if no package is open
+            visiblePanes.add(editor);
+        }
+        // Object bench is always present, even if no package open:
+        visiblePanes.add(objbench);
+        if (showingTextEvaluator)
+        {
+            visiblePanes.add(textEvaluator.getFocusableComponent());
+        }
+        
+        for (int i = 0; i < visiblePanes.size(); i++)
+        {
+            if (visiblePanes.get(i) == fromPane)
+            {
+                int destination = i + direction;
+                // Wrap around:
+                if (destination >= visiblePanes.size()) destination = 0;
+                if (destination < 0) destination = visiblePanes.size() - 1;
+                
+                visiblePanes.get(destination).requestFocusInWindow();
+            }
+        }
+    }
+
     class URLDisplayer
         implements ActionListener
     {

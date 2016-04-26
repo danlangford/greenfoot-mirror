@@ -14,19 +14,25 @@
 
     <!-- Greenfoot Version Number -->
     <property name="greenfoot.version.major" value="2"/>
-    <property name="greenfoot.version.minor" value="3"/>
+    <property name="greenfoot.version.minor" value="4"/>
     <property name="greenfoot.version.micro" value="0"/>
     
+	<!-- Greenfoot version to API mapping:        -->
+	<!--    Greenfoot 2.3.0 = API version 2.5.0   -->
+	<!--    Greenfoot 2.4.0 = API version 2.6.0   -->
+	
     <!-- Change when API has changed in a way that is likely to break some scenarios. 
     A warning will be shown to the user - update the greenfoot-labels file to
     specify the breaking changes introduced in this version. -->
+	<!-- YOU MUST UPDATE THE GREENFOOT LABELS if you change this -->
     <property name="greenfoot.apiversion.breaking" value="2"/>
     
     <!-- Change when API has changed in a way that is visible to the user, but is very 
     unlikely to break scenarios (documentation changes, addition of method).
     Changing this number will stripe the user's classes and require a recompile.
     Do not change this number if the changes cannot break older scenarios. -->
-    <property name="greenfoot.apiversion.nonbreaking" value="5"/>
+	<!-- YOU SHOULD UPDATE THE GREENFOOT LABELS if you change this -->
+    <property name="greenfoot.apiversion.nonbreaking" value="6"/>
     
     <!-- Change when API has only changed internally and not in any way visible to the user. 
     It should not be possible for this change to break existing scenarios. 
@@ -121,9 +127,8 @@
         <exclude name="scenarios/**/doc/" />
         <exclude name="scenarios/**/__*" />
         <include name="scenarios/lunarlander/" />
-        <include name="scenarios/balloons/" />
-        <include name="scenarios/wombats/" />
-        <include name="scenarios/wombats2/" />
+        <include name="scenarios/ants/" />
+        <include name="scenarios/LTA/" />
     </patternset>
 
     <!-- The classpath to the greenfoot classes (once they are built) -->
@@ -193,8 +198,13 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 fork="yes"
                 srcdir="${src}" 
                 destdir="${build}" 
-                classpathref="bluej.class.path" 
-                debug="true">
+                debug="true"
+        		includeantruntime="false"
+        	    encoding="utf-8">
+        	<classpath>
+        	    <path refid="bluej.class.path"/>
+        	    <pathelement location="${build_java_home}/lib/tools.jar"/>
+        	</classpath>
             <compilerarg line="-target 1.6" />
             <compilerarg line="-source 1.6" /> <!-- Otherwise Java 7 (and above) complains -->
         </javac>
@@ -208,8 +218,8 @@ LICENSE.txt file that accompanied this code.${line.separator}
 
     <target name="compile-test" depends="compile" description="Compile the test source" >
         <!-- Compile the java code from ${test.src} into ${build} -->
-        <javac srcdir="${test.src}" destdir="${build}" classpathref="bluej.class.path" debug="true">
-            <compilerarg line="-target 1.5" />
+        <javac srcdir="${test.src}" destdir="${build}" classpathref="bluej.class.path" debug="true" encoding="utf-8">
+            <compilerarg line="-target 1.6" />
         </javac>
     </target>
 
@@ -237,7 +247,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <macrodef name="compile-scenario">
             <attribute name="scenario" />
             <sequential>
-                <javac srcdir="scenarios/@{scenario}" debug="true" target="1.6" source="1.6">
+                <javac srcdir="scenarios/@{scenario}" debug="true" target="1.6" source="1.6" includeantruntime="false" encoding="utf-8">
                     <classpath>
                         <path refid="greenfoot.class.path"/>
                         <path refid="bluej.class.path"/>
@@ -246,13 +256,20 @@ LICENSE.txt file that accompanied this code.${line.separator}
             </sequential>
         </macrodef>
 
+        <compile-scenario scenario="ants" />
+        <compile-scenario scenario="LTA" />
         <compile-scenario scenario="lunarlander" />
-        <compile-scenario scenario="balloons" />
-        <compile-scenario scenario="wombats" />
-        <compile-scenario scenario="wombats2" />
     </target>
 
-    <target name="ready-to-run" depends="update-images, compile, copy-imagelib, copy-projects, copy-common-classes, build-standalone-jar, create-api-doc, copy-apidocs, copy-labels" description="Builds everything so it is ready to run" >
+	<target name="check-bluej-compiled">
+		<fail message="bluejcore.jar not found; is BlueJ ready-to-run-greenfoot and is build.properties set correctly? (see build documentation)">
+		    <condition><not>
+		        <available file="${bluej.projectdir}/lib/bluejcore.jar" />
+		    </not></condition>
+		</fail>		
+	</target>
+	
+    <target name="ready-to-run" depends="check-bluej-compiled, update-images, compile, copy-imagelib, copy-projects, copy-common-classes, build-standalone-jar, create-api-doc, copy-apidocs, copy-labels" description="Builds everything so it is ready to run" >
         <!-- Put everything in ${build} into the the jar file-->
         <jar jarfile="${bluej.extensions.lib}/greenfoot.jar" basedir="${build}">
             <manifest>
@@ -311,10 +328,38 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <antcall target="copy-common-class">
           <param name="common.class" value="Animal"/>
         </antcall>
+    	<antcall target="copy-common-class">
+    	  <param name="common.class" value="Label"/>
+    	</antcall>
+    	<antcall target="copy-common-class">
+    	    <param name="common.class" value="Map"/>
+    	</antcall>
+    	
+    	<antcall target="build-common-jar">
+    		<param name="common.class" value="Weather"/>
+        </antcall>
+    	<antcall target="copy-common-class">
+       	  <param name="common.class" value="Weather"/>
+       	</antcall>
     </target>
+
+	<target name="build-common-jar" description="Create a jar with a common class dependencies." >
+	    <!-- Should first delete the class files in common (depend on clean-common) -->
+		<javac srcdir="common/${common.class}/src" destdir="common/${common.class}/classes"
+			debug="true" target="1.6" source="1.6" includeantruntime="false" encoding="utf-8">
+			<classpath>
+				<fileset dir="common/${common.class}/lib/">
+				    <include name="*.jar"/>
+				</fileset>
+			</classpath>
+		</javac>
+		<jar jarfile="common/${common.class}/lib/${common.class}.jar" basedir="common/${common.class}/classes"/>
+	</target>
 	
 	<target name="copy-common-class" depends="compile-scenarios">
-		<javadoc destdir="common" sourcefiles="common/${common.class}.java" Version="yes" notree="yes" noindex="yes" nohelp="yes" nonavbar="yes" classpath="${build}"/> 
+		<javadoc destdir="common" sourcefiles="common/${common.class}.java"
+			Version="yes" notree="yes" noindex="yes" nohelp="yes" nonavbar="yes"
+			classpath="${build}:common/${common.class}/lib/${common.class}.jar" docletpath="${bluej.projectdir}/lib/bjdoclet.jar" doclet="bluej.doclet.doclets.formats.html.HtmlDoclet"/> 
 		
 		<copy todir="${bluej.lib.greenfoot}" preservelastmodified="true">
 		  <fileset dir=".">
@@ -325,6 +370,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
 	          <include name="common/${common.class}.png" />
 	          <include name="common/${common.class}.jpg" />
 	          <include name="common/${common.class}.jpeg" />
+              <include name="common/${common.class}/lib/**" />
 	          <include name="common/inherit.gif" />
 	        </patternset>
 	      </fileset>
@@ -395,6 +441,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <copy file="resources/images/reset.png" todir="images"/>
         <!-- Export icons -->
         <copy file="resources/images/export-app.png" todir="images"/>
+        <copy file="resources/images/export-project.png" todir="images"/>
         <copy file="resources/images/export-publish.png" todir="images"/>
         <copy file="resources/images/export-publish-small.png" todir="images"/>
         <copy file="resources/images/export-webpage.png" todir="images"/>
@@ -423,6 +470,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
 	
 	<target name="windows-msi-dist" depends="update-images, dist">
 	    <ant dir="${bluej.projectdir}/package" antfile="greenfoot-build.xml" target="windows-msi-dist" />
+		<ant dir="${bluej.projectdir}/package" antfile="greenfoot-build.xml" target="windows-msi-bundled-dist" />
 	</target>
 	
 	<target name="mac-dist">
@@ -450,6 +498,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
      	<delete >
             <fileset dir="${bluej.projectdir}/lib">
                 <include name="commons*.jar"/>
+                <exclude name="commons-logging-api-*.jar"/>
             </fileset>
         </delete>
     	<delete file="${jlayer.jar.path}"/>
@@ -478,7 +527,19 @@ LICENSE.txt file that accompanied this code.${line.separator}
         </delete>
         
         <delete dir="${package}/scenarios"/>
+        
+    	<!-- Weather helper classes and jars -->
+    	<antcall target="clean-common-weather"/>
     </target>
+
+
+	<target name="clean-common-weather" description="clean up Weather .jar and .class files to be built again" >
+		<delete file="common/Weather/lib/Weather.jar"/>
+		<delete includeemptydirs="true">
+    	  <fileset dir="common/Weather/classes" includes="**/*" defaultexcludes="no"/>
+	    </delete>
+	</target>
+	
 
 	<!--include name="lib/*/greenfootAPI/**" /-->
 
@@ -502,9 +563,6 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <arg value="-useclassesdir=true">
             </arg>
             <arg value="-greenfootclassesdir=${build}"/>
-            <arg value="-greenfoot.scenarios=${greenfoot.scenarios}"/>
-            <arg value="-greenfoot.tutorial=${greenfoot.tutorial}"/>
-            <arg value="-greenfoot.tutorial.scenario=${greenfoot.tutorial.scenario}"/>
             <arg value="-bluej.compiler.showunchecked=false"/>
         </java>
     </target>
@@ -528,9 +586,6 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <arg value="-useclassesdir=true">
             </arg>
             <arg value="-greenfootclassesdir=${build}"/>
-            <arg value="-greenfoot.scenarios=${greenfoot.scenarios}"/>
-            <arg value="-greenfoot.tutorial=${greenfoot.tutorial}"/>
-            <arg value="-greenfoot.tutorial.scenario=${greenfoot.tutorial.scenario}"/>
             <arg value="-bluej.compiler.showunchecked=false"/>
             <arg value="-greenfoot.gameserver.address=http://localhost:3000"/>
             <arg value="-greenfoot.gameserver.createAccount.address=http://localhost:3000/users/new"/>
@@ -596,6 +651,8 @@ LICENSE.txt file that accompanied this code.${line.separator}
             sourcepath=""
         	source="1.6"
             target="1.6"
+        	includeantruntime="false"
+        	encoding="utf-8"
         >
             <src path="${src}"/>
 
@@ -618,6 +675,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <include name="greenfoot/core/ObjectDragProxy.java"/>
             <include name="greenfoot/core/ActInterruptedException.java"/>
         	<include name="greenfoot/core/ImageCache.java"/>
+        	<include name="greenfoot/core/TextLabel.java"/>
 
             <include name="greenfoot/event/SimulationEvent.java"/>
             <include name="greenfoot/event/SimulationListener.java"/>
@@ -639,7 +697,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <include name="greenfoot/gui/DragListener.java"/>
             <include name="greenfoot/gui/DropTarget.java"/>
             <include name="greenfoot/gui/WorldCanvas.java"/>
-            <include name="greenfoot/gui/CenterLayout.java"/>
+         
             <include name="greenfoot/gui/input/KeyboardManager.java"/>
             
             <include name="greenfoot/gui/input/InputManager.java"/>
@@ -678,6 +736,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <copy todir="${standalone.build}">
             <fileset dir="${bluej.projectdir}/classes/">
                 <include name="bluej/Config.class"/>
+            	<include name="bluej/utility/CenterLayout.class"/>
                 <include name="bluej/Config$*.class"/>
             	<include name="bluej/BlueJPropStringSource.class"/>
             	<include name="bluej/BlueJTheme.class"/>
@@ -706,7 +765,8 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 <include name="doc/THIRDPARTYLICENSE.txt" />
                 <include name="doc/LICENSE.txt" />  
                 <include name="doc/GREENFOOT_LICENSES.txt" />
-            	<include name="doc/Greenfoot-README.TXT" />
+            	<include name="doc/Greenfoot-README.txt" />
+            	<include name="doc/Greenfoot-architecture-and-design.txt" />
                 <patternset refid="distribution.scenarios"/>
                 <exclude name="scenarios/**/*.class" />    
                 <exclude name="scenarios/**/greenfoot/" />
@@ -714,6 +774,12 @@ LICENSE.txt file that accompanied this code.${line.separator}
             	<include name="common/*.java" />
                 <include name="common/*.png" />
                 <include name="common/*.gif" />
+            	<include name="common/Weather" />
+            	<include name="common/Weather/classes" />
+            	<include name="common/Weather/src/**" />
+            	<include name="common/Weather/lib" />
+            	<include name="common/Weather/lib/wunderground-core.jar" />
+            	
                 <include name="imagelib/**/*" />           
                 <exclude name="images/**/*" />     
                 <include name="labels/**/*"/>

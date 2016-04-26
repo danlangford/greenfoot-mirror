@@ -1,3 +1,24 @@
+/*
+ This file is part of the BlueJ program. 
+ Copyright (C) 2010,2013,2014  Michael Kolling and John Rosenberg 
+ 
+ This program is free software; you can redistribute it and/or 
+ modify it under the terms of the GNU General Public License 
+ as published by the Free Software Foundation; either version 2 
+ of the License, or (at your option) any later version. 
+ 
+ This program is distributed in the hope that it will be useful, 
+ but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+ GNU General Public License for more details. 
+ 
+ You should have received a copy of the GNU General Public License 
+ along with this program; if not, write to the Free Software 
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. 
+ 
+ This file is subject to the Classpath exception as provided in the  
+ LICENSE.txt file that accompanied this code.
+ */
 package bluej.debugmgr;
 
 import java.awt.BorderLayout;
@@ -87,6 +108,7 @@ public class ConstructorDialog extends CallDialog
 
         JLabel instName = new JLabel(sNameOfInstance);
         instanceNameText = new JTextField(instanceName, 16);
+        instName.setLabelFor(instanceNameText);
         // treat 'return' in text field as OK
         instanceNameText.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent evt)
@@ -106,7 +128,7 @@ public class ConstructorDialog extends CallDialog
         });
 
         JPanel tmpPanel = new JPanel();
-        tmpPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) tmpPanel.setOpaque(false);
 
         GridBagLayout gridBag = new GridBagLayout();
         tmpPanel.setLayout(gridBag);
@@ -145,7 +167,7 @@ public class ConstructorDialog extends CallDialog
             tmpPanel.add(name);
 
             JPanel typeParameterPanel = createTypeParameterPanel();
-            typeParameterPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) typeParameterPanel.setOpaque(false);
             constraints.gridwidth = 1;
             constraints.gridx = 1;
             constraints.anchor = GridBagConstraints.WEST;
@@ -168,14 +190,14 @@ public class ConstructorDialog extends CallDialog
             constraints.gridx = 1;
             constraints.fill = GridBagConstraints.HORIZONTAL;
             JPanel parameterPanel = createParameterPanel();
-            parameterPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) parameterPanel.setOpaque(false);
             tmpPanel.add(parameterPanel, constraints);
 
             constraints.gridx = 3;
             constraints.gridy = 0;
             constraints.weightx = 1.0;
             JPanel filler = new JPanel();
-            filler.setOpaque(false);
+            if (!Config.isRaspberryPi()) filler.setOpaque(false);
             gridBag.setConstraints(filler, constraints);
             tmpPanel.add(filler);
         }

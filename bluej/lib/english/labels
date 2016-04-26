@@ -36,6 +36,7 @@ debugger.inspector.get=Get
 debugger.inspector.class.nameLabel=Class
 debugger.inspector.enum.nameLabel=Enum
 debugger.inspector.interface.nameLabel=Interface
+debugger.inspector.numFields=Number of fields
 
 debugger.objectwrapper.methodException=Exception accessing methods:
 debugger.objectwrapper.invocationException=Exception during invocation:
@@ -127,6 +128,8 @@ prefmgr.interface.title=Interface
 prefmgr.interface.language.title=Language selection
 prefmgr.interface.language=Language
 prefmgr.interface.language.restart=You will need to restart $APPNAME for the language setting to take effect.
+prefmgr.accessibility.title=Accessibility
+prefmgr.accessibility.support=Accessibility Support
 
 # Extensions Manager Help panel
 extmgr.title=BlueJ:  Installed Extensions
@@ -286,6 +289,9 @@ editor.highlight.notFound=not found.
 # Message shown in code completion pane when nothing is found
 editor.completion.noMatch=No matching completions
 
+#Message shown in code completion while processing
+editor.completion.working=Loading...
+
 # Messages shown when determining what function is bound to a given key
 editor.keypressed.keyIsNotBound=is not bound to a function.
 editor.keypressed.callsTheFunction=calls the function "
@@ -360,6 +366,8 @@ pkgmgr.chooseWebPage.buttonLabel=Save HTML page
 pkgmgr.parentpackagetarget.open=Open
 pkgmgr.parentpackagetarget.openunamed=Open unnamed package
 
+pkgmgr.noProjectOpened.message=Use the Project menu to create or open a project
+
 pkgmgr.packagemenu.open=Open
 pkgmgr.packagemenu.remove=Remove
 
@@ -385,6 +393,13 @@ pkgmgr.test.popup.abstract=Test class is abstract
 pkgmgr.test.popup.createTest=Create Test Method...
 pkgmgr.test.popup.benchToFixture=Object Bench to Test Fixture
 pkgmgr.test.popup.fixtureToBench=Test Fixture to Object Bench
+
+#Accessibility
+pkgmgr.objBench.title=Object Bench
+pkgmgr.objBench.suffix.singular=object
+pkgmgr.objBench.suffix.plural=objects
+pkgmgr.codepad.title=Codepad
+pkgmgr.graphEditor.title=Class Diagram
 
 # codepad messages
 pkgmgr.codepad.uninitialized=Note: Codepad variables are automatically initialized\n in the same way as instance fields.
@@ -560,6 +575,9 @@ pkgmgr.error.open=The project does not exist (anymore)
 pkgmgr.checkingVersion=Making connection to version server...
 pkgmgr.midlet.deploying=Deploying MIDlet suite...
 pkgmgr.midlet.deployed=Deploying MIDlet suite... Done.
+
+# accessibility messages
+pkgmgr.accessibility.compileDone=Compilation successful.
 
 properties.heading.bluej=BlueJ properties. Settings in this file override \"bluej.defs\"
 properties.heading.moe=Moe Editor properties. Settings in this file override \"moe.defs\"
@@ -767,6 +785,7 @@ graph.tooltip.classBroken=This class cannot currently be parsed
 #Copyright
 
 menu.help.copyright.title=BlueJ Copyright, Licensing and Redistribution
+menu.help.copyright.line0=BlueJ \u00a9 2000-2014 Michael K\u00F6lling, John Rosenberg.
 menu.help.copyright.line1=BlueJ is available under the GNU General Public License  
 menu.help.copyright.line2=version 2 with Classpath exception.
 menu.help.copyright.line3=For more information please see the files LICENSE.txt 
@@ -777,7 +796,7 @@ menu.help.copyright.line4=and THIRDPARTYLICENSE.txt.
 
 collect.dialog.title=Research Participation
 
-collect.dialog.header1=The BlueJ team are running a data collection project to help researchers
+collect.dialog.header1=BlueJ collects anonymous interaction information to improve the software and help researchers
 collect.dialog.header2=understand how students learn to program.
 collect.dialog.header3=Please help us by participating.
 
@@ -788,9 +807,9 @@ collect.dialog.ethics1=If you agree to take part, you will permit us to collect 
 collect.dialog.ethics.seemore=See more information
 collect.dialog.ethics2=If you change your mind about helping us with this work, you can stop contributing at any time using the checkbox in the Tools/Preferences/Miscellaneous dialog.
 
-collect.status.optedin=You are currently taking part in the data collection research
-collect.status.nextsession=You will begin taking part in the data collection research next time BlueJ is started
-collect.status.optedout=You are currently not participating in the data collection research
+collect.status.optedin=You are currently allowing anonymous research data collection
+collect.status.nextsession=You will allow anonymous data collection research next time BlueJ is started
+collect.status.optedout=You are currently not participating in the anonymous research data collection
 
 # About
 

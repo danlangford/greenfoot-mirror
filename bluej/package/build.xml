@@ -27,6 +27,11 @@
         <include name="lib/svnkit.jar" />
         <include name="lib/svnkit-javahl.jar" />
         <include name="lib/trilead.jar" />
+    	<include name="lib/httpclient-4.1.1.jar" />
+    	<include name="lib/httpcore-4.1.jar" />
+    	<include name="lib/httpmime-4.1.1.jar" />
+    	<include name="lib/commons-logging-api-1.1.2.jar" />
+    	<include name="lib/diffutils-1.2.1.jar" />
     	<include name="lib/bjdoclet.jar" />
         <include name="lib/bluej.defs" />
         <include name="lib/moe.defs" />
@@ -127,7 +132,11 @@
 
         <!-- make sure the people .class files are dated in the future so they
              will appear to be compiled -->
-        <touch datetime="1/1/2010 12:00 pm">
+         <tstamp>
+            <format property="touch.time" pattern="MM/dd/yyyy hh:mm aa" offset="5" unit="year"/>
+        </tstamp>
+
+        <touch datetime="${touch.time}">
             <fileset dir="install_tmp" >
                 <patternset refid="bluej.examples.classes"/>
             </fileset>
@@ -285,14 +294,18 @@
         	todir="${zip_dir}/BlueJ.app/Contents/Resources" />
     	
     	<!-- Copy the JDK to the app -->
-    	<copy  todir="${zip_dir}/BlueJ.app/Contents/PlugIns/jdk">
+    	<copy  todir="${zip_dir}/BlueJ.app/Contents/Frameworks/jdk.framework/Versions/A">
     		<fileset dir="${mac_bundled_jdk_path}" />
     	</copy>
+    	
+	    <!-- symlink the info.properties file -->
+    	<symlink link="${zip_dir}/BlueJ.app/Contents/Frameworks/jdk.framework/Resources/Info.plist"
+    		resource="../Versions/A/Contents/Info.plist" />
     	
     	<!-- Remove the legacy app -->
     	<delete dir="${zip_dir}/BlueJ-legacy.app" />
 
-        <property name="executable_files2" value="**/PkgInfo,**/JavaAppLauncher,**/Contents/PlugIns/jdk/Contents/**/bin/*" />
+        <property name="executable_files2" value="**/PkgInfo,**/JavaAppLauncher,**/Contents/Frameworks/jdk.framework/Versions/A/Contents/**/bin/*" />
 
         <!-- ZIP it -->
         <zip destfile="${dist.mac}" duplicate="fail">
@@ -313,7 +326,15 @@
 		<delete dir="winsetup/SourceDir" />
 		<delete dir="winsetup" includes="*.wixobj" />
 		<unzip src="${dist.jar}" dest="winsetup/SourceDir" />
-			
+
+        <!-- make sure line endings are in windows format -->
+        <fixcrlf srcdir="winsetup/SourceDir" eol="crlf" encoding="ISO-8859-1">
+            <patternset refid="bluej.textfiles.iso88591" />
+        </fixcrlf>
+        <fixcrlf srcdir="winsetup/SourceDir" eol="crlf" encoding="UTF-8">
+            <patternset refid="bluej.textfiles.utf8" />
+        </fixcrlf>
+		
 		<exec dir="winsetup" executable="${wix_bin}/candle.exe">
 			<arg line="CheckboxExtrasDlg.wxs"/>
 		</exec>
@@ -341,6 +362,59 @@
 		<delete dir="winsetup/SourceDir" />
 	</target>
 
+	<target name="windows-msi-bundled-dist" depends="dist">
+		<delete dir="winsetup/SourceDir" />
+		<delete dir="winsetup" includes="*.wixobj" />
+		<unzip src="${dist.jar}" dest="winsetup/SourceDir" />
+
+        <!-- make sure line endings are in windows format -->
+        <fixcrlf srcdir="winsetup/SourceDir" eol="crlf" encoding="ISO-8859-1">
+            <patternset refid="bluej.textfiles.iso88591" />
+        </fixcrlf>
+        <fixcrlf srcdir="winsetup/SourceDir" eol="crlf" encoding="UTF-8">
+            <patternset refid="bluej.textfiles.utf8" />
+        </fixcrlf>
+		
+		<!-- Fix the path to the JDK in bluej.defs -->
+        <replaceregexp byline="true">
+            <regexp pattern="#bluej\.windows\.vm=.*"/>
+            <substitution expression="bluej.windows.vm=jdk"/>
+            <fileset dir="winsetup/SourceDir/lib" includes="bluej.defs"/>
+        </replaceregexp>
+
+		<!-- Copy the JDK to be bundled -->
+		<copy todir="winsetup/SourceDir/jdk">
+			<fileset dir="${win_bundled_jdk_path}" />
+		</copy>
+		
+		<!-- The heat tool scans all the files in SourceDir and generates
+		     a WiX file that has all the XML needed for installing all those files -->
+		<exec dir="winsetup" executable="${wix_bin}/heat.exe">
+			<arg line="dir SourceDir -cg BlueJFiles -dr INSTALLDIR -ke -gg -srd -sfrag -sreg -scom template fragment -out bluej-install-files.wxs"/>
+		</exec>
+
+		<exec dir="winsetup" executable="${wix_bin}/candle.exe">
+			<arg line="CheckboxExtrasDlg.wxs"/>
+		</exec>
+			
+		<exec dir="winsetup" executable="${wix_bin}/candle.exe">
+			<arg line="ui.wxs"/>
+		</exec>
+			
+		<exec dir="winsetup" executable="${wix_bin}/candle.exe">
+			<arg line="bluej.wxs"/>
+		</exec>
+			
+		<exec dir="winsetup" executable="${wix_bin}/candle.exe">
+			<arg line="bluej-install-files.wxs"/>
+		</exec>
+			
+		<exec dir="winsetup" executable="${wix_bin}/light.exe">
+			<arg line="-ext WixUIExtension -loc bluej.wxl bluej.wixobj CheckboxExtrasDlg.wixobj ui.wixobj bluej-install-files.wixobj -o bluej-${bluej.version}-bundled.msi"/>
+		</exec>
+		<delete dir="winsetup/SourceDir" />
+	</target>
+		
 	<target name="debian-dist">
 		<mkdir dir="bluejdeb" />
 		<copy todir="bluejdeb">
@@ -481,8 +555,11 @@
             	<include name="doc/threading-issues.txt" />
 	            <include name="examples/**/*" />          
 	            <include name="icons/**/*" />           
-	            <include name="lib/**/*" />     
-	            <exclude name="lib/commons-*"/>
+	            <include name="lib/**/*" />
+            	
+            	<!-- exclude Greenfoot files -->
+	            <exclude name="lib/commons-httpclient-*"/>
+	            <exclude name="lib/commons-codec-*"/>
 	            <exclude name="lib/jl*"/>
 	            <exclude name="lib/bluej.jar"/>
 	            <exclude name="lib/bluejcore.jar"/>
@@ -490,6 +567,7 @@
 		        <exclude name="lib/bluejext.jar"/>
 		        <exclude name="lib/extensions/greenfoot.jar"/>
 		        <exclude name="lib/greenfoot/"/>
+            	
 	            <include name="package/**/*" />     
 	            <exclude name="package/commons-*"/>
 	            <exclude name="package/${bluej.source.zip}"/>

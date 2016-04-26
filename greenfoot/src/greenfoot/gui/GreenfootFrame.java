@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2013,2014  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -75,7 +75,9 @@ import greenfoot.sound.SoundFactory;
 import greenfoot.util.GreenfootUtil;
 
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.HeadlessException;
@@ -83,23 +85,29 @@ import java.awt.Image;
 import java.awt.Menu;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
+import java.rmi.RemoteException;
 import java.util.Iterator;
 import java.util.List;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.ButtonModel;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
@@ -111,8 +119,11 @@ import rmiextension.wrappers.RBlueJ;
 import rmiextension.wrappers.event.RCompileEvent;
 import bluej.BlueJTheme;
 import bluej.Config;
+import bluej.extensions.ProjectNotOpenException;
 import bluej.prefmgr.PrefMgr;
 import bluej.utility.DBox;
+import bluej.utility.CenterLayout;
+import bluej.utility.Debug;
 
 import com.apple.eawt.AboutHandler;
 import com.apple.eawt.AppEvent.AboutEvent;
@@ -122,6 +133,7 @@ import com.apple.eawt.Application;
 import com.apple.eawt.PreferencesHandler;
 import com.apple.eawt.QuitHandler;
 import com.apple.eawt.QuitResponse;
+import java.awt.Font;
 
 /**
  * The main frame for a Greenfoot project (one per project)
@@ -137,7 +149,7 @@ public class GreenfootFrame extends JFrame
     private static final int WORLD_MARGIN = 40;
 
     private static final int accelModifier = Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
-    private static final int shiftAccelModifier = accelModifier | KeyEvent.SHIFT_MASK;
+    private static final int shiftAccelModifier = accelModifier | InputEvent.SHIFT_MASK;
 
     private RBlueJ rBlueJ;
     private GProject project;
@@ -152,6 +164,14 @@ public class GreenfootFrame extends JFrame
     private JScrollPane classScrollPane;
     /** The panel that needs to be revalidated when the world size changes */
     private JComponent centrePanel;
+
+    private JMenu recentProjectsMenu;
+    private JPanel messagePanel;
+    private JLabel messageLabel;
+    private JLabel messageLabel2;
+    private JButton tooLongRestartButton;
+    private CardLayout card;
+    private DBox worldBox;
     
     private NewClassAction newClassAction;
     private ImportClassAction importClassAction;
@@ -169,7 +189,10 @@ public class GreenfootFrame extends JFrame
     private ToggleDebuggerAction toggleDebuggerAction;
     private ToggleSoundAction toggleSoundAction;
     
-    private JMenu recentProjectsMenu;
+    /**
+     * Specifies whether a compilation operation is in progress
+     */
+    private boolean isCompiling = false;
     
     /**
      * Specifies whether the project has been closed and only the empty frame is showing.
@@ -266,7 +289,6 @@ public class GreenfootFrame extends JFrame
             setBounds(40, 40, 700, 500);
             setResizeWhenPossible(true);
         }
-        
     }
 
     
@@ -320,20 +342,16 @@ public class GreenfootFrame extends JFrame
             enableProjectActions();
 
             worldCanvas.setVisible(false);
-
             // Class browser
-            buildClassBrowser();
-            populateClassBrowser(classBrowser, project);
-            classBrowser.setVisible(true);
-            classScrollPane.setViewportView(classBrowser);
-
+            constructClassBrowser(project);
             restoreFrameState();
 
             try {
                 ProjectProperties props = project.getProjectProperties();
                 int initialSpeed = props.getInt("simulation.speed");
                 Simulation.getInstance().setSpeed(initialSpeed);
-            } catch (NumberFormatException nfe) {
+            }
+            catch (NumberFormatException nfe) {
                 // If there is no speed info in the properties we don't care...
             }
             
@@ -346,6 +364,15 @@ public class GreenfootFrame extends JFrame
             toggleSoundAction.setProject(project);
             isClosedProject = false;
         }
+        updateBackgroundMessage();
+    }
+
+    private void constructClassBrowser(final GProject project)
+    {
+        buildClassBrowser();
+        populateClassBrowser(classBrowser, project);
+        classBrowser.setVisible(true);
+        classScrollPane.setViewportView(classBrowser);
     }
     
     /**
@@ -362,6 +389,9 @@ public class GreenfootFrame extends JFrame
         enableProjectActions();
         repaint();
         isClosedProject = true;
+        
+        //TODO is next line needed?
+        updateBackgroundMessage();
     }
 
     /**
@@ -421,6 +451,7 @@ public class GreenfootFrame extends JFrame
         };
 
         sim.addSimulationListener(new SimulationListener() {
+            @Override
             public void simulationChanged(SimulationEvent e)
             {
                 // If the simulation starts, try to transfer keyboard
@@ -453,6 +484,43 @@ public class GreenfootFrame extends JFrame
             }
         });
         
+        messagePanel = new JPanel(new CenterLayout());
+        JPanel subPanel = new JPanel();
+        subPanel.setLayout(new BoxLayout(subPanel, BoxLayout.Y_AXIS));
+        messageLabel = new JLabel("");
+        final Font msgFont = messageLabel.getFont().deriveFont(Font.BOLD + Font.ITALIC, 16.0f);
+        final Color msgColor = new Color(150,150,150);
+        messageLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        messageLabel.setForeground(msgColor);
+        messageLabel.setFont(msgFont);
+        subPanel.add(messageLabel);
+        messageLabel2 = new JLabel("");
+        messageLabel2.setAlignmentX(Component.CENTER_ALIGNMENT);
+        messageLabel2.setForeground(msgColor);
+        messageLabel2.setFont(msgFont);
+        subPanel.add(messageLabel2);
+        subPanel.add(Box.createVerticalStrut(15));
+        tooLongRestartButton = new JButton(Config.getString("centrePanel.restartButton.label"));
+        tooLongRestartButton.setVisible(false);
+        tooLongRestartButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        tooLongRestartButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e)
+            {
+                try {
+                    project.getRProject().restartVM();
+                }
+                catch (RemoteException e1) {
+                    Debug.reportError(e1);
+                }
+                catch (ProjectNotOpenException e1) {
+                    Debug.reportError(e1);
+                }                
+            }
+        });
+        subPanel.add(tooLongRestartButton);
+        messagePanel.add(subPanel);
+        
         JScrollPane worldScrollPane = new JScrollPane(worldCanvas);
         //Stop the world scroll pane scrolling when arrow keys are pressed - stops it interfering with the scenario.
         String[] scrollLabels = new String[]{"unitScrollLeft", "unitScrollRight", "unitScrollUp", "unitScrollDown"};
@@ -464,8 +532,12 @@ public class GreenfootFrame extends JFrame
                 }
             });
         }
-        DBox worldBox = new DBox(DBox.Y_AXIS, 0.5f); // scroll pane
-        worldBox.addAligned(worldScrollPane);
+
+        card=new CardLayout();
+        worldBox = new DBox(DBox.Y_AXIS, 0.5f); // scroll pane
+        worldBox.setLayout(card);
+        worldBox.add(worldScrollPane, "worldPanel"); // worldPanel is an ID that refers to the World Panel
+        worldBox.add(messagePanel, "messagePanel"); // messagePanel is an ID that refers to the Message Panel
 
         canvasPanel.add(worldBox);
         // Set the scroll bar increments so that using the scroll wheel works well:
@@ -497,6 +569,7 @@ public class GreenfootFrame extends JFrame
         // the class browser 
         
         classScrollPane = new JScrollPane(classBrowser) {
+            @Override
             public Dimension getPreferredSize()
             {
                 Dimension size = super.getPreferredSize();
@@ -533,6 +606,7 @@ public class GreenfootFrame extends JFrame
         contentPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(Config.GREENFOOT_SET_PLAYER_NAME_SHORTCUT, "setPlayerAction");
         contentPane.getActionMap().put("setPlayerAction", setPlayerAction);
         
+        updateBackgroundMessage();
         pack();
     }
 
@@ -555,6 +629,7 @@ public class GreenfootFrame extends JFrame
      * 
      * <p>Call on event thread only.
      */
+    @Override
     public void pack()
     {
         super.pack();
@@ -580,6 +655,7 @@ public class GreenfootFrame extends JFrame
      * Return the preferred size for the frame. The preferred size adds a bit of
      * spacing to the default size to get a margin around the world display.
      */
+    @Override
     public  Dimension getPreferredSize()
     {
         Dimension dim = super.getPreferredSize();
@@ -728,7 +804,7 @@ public class GreenfootFrame extends JFrame
     /** 
      * Add a menu to a menu bar.
      */
-    private JMenu addMenu(String name, JMenuBar menubar, char mnemonic)
+    private static JMenu addMenu(String name, JMenuBar menubar, char mnemonic)
     {
         JMenu menu = new JMenu(name);
         if(!Config.isMacOS()) {
@@ -741,7 +817,7 @@ public class GreenfootFrame extends JFrame
     /** 
      * Add a menu item to a menu.
      */
-    private void addMenuItem(Action action, JMenu menu, int accelKey, boolean shift, int mnemonicKey)
+    private static void addMenuItem(Action action, JMenu menu, int accelKey, boolean shift, int mnemonicKey)
     {
         if(accelKey != -1) {
             if(shift) {
@@ -770,7 +846,7 @@ public class GreenfootFrame extends JFrame
      * @param shift         Used to determine if the accelKey needs shift pressed to happen
      * @param mnemonicKey   Quick keyboard shortcut via the menu for this action.
      */
-    private void createCheckboxMenuItem(ToggleAction action, boolean selected, JMenu menu, int accelKey, boolean shift, int mnemonicKey)
+    private static void createCheckboxMenuItem(ToggleAction action, boolean selected, JMenu menu, int accelKey, boolean shift, int mnemonicKey)
     {
         if(accelKey != -1) {
             if(shift) {
@@ -787,7 +863,8 @@ public class GreenfootFrame extends JFrame
         ButtonModel bm = action.getToggleModel();
         if (bm == null) {
             item.setSelected(selected);
-        } else {
+        }
+        else {
             item.setModel(bm);
         }
         menu.add(item);
@@ -864,6 +941,7 @@ public class GreenfootFrame extends JFrame
      * @see java.awt.Window#dispose()
      * @see #exit()
      */
+    @Override
     public void dispose()
     {
         // I will not close :-)
@@ -872,6 +950,7 @@ public class GreenfootFrame extends JFrame
     /**
      * Returns the maximum size, which is the size of the screen.
      */
+    @Override
     public Dimension getMaximumSize()
     {
         return Toolkit.getDefaultToolkit().getScreenSize();
@@ -901,9 +980,7 @@ public class GreenfootFrame extends JFrame
         else if ( worldDimensions.width < dim.width || worldDimensions.height < dim.height ) {
             return true;
         }
-        else {
-            return false;
-        }
+        return false;
     }
     
     /**
@@ -927,54 +1004,133 @@ public class GreenfootFrame extends JFrame
         this.resizeWhenPossible = b;
     }
     
+    public void updateBackgroundMessage()
+    {
+        String message = "";
+        String message2 = "";
+        if(worldCanvas.isVisible()) {
+            card.show(worldBox, "worldPanel");
+        }
+        else if(!isCompiling){
+            if (project == null) {
+                message = Config.getString("centrePanel.message.openScenario");
+            }
+            else {
+                boolean noWorldClassFound = true;
+                boolean noCompiledWorldClassFound = true;
+                GClass[] projectClasses = project.getDefaultPackage().getClasses(false);
+                for (GClass projectClass : projectClasses) {
+                    if (projectClass.isWorldSubclass()) {
+                        noWorldClassFound = false;
+                        if (projectClass.isCompiled()) {
+                            noCompiledWorldClassFound = false;
+                        }
+                    }
+                }
+                 
+                tooLongRestartButton.setVisible(false);
+                if (noWorldClassFound) {
+                    message = Config.getString("centrePanel.message.createWorldClass");
+                }
+                else if (noCompiledWorldClassFound) {
+                    message = Config.getString("centrePanel.message.compile");
+                }
+                else if (worldHandlerDelegate.initialisationError()) {
+                    message = Config.getString("centrePanel.message.error1");
+                    message2 = Config.getString("centrePanel.message.error2");
+                }
+                else if (worldHandlerDelegate.initialisingForTooLong()) {
+                    message = Config.getString("centrePanel.message.initialisingTooLong1");
+                    message2 = Config.getString("centrePanel.message.initialisingTooLong2");
+                    tooLongRestartButton.setVisible(true);
+                }
+                else if (worldHandlerDelegate.initialising()) {
+                    message = Config.getString("centrePanel.message.initialising");
+                }
+                else if (worldHandlerDelegate.isVmRestarted()) {
+                    message = Config.getString("centrePanel.message.afterRestarting1");
+                    message2 = Config.getString("centrePanel.message.afterRestarting2");
+                    worldHandlerDelegate.setVmRestarted(false);
+                }
+                else if (worldHandlerDelegate.isMissingConstructor()) {
+                    message = Config.getString("centrePanel.message.missingWorldConstructor1");
+                    message2 = Config.getString("centrePanel.message.missingWorldConstructor2");
+                    worldHandlerDelegate.setMissingConstructor(false);
+                }
+            }
+            card.show(worldBox, "messagePanel");
+        }
+        messageLabel.setText(message);
+        messageLabel2.setText(message2);
+    }
+    
     // ----------- WindowListener interface -----------
     
+    @Override
     public void windowOpened(WindowEvent e) {}
 
+    @Override
     public void windowClosing(WindowEvent e)
     {
         GreenfootMain.closeProject(this, true);
     }
 
+    @Override
     public void windowClosed(WindowEvent e) {}
 
+    @Override
     public void windowIconified(WindowEvent e) {}
 
+    @Override
     public void windowDeiconified(WindowEvent e) {}
 
+    @Override
     public void windowActivated(WindowEvent e) {}
 
+    @Override
     public void windowDeactivated(WindowEvent e) {}
 
     // ----------- CompileListener interface -----------
     
+    @Override
     public void compileStarted(RCompileEvent event)
     {
         WorldHandler.getInstance().discardWorld();
+        this.isCompiling = true;
     }
 
+    @Override
     public void compileError(RCompileEvent event) { }
 
+    @Override
     public void compileWarning(RCompileEvent event) { }
 
+    @Override
     public void compileSucceeded(RCompileEvent event)
     {
         EventQueue.invokeLater(new Runnable() {
+            @Override
             public void run()
             {
                 WorldHandler.getInstance().instantiateNewWorld();
                 classBrowser.repaint();
                 compileAllAction.setEnabled(project != null);
+                isCompiling = false;
+                updateBackgroundMessage();
             }
         });
     }
 
+    @Override
     public void compileFailed(RCompileEvent event)
     {
         EventQueue.invokeLater(new Runnable() {
+            @Override
             public void run()
             {
                 compileAllAction.setEnabled(project != null);
+                isCompiling = false;
+                updateBackgroundMessage();
             }
         });
     }
@@ -997,6 +1153,8 @@ public class GreenfootFrame extends JFrame
         worldCanvas.setVisible(true);
         centrePanel.revalidate();
         worldDimensions = worldCanvas.getPreferredSize();
+        
+        updateBackgroundMessage();
     }
     
     @Override
@@ -1004,12 +1162,15 @@ public class GreenfootFrame extends JFrame
     {
         inspectorManager.removeAllInspectors();
         worldCanvas.setVisible(false);
+        
+        updateBackgroundMessage();
     }
 
     // ------------- end of WorldListener interface ------------
     
     // ------------- SelectionListener interface ---------------
     
+    @Override
     public void selectionChange(Selectable source)
     {
         if (source instanceof ClassView) {
@@ -1028,6 +1189,7 @@ public class GreenfootFrame extends JFrame
         else {
             removeSelectedClassAction.setEnabled(false);
         }
+        updateBackgroundMessage();
     }
     
     // ------------- end of SelectionListener interface --------
@@ -1039,4 +1201,5 @@ public class GreenfootFrame extends JFrame
     {
         return inspectorManager;
     }
+
 }

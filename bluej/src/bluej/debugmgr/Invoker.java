@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -36,6 +36,7 @@ import java.util.Map;
 import javax.swing.JFrame;
 
 import bluej.Config;
+import bluej.collect.DataCollector;
 import bluej.compiler.CompileObserver;
 import bluej.compiler.Diagnostic;
 import bluej.compiler.EventqueueCompileObserver;
@@ -95,6 +96,7 @@ public class Invoker
         new HashMap<ConstructorView, ConstructorDialog>();
 
     private JFrame pmf;
+    private Package pkg; //For data collection purposes
     private boolean codepad; //Used to decide whether to do data collection (don't record if for codepad)
     private File pkgPath;
     private String pkgName;
@@ -105,6 +107,9 @@ public class Invoker
     private String shellName;
     /** Name of the result object */
     private String objName;
+    /** The name that the object will have on the object bench.
+        Used by data collection. */
+    private String benchName;
     private Map<String,GenTypeParameter> typeMap; // map type parameter names to types
     private ValueCollection localVars;
     private ValueCollection objectBenchVars;
@@ -209,6 +214,7 @@ public class Invoker
         // in the case of a constructor, we need to construct an object name
         if (member instanceof ConstructorView) {
             this.objName = pmf.getProject().getDebugger().guessNewName(member.getClassName());
+            benchName = objName;
             constructing = true;
         }
         else if (member instanceof MethodView) {
@@ -260,6 +266,7 @@ public class Invoker
     private void initialize(final PkgMgrFrame pmf)
     {
         this.pmf = pmf;
+        this.pkg = pmf.getPackage();
         final Package pkg = pmf.getPackage();
         this.pkgPath = pkg.getPath();
         this.pkgName = pkg.getQualifiedName();
@@ -362,6 +369,7 @@ public class Invoker
             gotError = false;
             dialog.setEnabled(false);
             objName = dialog.getNewInstanceName();
+            benchName = objName;
             String[] actualTypeParams = dialog.getTypeParams();
             doInvocation(dialog.getArgs(), dialog.getArgGenTypes(true), actualTypeParams);
         }
@@ -1045,6 +1053,8 @@ public class Invoker
      */
     private void errorMessage(String filename, long lineNo, String message)
     {
+        DataCollector.invokeCompileError(pkg, commandString, message);
+        
         if (dialog != null) {
             dialog.setErrorMessage("Error: " + message);
         }
@@ -1213,6 +1223,10 @@ public class Invoker
                                 resultType = "void";
                             }
                         }
+                        
+                        PkgMgrFrame pmf = PkgMgrFrame.findFrame(pkg);
+                        
+                        DataCollector.invokeMethodSuccess(pkg, commandString, benchName, resultType, pmf == null ? -1 : pmf.getTestIdentifier(), ir.getUniqueIdentifier());
                     }
                     
                     ir.setResultObject(resultObj);
@@ -1221,11 +1235,20 @@ public class Invoker
 
                 case Debugger.EXCEPTION :
                     ExceptionDescription exc = result.getException();
+                    if (!codepad)
+                    {
+                        //Only record this if it wasn't on behalf of the codepad (codepad records separately):
+                        DataCollector.invokeMethodException(pkg, commandString, exc);
+                    }
                     watcher.putException(exc, ir);
                     break;
 
                 case Debugger.TERMINATED : // terminated by user
                     if (!codepad)
+                    {
+                        //Only record this if it wasn't on behalf of the codepad (codepad records separately):
+                        DataCollector.invokeMethodTerminated(pkg, commandString);
+                    }
                     watcher.putVMTerminated(ir);
                     break;
 

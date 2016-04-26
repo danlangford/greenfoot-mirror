@@ -33,6 +33,7 @@ import com.apple.eawt.Application;
 import com.apple.eawt.AppEvent;
 import com.apple.eawt.QuitResponse;
 
+import bluej.collect.DataCollector;
 import bluej.extensions.event.ApplicationEvent;
 import bluej.extmgr.ExtensionsManager;
 import bluej.pkgmgr.Package;
@@ -86,9 +87,18 @@ public class Main
         // event will be generated once we add a listener and will be delivered on
         // the dispatch thread. It will then be processed before the call to
         // processArgs() (just below) is called.
-        if (Config.isMacOS())
+        if (Config.isMacOS()) {
             prepareMacOSApp();
+        }
+
+        if (Config.isGreenfoot()) {
+            // Avoid having to put the Greenfoot classes on the system classpath:
+            // (only an issue with JDK 7u21, 6u45, and later).
+            System.setProperty("java.rmi.server.useCodebaseOnly", "false");
+        }
         
+        DataCollector.bluejOpened(getOperatingSystem(), getJavaVersion(), getBlueJVersion(), getInterfaceLanguage(), ExtensionsManager.getInstance().getLoadedExtensions(null));
+
         // process command line arguments, start BlueJ!
         EventQueue.invokeLater(new Runnable() {
             @Override
@@ -115,12 +125,6 @@ public class Main
      */
     private static void processArgs(String[] args)
     {
-        if (Config.isGreenfoot()) {
-            // Avoid having to put the Greenfoot classes on the system classpath:
-            // (only an issue with JDK 7u21, 6u45, and later).
-            System.setProperty("java.rmi.server.useCodebaseOnly", "false");
-        }
-        
         launched = true;
         
         boolean oneOpened = false;
@@ -433,6 +437,8 @@ public class Main
             Debug.reportError("Frame count was not zero when exiting. Work may not have been saved");
         }
 
+        DataCollector.bluejClosed();
+        
         // save configuration properties
         Config.handleExit();
         // exit with success status

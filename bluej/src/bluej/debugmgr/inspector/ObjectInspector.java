@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -68,6 +68,7 @@ import bluej.testmgr.record.GetInvokerRecord;
 import bluej.testmgr.record.InvokerRecord;
 import bluej.testmgr.record.ObjectInspectInvokerRecord;
 import bluej.utility.DialogManager;
+import bluej.utility.JavaNames;
 
 /**
  * A window that displays the fields in an object or a method return value.
@@ -82,6 +83,7 @@ public class ObjectInspector extends Inspector
 
     protected final static String inspectTitle = Config.getString("debugger.inspector.object.title");
     protected final static String noFieldsMsg = Config.getString("debugger.inspector.object.noFields");
+    protected final static String numFields = Config.getString("debugger.inspector.numFields");
 
     // === instance variables ===
     
@@ -151,9 +153,10 @@ public class ObjectInspector extends Inspector
             // than those on which it's known to work: MacOS and Windows.
             thisInspector.setWindowOpaque(false);
         }
-        if (!Config.isMacOS()) {
-            // MacOS automatically makes tranparent windows draggable by their
-            // content - no need to do it ourselves.
+        if ( !Config.isMacOS() || Config.isJava17() ) {
+            // Java 1.6 on MacOS automatically makes tranparent windows
+            // draggable by their content - no need to do it ourselves.
+            // It has to be done on Java 1.7
             thisInspector.installListenersForMoveDrag();
         }
     }
@@ -163,7 +166,6 @@ public class ObjectInspector extends Inspector
      */
     protected void makeFrame()
     {
-        setTitle(inspectTitle);
         setUndecorated(true);
         setLayout(new BorderLayout());
         setBackground(new Color(232,230,218));
@@ -179,10 +181,12 @@ public class ObjectInspector extends Inspector
 
         String fullTitle = null;
         if(objName != null) {
-            fullTitle = objName + " : " + className;   
+            fullTitle = objName + " : " + className;
+            setTitle(inspectTitle + " - " + objName + ", " + className + " " + numFields + " " + getListData().size());
         }
         else {
             fullTitle = " : " + className;
+            setTitle(inspectTitle);
         }
         JLabel headerLabel = new JLabel(fullTitle, JLabel.CENTER);
         Font font = headerLabel.getFont();
@@ -194,7 +198,11 @@ public class ObjectInspector extends Inspector
         header.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth));
         JSeparator sep = new JSeparator();
         sep.setForeground(new Color(214, 92, 92));
-        sep.setBackground(new Color(0, 0, 0, 0));
+        if (!Config.isRaspberryPi()) {
+            sep.setBackground(new Color(0, 0, 0, 0));
+        }else{
+            sep.setBackground(new Color (0,0,0));
+        }
         header.add(sep);
 
         // Create the main panel (field list, Get/Inspect buttons)
@@ -240,10 +248,10 @@ public class ObjectInspector extends Inspector
             }
         });
         buttonPanel.add(classButton, BorderLayout.WEST);
-        buttonPanel.setDoubleBuffered(false);
+        if (!Config.isRaspberryPi()) buttonPanel.setDoubleBuffered(false);
 
         bottomPanel.add(buttonPanel);
-        bottomPanel.setDoubleBuffered(false);
+        if (!Config.isRaspberryPi()) bottomPanel.setDoubleBuffered(false);
 
         // add the components
 
@@ -255,28 +263,42 @@ public class ObjectInspector extends Inspector
                 Graphics2D g2d = (Graphics2D)g.create();
                 {
                     GraphicsConfiguration gc = g2d.getDeviceConfiguration();
-                    BufferedImage img = gc.createCompatibleImage(getWidth(),
-                                    getHeight(),
-                                    Transparency.TRANSLUCENT);
+                    BufferedImage img;
+                    if (!Config.isRaspberryPi()) {
+                        img = gc.createCompatibleImage(getWidth(),
+                              getHeight(),
+                              Transparency.TRANSLUCENT);
+                    }else{
+                        img = gc.createCompatibleImage(getWidth(),
+                                getHeight());
+                    }
                     Graphics2D imgG = img.createGraphics();
 
-                    imgG.setComposite(AlphaComposite.Clear);
+                    if (!Config.isRaspberryPi()) imgG.setComposite(AlphaComposite.Clear);
                     imgG.fillRect(0, 0, getWidth(), getHeight());
     
-                    imgG.setComposite(AlphaComposite.Src);
-                    imgG.setRenderingHint(
-                            RenderingHints.KEY_ANTIALIASING,
-                            RenderingHints.VALUE_ANTIALIAS_ON);
+                    if (!Config.isRaspberryPi()) imgG.setComposite(AlphaComposite.Src);
+                    if (!Config.isRaspberryPi()) {
+                        imgG.setRenderingHint(
+                             RenderingHints.KEY_ANTIALIASING,
+                             RenderingHints.VALUE_ANTIALIAS_ON);
+                    }
                     imgG.setColor(Color.WHITE);
                     imgG.fillRoundRect(0, 0, getWidth(), getHeight(), 30, 30);
-    
-                    imgG.setComposite(AlphaComposite.SrcAtop);
-                    imgG.setPaint(new GradientPaint(getWidth() / 2, getHeight() / 2, new Color(227, 71, 71)
-                                                   ,getWidth() / 2, getHeight(), new Color(205, 39, 39)));
-                    imgG.fillRect(0, 0, getWidth(), getHeight());
                     
-                    imgG.setPaint(new GradientPaint(getWidth() / 2, 0, new Color(248, 120, 120)
-                                                   ,getWidth() / 2, getHeight() / 2, new Color(231, 96, 96)));
+                    if (!Config.isRaspberryPi()){
+                        imgG.setComposite(AlphaComposite.SrcAtop);
+                        imgG.setPaint(new GradientPaint(getWidth() / 2, getHeight() / 2, new Color(227, 71, 71)
+                                                       ,getWidth() / 2, getHeight(), new Color(205, 39, 39)));
+                        imgG.fillRect(0, 0, getWidth(), getHeight());
+                        
+                        imgG.setPaint(new GradientPaint(getWidth() / 2, 0, new Color(248, 120, 120)
+                                                       ,getWidth() / 2, getHeight() / 2, new Color(231, 96, 96)));
+                    }else{
+                        imgG.setPaint(new Color(216, 95, 83));
+                        imgG.fillRect(0, 0, getWidth(), getHeight());
+                        imgG.setPaint(new Color(239, 108, 67));
+                    }
                     imgG.fill(new Ellipse2D.Float(-2*getWidth(),-5*getHeight()/2,5*getWidth(),3*getHeight()));
 
                     imgG.setColor(Color.BLACK);
@@ -383,7 +405,14 @@ public class ObjectInspector extends Inspector
                 setButtonsEnabled(true, true);
             }
             else {
-                setButtonsEnabled(true, false);
+                boolean canGet = false;
+                if (! Modifier.isPrivate(field.getModifiers())) {
+                    // If the field is package-private and we are in the right package,
+                    // we'll allow the get operation:
+                    String fieldPkg = JavaNames.getPrefix(field.getDeclaringClassName());
+                    canGet = fieldPkg.equals(pkg.getQualifiedName());
+                }
+                setButtonsEnabled(true, canGet);
             }
         }
         else {

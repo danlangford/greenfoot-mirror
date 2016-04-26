@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2013  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -71,6 +71,8 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
     private BObject transportObject;
     
     private List<RProjectListener> listeners = new ArrayList<RProjectListener>();
+
+    private boolean vmRestarted = false;
 
     /**
      * Construct an RProjectImpl - generally only should be called from
@@ -389,5 +391,31 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
             });
         }
         catch (ProjectNotOpenException pnoe) { }
+    }
+
+    @Override
+    public void restartVM() throws RemoteException, ProjectNotOpenException
+    {
+        try {
+            // throws an illegal state exception
+            // if this is called whilst the remote VM
+            // is already restarting 
+            vmRestarted = true;
+            bProject.restartVM();
+        }
+        catch (IllegalStateException ise) {
+        }
+    }
+
+    @Override
+    public boolean isVMRestarted() throws RemoteException
+    {
+        return vmRestarted;
+    }
+
+    @Override
+    public void setVmRestarted(boolean vmRestarted)
+    {
+        this.vmRestarted = vmRestarted;
     }
 }

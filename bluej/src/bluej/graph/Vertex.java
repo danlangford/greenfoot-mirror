@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,62 +22,119 @@
 package bluej.graph;
 
 import java.awt.*;
+import java.awt.event.MouseEvent;
+
+import javax.accessibility.Accessible;
+import javax.accessibility.AccessibleContext;
+import javax.accessibility.AccessibleRole;
+import javax.swing.JComponent;
+import javax.swing.JComponent.AccessibleJComponent;
 
 /**
  * General graph vertices
  * 
  * @author Michael Cahill
  * @author Michael Kolling
- * @version $Id: Vertex.java 6215 2009-03-30 13:28:25Z polle $
  */
-public abstract class Vertex extends SelectableGraphElement
+public abstract class Vertex implements SelectableGraphElement
 {
-    private int x, y; // position
-    private int width, height; // size
-
-    /**
-     * Create this vertex with given specific position.
-     */
+    private final JComponent component;
+    
     public Vertex(int x, int y, int width, int height)
     {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
+        component = new VertexJComponent();
+        component.setFocusable(true);
+        component.setBounds(x, y, width, height);
+        component.setVisible(true);
     }
-
-    /**
-     * Set the position to the specified coordinates.
-     */
+    
+    
     public void setPos(int x, int y)
     {
-        this.x = x;
-        this.y = y;
+        component.setLocation(x, y);
     }
-
+            
+    
     /**
-     * Set the size to the specified height and width.
+     * The default shape for a vertex is a rectangle. Child classes can override
+     * this method to define more complex shapes.
      */
-    public void setSize(int width, int height)
+    public boolean contains(int x, int y)
     {
-        this.width = (width > 0 ? width : 10);
-        this.height = (height > 0 ? height : 10);
+        return (component.getX() <= x) && (x < component.getX() + component.getWidth()) && 
+               (component.getY() <= y) && (y < component.getY() + component.getHeight());
     }
 
-    /**
-     * Get this vertex's enclosing rectangle.
-     */
-    public Rectangle getRectangle()
+
+    @Override
+    public void remove()
     {
-        return new Rectangle(x, y, width, height);
+        // TODO Auto-generated method stub
+        
     }
 
+
+    @Override
+    public void doubleClick(MouseEvent evt)
+    {
+        // TODO Auto-generated method stub
+        
+    }
+
+
+    @Override
+    public void popupMenu(int x, int y, GraphEditor graphEditor)
+    {
+        // TODO Auto-generated method stub
+        
+    }
+
+
+    @Override
+    public String getTooltipText()
+    {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+
+    @Override
+    public void setSelected(boolean selected)
+    {
+        // TODO Auto-generated method stub
+        
+    }
+
+
+    @Override
+    public boolean isSelected()
+    {
+        // TODO Auto-generated method stub
+        return false;
+    }
+
+
+    @Override
+    public boolean isHandle(int x, int y)
+    {
+        // TODO Auto-generated method stub
+        return false;
+    }
+
+
+    @Override
+    public boolean isResizable()
+    {
+        // TODO Auto-generated method stub
+        return false;
+    }
+    
     /**
      * Get this vertex's x position.
      */
     public int getX()
     {
-        return this.x;
+        return component.getX();
     }
 
     /**
@@ -85,7 +142,7 @@ public abstract class Vertex extends SelectableGraphElement
      */
     public int getY()
     {
-        return this.y;
+        return component.getY();
     }
 
     /**
@@ -93,7 +150,7 @@ public abstract class Vertex extends SelectableGraphElement
      */
     public int getWidth()
     {
-        return this.width;
+        return component.getWidth();
     }
 
     /**
@@ -101,16 +158,72 @@ public abstract class Vertex extends SelectableGraphElement
      */
     public int getHeight()
     {
-        return this.height;
+        return component.getHeight();
     }
 
-    /**
-     * The default shape for a vertex is a rectangle. Child classes can override
-     * this method to define more complex shapes.
-     */
-    public boolean contains(int x, int y)
+
+    public boolean isVisible()
     {
-        return (getX() <= x) && (x < getX() + getWidth()) && 
-               (getY() <= y) && (y < getY() + getHeight());
+        return component.isVisible();
+    }
+
+
+    public void setVisible(boolean aFlag)
+    {
+        component.setVisible(aFlag);
+    }
+
+
+    public void setSize(int width, int height)
+    {
+        component.setSize(width, height);
+    }
+
+
+    public JComponent getComponent()
+    {
+        return component;
+    }
+
+
+    public Rectangle getBounds()
+    {
+        return component.getBounds();
+    }
+    
+    /**
+     * Gets the display name of the vertex
+     */
+    protected abstract String getDisplayName();
+    
+    private class VertexJComponent extends JComponent implements Accessible
+    {
+        public AccessibleContext getAccessibleContext() {
+            if (accessibleContext == null) {
+                accessibleContext = new AccessibleJComponent() {
+                    @Override
+                    public String getAccessibleName() {
+                        return Vertex.this.getDisplayName();
+                    }
+
+                    // If we leave the default role, NVDA ignores this component.
+                    // List item works, and seemed like an okay fit
+                    @Override
+                    public AccessibleRole getAccessibleRole() {
+                        return AccessibleRole.LIST_ITEM;
+                    }                
+                    
+                };
+            }
+            return accessibleContext;
+        }
+    };
+    
+    public void singleSelected()
+    {
+        if (!component.hasFocus())
+        {
+            component.requestFocusInWindow();
+        }
     }
 }

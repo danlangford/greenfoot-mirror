@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2013  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -18,12 +18,6 @@
  
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
- */
-/*
- * ExportWebPagePane.java
- *
- * @author Michael Kolling
- * @version $Id: ExportWebPagePane.java 8919 2011-05-05 05:12:13Z davmac $
  */
 
 package greenfoot.gui.export;
@@ -45,6 +39,11 @@ import javax.swing.JTextField;
 import bluej.BlueJTheme;
 import bluej.Config;
 
+/**
+ * ExportWebPagePane.java
+ *
+ * @author Michael Kolling
+ */
 public class ExportWebPagePane extends ExportPane
 {
     public static final String FUNCTION = "WEB";
@@ -113,6 +112,7 @@ public class ExportWebPagePane extends ExportPane
                 JButton browse = new JButton(Config.getString("export.web.browse"));
                 exportLocationPanel.add(browse);
                 browse.addActionListener(new ActionListener() {
+                    @Override
                     public void actionPerformed(ActionEvent e)
                     {
                         File file = FileChoosers.getFileName(ExportWebPagePane.this, defaultDir,

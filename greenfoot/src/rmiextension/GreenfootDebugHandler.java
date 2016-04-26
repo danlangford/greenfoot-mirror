@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2010,2011,2012 Poul Henriksen and Michael Kolling 
+ Copyright (C) 2010,2011,2012,2013 Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -67,7 +67,7 @@ public class GreenfootDebugHandler implements DebuggerListener
 {  
     private static final String SIMULATION_CLASS = Simulation.class.getName();   
     private static final String[] INVOKE_METHODS = {Simulation.ACT_WORLD, Simulation.ACT_ACTOR,
-            Simulation.NEW_INSTANCE, Simulation.RUN_QUEUED_TASKS};
+            Simulation.NEW_INSTANCE, Simulation.RUN_QUEUED_TASKS, Simulation.WORLD_STARTED, Simulation.WORLD_STOPPED};
     private static final String SIMULATION_INVOKE_KEY = SIMULATION_CLASS + "INTERNAL";
     
     private static final String PAUSED_METHOD = Simulation.PAUSED;
@@ -82,8 +82,6 @@ public class GreenfootDebugHandler implements DebuggerListener
     private BProject project;
     private DebuggerThread simulationThread;
     private DebuggerClass simulationClass;
-    
-    private boolean currentlyResetting;
     
     private GreenfootDebugHandler(BProject project)
     {
@@ -174,10 +172,7 @@ public class GreenfootDebugHandler implements DebuggerListener
             
         } else if (e.getID() == DebuggerEvent.THREAD_BREAKPOINT
                 && atResetBreakpoint(e.getBreakpointProperties())) {
-            // The user has clicked reset:
-            currentlyResetting = true;
-            
-            setSpecialBreakpoints(debugger);
+            // The user has clicked reset,
             // Set the simulation thread going if it's suspended:
             if (simulationThread.isSuspended()) {
                 simulationThread.cont();
@@ -202,12 +197,6 @@ public class GreenfootDebugHandler implements DebuggerListener
                 // They are going to pause; remove all special breakpoints and set them going
                 // (so that they actually hit the pause):
                 debugger.removeBreakpointsForClass(SIMULATION_CLASS);
-                e.getThread().cont();
-                // We also hit pause when a reset has completed:
-                currentlyResetting = false;
-                return true;
-            } else if (currentlyResetting) {
-                // Run through all breakpoints:
                 e.getThread().cont();
                 return true;
             } else if (insideUserCode(stack)) {

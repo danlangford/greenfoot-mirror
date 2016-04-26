@@ -26,12 +26,12 @@ debugger.assert.notNull=non nullo
 debugger.assert.null=nullo
 debugger.assert.delta=delta
 
-debugger.inspector.title=BlueJ:  Ispettore
-debugger.inspector.object.title=BlueJ:  Ispettore di oggetti
-debugger.inspector.class.title=BlueJ:  Ispettore di classi
-debugger.inspector.enum.title=BlueJ:  Ispettore di enum
-debugger.inspector.interface.title=BlueJ:  Ispettore di interfaccie
-debugger.inspector.result.title=BlueJ:  Risultato del Metodo
+debugger.inspector.title=$APPNAME:  Ispettore
+debugger.inspector.object.title=$APPNAME:  Ispettore di oggetti
+debugger.inspector.class.title=$APPNAME:  Ispettore di classi
+debugger.inspector.enum.title=$APPNAME:  Ispettore di enum
+debugger.inspector.interface.title=$APPNAME:  Ispettore di interfaccie
+debugger.inspector.result.title=$APPNAME:  Risultato del Metodo
 debugger.inspector.result.returned=ritornato:
 debugger.inspector.object.noFields=Nessun campo
 debugger.inspector.class.noFields=Nessun campo
@@ -107,6 +107,11 @@ prefmgr.misc.showUnchecked=Mostra i warning di compilazione quando sono usate co
 prefmgr.misc.wtk.dir.label=Directory del Wireless Toolkit
 prefmgr.misc.wtk.button=Sfoglia
 prefmgr.misc.filechooser.title=Seleziona directory del Wireless Toolkit
+prefmgr.collection.title=Partecipazione di ricerca
+prefmgr.collection.change=Cambia
+prefmgr.collection.identifier.explanation=Hai solo bisogno di fornire le informazioni qui sotto, se richiesto da un ricercatore
+prefmgr.collection.identifier.experiment=Identificatore dell'esperimento
+prefmgr.collection.identifier.participant=Identificatore del partecipante
 
 # Editor Preferences panel
 prefmgr.edit.prefpaneltitle=Editor
@@ -122,6 +127,11 @@ prefmgr.edit.keybindingstitle=Combinazioni di tasti
 prefmgr.edit.highlightLighter=Chiaro
 prefmgr.edit.highlightDarker=Scuro
 
+# Interface preferences panel
+prefmgr.interface.title=Interfaccia
+prefmgr.interface.language.title=Selezione della lingua
+prefmgr.interface.language=Lingua
+prefmgr.interface.language.restart=Sar\u00e0 necessario riavviare $APPNAME affinche l'impostazione della lingua abbia effetto.
 
 # Extensions Manager Help panel
 extmgr.title=BlueJ:  Estensioni installate
@@ -767,6 +777,13 @@ menu.help.copyright.line1=BlueJ \u00e8 disponibile sotto la licenza GNU General 
 menu.help.copyright.line2=versione 2 con eccezione per i Classpath
 menu.help.copyright.line3=Per maggiori informazioni vedere il file LICENSE.txt
 menu.help.copyright.line4=e THIRDPARTYLICENSE.txt.
+
+#Collection
+# The content for these is HTML, so don't use <, > or & without escaping:
+
+collect.status.optedin=Attualmente stai partecipando alla raccolta di informazioni
+collect.status.nextsession=Potrai prendere parte alla raccolta di informazioni la prossima volta che avvii BlueJ
+collect.status.optedout=Attualmente non stai partecipando alla raccolta di informazioni
 
 # About
 

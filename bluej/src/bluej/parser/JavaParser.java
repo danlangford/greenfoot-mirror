@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -585,6 +585,10 @@ public class JavaParser
     public void parseCU(int state)
     {
         while (tokenStream.LA(1).getType() != JavaTokenTypes.EOF) {
+            if (tokenStream.LA(1).getType() == JavaTokenTypes.SEMI) {
+                nextToken();
+                continue;
+            }
             state = parseCUpart(state);
         }
     }
@@ -1067,7 +1071,7 @@ public class JavaParser
         
         gotDeclBegin(token);
         tokenStream.pushBack(token);
-        LocatableToken hiddenToken = (LocatableToken) token.getHiddenBefore();
+        LocatableToken hiddenToken = token.getHiddenBefore();
         
         // field declaration, method declaration, inner class
         List<LocatableToken> modifiers = parseModifiers();
@@ -2963,6 +2967,7 @@ public class JavaParser
                             && tt2 != JavaTokenTypes.RCURLY && tt2 != JavaTokenTypes.EOF;
                     isCast &= tt2 != JavaTokenTypes.COMMA && tt2 != JavaTokenTypes.COLON
                             && tt2 != JavaTokenTypes.RBRACK;
+                    isCast &= tt2 != JavaTokenTypes.QUESTION;
                 }
 
                 if (isCast) {

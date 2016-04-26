@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011,2012  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011,2012,2013,2014  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -36,7 +36,6 @@ import greenfoot.core.WorldInvokeListener;
 import greenfoot.event.SimulationUIListener;
 import greenfoot.gui.DragGlassPane;
 import greenfoot.gui.GreenfootFrame;
-import greenfoot.gui.MessageDialog;
 import greenfoot.gui.input.InputManager;
 import greenfoot.localdebugger.LocalObject;
 import greenfoot.platforms.WorldHandlerDelegate;
@@ -51,16 +50,18 @@ import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.rmi.RemoteException;
 import java.util.List;
 
-import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 
 import rmiextension.wrappers.RObject;
+import rmiextension.wrappers.RProject;
 import bluej.Config;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.gentype.JavaType;
@@ -84,9 +85,7 @@ public class WorldHandlerDelegateIDE
 {
     protected final Color envOpColour = Config.ENV_COLOUR;
 
-    private final static String missingConstructorTitle = Config.getString("world.missing.constructor.title");
-    private final static String missingConstructorMsg = Config.getString("world.missing.constructor.msg");
-    private final static String continueButtonText = Config.getString("greenfoot.continue");
+    private final static int WORLD_INITIALISING_TIMEOUT = 4000;
 
     private WorldHandler worldHandler;
 
@@ -100,7 +99,11 @@ public class WorldHandlerDelegateIDE
     private SaveWorldAction saveWorldAction;
 
     private boolean worldInitialising;
-
+    private long startedInitialisingAt;
+    private boolean worldInvocationError;
+    private boolean missingConstructor;
+    private boolean vmRestarted;
+    
     public WorldHandlerDelegateIDE(GreenfootFrame frame, InspectorManager inspectorManager,
             ClassStateManager classStateManager)
     {
@@ -115,7 +118,7 @@ public class WorldHandlerDelegateIDE
      * Make a popup menu suitable for calling methods on, inspecting and
      * removing an object in the world.
      */
-    private JPopupMenu makeActorPopupMenu(final Actor obj)
+    public JPopupMenu makeActorPopupMenu(final Actor obj)
     {
         JPopupMenu menu = new JPopupMenu();
 
@@ -147,10 +150,11 @@ public class WorldHandlerDelegateIDE
      * Create a pop-up allowing the user to call methods, inspect and "Save the World"
      * on the World object.
      */
-    private JPopupMenu makeWorldPopupMenu(final World world)
+    public JPopupMenu makeWorldPopupMenu(final World world)
     {
-        if (world == null)
+        if (world == null) {
             return null;
+        }
         
         JPopupMenu menu = new JPopupMenu();
         
@@ -214,9 +218,11 @@ public class WorldHandlerDelegateIDE
             // if null then the user clicked on the world
             if (obj == null) {
                 menu = makeWorldPopupMenu(worldHandler.getWorld());
-            } else {
+            }
+            else {
                 menu = makeActorPopupMenu(obj);
             }
+            
             if (menu != null) {
                 menu.show(worldHandler.getWorldCanvas(), e.getX(), e.getY());
             }
@@ -253,6 +259,7 @@ public class WorldHandlerDelegateIDE
     @Override
     public void setWorld(final World oldWorld, final World newWorld)
     {
+        worldInvocationError = false;
         greenfootRecorder.clearCode(false);
         greenfootRecorder.setWorld(newWorld);
         if (oldWorld != null) {
@@ -340,7 +347,8 @@ public class WorldHandlerDelegateIDE
             Actor actor = worldHandler.getObject(e.getX(), e.getY());
             if (actor == null) {
                 worldHandler.getWorldCanvas().setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
-            } else {
+            }
+            else {
                 worldHandler.getWorldCanvas().setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             }
         }
@@ -364,83 +372,114 @@ public class WorldHandlerDelegateIDE
     @Override
     public void instantiateNewWorld()
     {
-        greenfootRecorder.reset();
-        worldInitialising = true;
-        Class<? extends World> cls = getLastWorldClass();
-        GClass lastWorldGClass = getLastWorldGClass();
-        
-        if (lastWorldGClass == null) {
-            // Either the last instantiated world no longer exists, or there is no record
-            // of a last instantiated world class. Find a world arbitrarily.
-            List<Class<? extends World>> worldClasses = project.getDefaultPackage().getWorldClasses();
-            if(worldClasses.isEmpty() ) {
-                return;
-            }
-            
-            for (Class<? extends World> wclass : worldClasses) {
-                try {
-                    wclass.getConstructor(new Class<?>[0]);
-                    cls = wclass;
-                    break;
-                }
-                catch (LinkageError le) { }
-                catch (NoSuchMethodException nsme) { }
-            }
-            if (cls == null) {
-                // Couldn't find a world with a suitable constructor
-                showMissingConstructorDialog();
-                return;
-            }
-        }
-        
-        if (cls == null) {
-            // Can occur if last instantiated world class is not compiled.
-            return;
-        }
-        
-        final Class<? extends World> icls = cls;
-        Simulation.getInstance().runLater(new Runnable() {
-            @Override
-            public void run()
-            {
-                try {
-                    Constructor<?> cons = icls.getConstructor(new Class<?>[0]);
-                    WorldHandler.getInstance().clearWorldSet();
-                    World newWorld = (World) Simulation.newInstance(cons);
-                    if (! WorldHandler.getInstance().checkWorldSet()) {
-                        ImageCache.getInstance().clearImageCache();
-                        WorldHandler.getInstance().setWorld(newWorld);
+        final RProject rProject = project.getRProject();
+        try {
+            if (!rProject.isVMRestarted()) {
+                greenfootRecorder.reset();
+                worldInitialising = true;
+                worldInvocationError = false;
+                Class<? extends World> cls = getLastWorldClass();
+                GClass lastWorldGClass = getLastWorldGClass();
+
+                if (lastWorldGClass == null) {
+                    // Either the last instantiated world no longer exists, or there is no record
+                    // of a last instantiated world class. Find a world arbitrarily.
+                    List<Class<? extends World>> worldClasses = project.getDefaultPackage().getWorldClasses();
+                    if(worldClasses.isEmpty() ) {
+                        return;
                     }
-                    saveWorldAction.setRecordingValid(true);
-                    project.setLastWorldClassName(icls.getName());
+
+                    for (Class<? extends World> wclass : worldClasses) {
+                        try {
+                            wclass.getConstructor(new Class<?>[0]);
+                            cls = wclass;
+                            break;
+                        }
+                        catch (LinkageError le) { }
+                        catch (NoSuchMethodException nsme) { }
+                    }
+                    if (cls == null) {
+                        // Couldn't find a world with a suitable constructor
+                        missingConstructor = true;
+                        return;
+                    }
                 }
-                catch (LinkageError e) { }
-                catch (NoSuchMethodException nsme) {
-                    showMissingConstructorDialog();
+
+                if (cls == null) {
+                    // Can occur if last instantiated world class is not compiled.
+                    return;
                 }
-                catch (InstantiationException e) {
-                    // abstract class; shouldn't happen
-                }
-                catch (IllegalAccessException e) {
-                    showMissingConstructorDialog();
-                }
-                catch (InvocationTargetException ite) {
-                    // This can happen if a static initializer block throws a Throwable.
-                    // Or for other reasons.
-                    ite.getCause().printStackTrace();
-                }
-                worldInitialising = false;
+                
+                startedInitialisingAt = System.currentTimeMillis();
+                frame.updateBackgroundMessage();
+
+                final Timer timer = new Timer(WORLD_INITIALISING_TIMEOUT, new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e)
+                    {
+                        if (worldInitialising) {
+                            frame.updateBackgroundMessage();
+                        }
+                    }
+                });
+                timer.setRepeats(false);
+                timer.start();
+                
+                final Class<? extends World> icls = cls;
+                Simulation.getInstance().runLater(new Runnable() {
+
+                    @Override
+                    public void run()
+                    {
+                        try {
+                            Constructor<?> cons = icls.getConstructor(new Class<?>[0]);
+                            WorldHandler.getInstance().clearWorldSet();
+                            World newWorld = (World) Simulation.newInstance(cons);
+                            if (! WorldHandler.getInstance().checkWorldSet()) {
+                                ImageCache.getInstance().clearImageCache();
+                                WorldHandler.getInstance().setWorld(newWorld);
+                            }
+                            saveWorldAction.setRecordingValid(true);
+                            project.setLastWorldClassName(icls.getName());
+                        }
+                        catch (LinkageError e) { }
+                        catch (NoSuchMethodException nsme) {
+                            missingConstructor = true;
+                        }
+                        catch (InstantiationException e) {
+                            // abstract class; shouldn't happen
+                        }
+                        catch (IllegalAccessException e) {
+                            missingConstructor = true;
+                        }
+                        catch (InvocationTargetException ite) {
+                            // This can happen if a static initializer block throws a Throwable.
+                            // Or for other reasons.
+                            ite.getCause().printStackTrace();
+                            worldInvocationError = true;
+                            frame.updateBackgroundMessage();
+                        }
+                        catch (Exception e) {
+                            System.err.println("Exception during World initialisation:");
+                            e.printStackTrace();
+                            worldInvocationError = true;
+                            frame.updateBackgroundMessage();
+                        }
+                        worldInitialising = false;
+                        timer.stop();
+                    }
+                });
             }
-        });
+            else {
+                vmRestarted = true;
+                rProject.setVmRestarted(false);
+            }
+        }
+        catch (RemoteException ex) {
+            Debug.reportError("RemoteException checking VM state in WorldHandlerDelegateIDE", ex);
+        }
     }
 
-    private void showMissingConstructorDialog()
-    {
-        JButton button = new JButton(continueButtonText);
-        MessageDialog msgDialog = new MessageDialog(frame, missingConstructorMsg, missingConstructorTitle, 50, new JButton[]{button});
-        msgDialog.display();
-    }
-    
     /**
      * Get the last-instantiated world class if known and possible. May return null.
      */
@@ -522,13 +561,13 @@ public class WorldHandlerDelegateIDE
     }
 
     @Override
-    public void methodCall(Object obj, String actorName, String name, String[] args, JavaType[] argTypes)
+    public void methodCall(Object obj, String actorName, Method method, String[] args, JavaType[] argTypes)
     {
         if (obj != null) {
-            greenfootRecorder.callActorMethod(obj, actorName, name, args, argTypes);
+            greenfootRecorder.callActorMethod(obj, actorName, method, args, argTypes);
         }
         else {
-            greenfootRecorder.callStaticMethod(actorName, name, args, argTypes);
+            greenfootRecorder.callStaticMethod(actorName, method, args, argTypes);
         }
     }
     
@@ -606,5 +645,70 @@ public class WorldHandlerDelegateIDE
     public SaveWorldAction getSaveWorldAction()
     {
         return saveWorldAction;
+    }
+    
+    /**
+     * Is the world currently initialising?
+     */
+    public boolean initialising()
+    {
+        return worldInitialising;
+    }
+
+    /**
+     * Returns true if the world is currently initialising, and has gone behind its timeout
+     */
+    public boolean initialisingForTooLong()
+    {
+        return worldInitialising && System.currentTimeMillis() > startedInitialisingAt + WORLD_INITIALISING_TIMEOUT;
+    }
+    
+    /**
+     * Did the last world invocation end in an error?
+     */
+    public boolean initialisationError()
+    {
+        return worldInvocationError;
+    }
+
+    /**
+     * Is there a default constructor in the world subclass?
+     * 
+     * @return true if the world subclass does not have a default constructor
+     */
+    public boolean isMissingConstructor()
+    {
+        return missingConstructor;
+    }
+
+    /**
+     * Sets a flag which indicates whether the world subclass misses a default constructor or not
+     * 
+     * @param missingConstructor a boolean flag, which is true if there is no default constructor
+     * in the world subclass
+     */
+    public void setMissingConstructor(boolean missingConstructor)
+    {
+        this.missingConstructor = missingConstructor;
+    }
+
+    /**
+     * Has the VM just been restarted?
+     * 
+     * @return true if the VM just been restarted 
+     */
+    public boolean isVmRestarted()
+    {
+        return vmRestarted;
+    }
+
+    /**
+     * Sets the VM state, has it just been restarted or not 
+     * 
+     * @param vmRestarted a boolean flag, which is true if the VM just been restarted
+     */
+    public void setVmRestarted(boolean vmRestarted)
+    {
+        this.vmRestarted = vmRestarted;
     }
 }

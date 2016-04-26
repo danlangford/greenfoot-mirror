@@ -1,5 +1,5 @@
 
-BlueJ version 3.0.9       --        README.TXT
+BlueJ version 3.1.1       --        README.TXT
 
 Information about BlueJ
 -----------------------
@@ -32,7 +32,7 @@ bluej.properties file.
 The BlueJ Team
 --------------
 BlueJ is being developed by:
-University of Kent: Michael Kölling, Ian Utting, Davin McCall, Neil Brown, Phil Stevens
+University of Kent: Michael Kölling, Ian Utting, Davin McCall, Neil Brown, Amjad Altadmri, Fabio Hedayioglu
 
 The BlueJ License
 -----------------

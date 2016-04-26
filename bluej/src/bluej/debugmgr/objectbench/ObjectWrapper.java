@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -35,6 +35,10 @@ import java.awt.RenderingHints;
 import java.awt.Stroke;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -43,6 +47,9 @@ import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 
+import javax.accessibility.Accessible;
+import javax.accessibility.AccessibleContext;
+import javax.accessibility.AccessibleRole;
 import javax.swing.Action;
 import javax.swing.JComponent;
 import javax.swing.JMenu;
@@ -64,7 +71,7 @@ import bluej.debugmgr.ResultWatcher;
 import bluej.extensions.BObject;
 import bluej.extensions.ExtensionBridge;
 import bluej.extmgr.MenuManager;
-import bluej.extmgr.ObjectMenuObject;
+import bluej.extmgr.ObjectExtensionMenu;
 import bluej.pkgmgr.Package;
 import bluej.pkgmgr.PkgMgrFrame;
 import bluej.prefmgr.PrefMgr;
@@ -87,7 +94,7 @@ import bluej.views.ViewFilter;
  *
  * @author  Michael Kolling
  */
-public class ObjectWrapper extends JComponent implements InvokeListener, NamedValue
+public class ObjectWrapper extends JComponent implements Accessible, FocusListener, InvokeListener, KeyListener, NamedValue
 {
     // Strings
     static String methodException = Config.getString("debugger.objectwrapper.methodException");
@@ -192,9 +199,10 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
         
         setMinimumSize(new Dimension(WIDTH, HEIGHT));
         setSize(WIDTH, HEIGHT);
-        setFocusable(false);
+        setFocusable(true);
         setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        ob.setSelectedObject(this);
+        addFocusListener(this);
+        addKeyListener(this);
     }
 
     public Package getPackage()
@@ -358,7 +366,7 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
         item.setForeground(envOpColour);
 
         MenuManager menuManager = new MenuManager (menu); 
-        menuManager.setAttachedObject(new ObjectMenuObject(this));
+        menuManager.setMenuGenerator(new ObjectExtensionMenu(this));
         menuManager.addExtensionMenu(pkg.getProject());
 
         add(menu);
@@ -618,7 +626,6 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
      */
     protected void drawUMLObjectShape(Graphics2D g, int x, int y, int w, int h, int shad, int corner)
     {
-        boolean isSelected = isSelected() && ob.hasFocus();
         g.drawImage(isSelected ? selectedObjectImage : objectImage, x, y, null);
     }
 
@@ -686,12 +693,10 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
             else { //single click
                 ob.fireObjectEvent(this);
             }
-
         }
         //manage focus
         if (evt.getID() == MouseEvent.MOUSE_CLICKED || evt.isPopupTrigger()) {
-            ob.setSelectedObject(this);
-            ob.requestFocusInWindow();
+            requestFocusInWindow();
         }
     }
 
@@ -843,14 +848,6 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
     }
 
     /**
-     * @return Returns the isSelected.
-     */
-    public boolean isSelected() 
-    {
-        return isSelected;
-    }
-
-    /**
      * @param isSelected The isSelected to set.
      */
     public void setSelected(boolean isSelected) 
@@ -858,8 +855,64 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
         this.isSelected = isSelected;
         if(isSelected) {
             pmf.setStatus(getName() + " : " + displayClassName);
+            scrollRectToVisible(new Rectangle(0, 0, WIDTH, HEIGHT));
         }
         repaint();
-        scrollRectToVisible(new Rectangle(0, 0, WIDTH, HEIGHT));
+    }
+    
+    @Override
+    public AccessibleContext getAccessibleContext()
+    {
+        if (accessibleContext == null) {
+            accessibleContext = new AccessibleJComponent() {
+
+                @Override
+                public String getAccessibleName() {
+                    return getName() + ": " + displayClassName;
+                }
+
+                // If we leave the default role, NVDA ignores this component.
+                // List item works, and seemed like an okay fit
+                @Override
+                public AccessibleRole getAccessibleRole() {
+                    return AccessibleRole.LIST_ITEM;
+                }                
+                
+            };
+        }
+        return accessibleContext;
+    }
+
+    @Override
+    public void keyPressed(KeyEvent arg0)
+    {
+        ob.keyPressed(arg0);
+    }
+
+    @Override
+    public void keyReleased(KeyEvent arg0)
+    {
+        ob.keyReleased(arg0);
+    }
+
+    @Override
+    public void keyTyped(KeyEvent arg0)
+    {
+        ob.keyTyped(arg0);
+    }
+
+    @Override
+    public void focusGained(FocusEvent arg0)
+    {
+        ob.objectGotFocus(this);
+    }
+
+    @Override
+    public void focusLost(FocusEvent arg0)
+    {
+        if (ob.getSelectedObject() == this)
+        {
+            ob.setSelectedObject(null);
+        }
     }
 }

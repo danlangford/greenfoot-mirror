@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2011,2013  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -44,6 +44,7 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.FileReader;
 import java.io.IOException;
+import java.rmi.RemoteException;
 
 import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
@@ -59,9 +60,9 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JRootPane;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
+import javax.swing.SwingConstants;
 import javax.swing.border.EmptyBorder;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
@@ -69,12 +70,13 @@ import javax.swing.text.html.HTMLEditorKit;
 import bluej.Config;
 import bluej.utility.Debug;
 import bluej.utility.DialogManager;
+import bluej.extensions.ProjectNotOpenException;
 
 /**
  * The window showing a library of supplied classes
  * (with associated image and javadoc), from which
  * you can select one to import into the current project.
- *  
+ * 
  * @author neil
  */
 public class ImportClassWindow extends JFrame
@@ -131,6 +133,7 @@ public class ImportClassWindow extends JFrame
         setContentPane(main);
         
         ActionListener actionListener = new ActionListener() {
+            @Override
             public void actionPerformed(ActionEvent actionEvent) {
               setVisible(false);
             }
@@ -146,6 +149,7 @@ public class ImportClassWindow extends JFrame
             getRootPane().setDefaultButton(okButton);
 
             JButton cancelButton = new JButton(new AbstractAction(Config.getString("greenfoot.cancel")) {
+                @Override
                 public void actionPerformed(ActionEvent e)
                 {
                     setVisible(false);                                                
@@ -164,6 +168,7 @@ public class ImportClassWindow extends JFrame
         findAddImportableClasses(new File(Config.getGreenfootLibDir(), "common"), 0);
                     
         JScrollPane classScrollPane = new JScrollPane(classList) {
+            @Override
             public Dimension getPreferredSize()
             {
                 Dimension size = super.getPreferredSize();
@@ -173,6 +178,7 @@ public class ImportClassWindow extends JFrame
                 return size;
             }
             
+            @Override
             public Dimension getMaximumSize()
             {
                 return getPreferredSize();
@@ -197,10 +203,10 @@ public class ImportClassWindow extends JFrame
         JPanel classInfo = new JPanel();
         classInfo.setBorder(new EmptyBorder(10, 5, 10, 5));
         classInfo.setLayout(new GridLayout(1, 2));
-        classLabel = new JLabel("", JLabel.CENTER);
+        classLabel = new JLabel("", SwingConstants.CENTER);
         classLabel.setFont(classLabel.getFont().deriveFont(24.0f));
         classInfo.add(classLabel);
-        classPicture = new JLabel((String)null, JLabel.CENTER);
+        classPicture = new JLabel((String)null, SwingConstants.CENTER);
         classInfo.add(classPicture);
         rightPane.add(classInfo, BorderLayout.NORTH);
         rightPane.add(new JScrollPane(htmlPane), BorderLayout.CENTER);
@@ -254,6 +260,7 @@ public class ImportClassWindow extends JFrame
                .replace("./resources/inherit.gif", new File(Config.getGreenfootLibDir(), "common/inherit.gif").toURI().toURL().toString())
                //And, while I'm at it, fix that damn missing space:
                .replace("</B><DT>extends", "</B><DT> extends")
+               .replace("../images/", new File(Config.getGreenfootLibDir(), "common/").toURI().toURL().toString())
                ;
             
             
@@ -261,6 +268,8 @@ public class ImportClassWindow extends JFrame
             htmlPane.setCaretPosition(0);
             
             //((HTMLDocument)htmlPane.getDocument()).setBase(new URL(fullURL));
+            
+            br.close();
         }
         catch (IOException e) {
             Debug.reportError("Problem showing HTML for importable class " + stem, e);
@@ -281,20 +290,20 @@ public class ImportClassWindow extends JFrame
             initUI();
         }
         
+        @Override
         protected boolean isValidClass()
         {
             return true;
         }
 
+        @Override
         protected boolean isUncompiled()
         {
             return false;
         }
 
         @Override
-        protected void doubleClick()
-        {
-        }
+        protected void doubleClick() {}
 
         @Override
         public void select()
@@ -334,49 +343,73 @@ public class ImportClassWindow extends JFrame
         }
 
         @Override
-        protected void maybeShowPopup(MouseEvent e)
-        {          
-        }
+        protected void maybeShowPopup(MouseEvent e) {}
     }
     
     //File dir = new File(Config.getGreenfootLibDir(), "common");
     private void findAddImportableClasses(File dir, int indent)
     {
-        File[] files = dir.listFiles(new FileFilter() {
-            @Override
-            public boolean accept(File pathname)
-            {
-                return pathname.getAbsolutePath().endsWith(".class") || pathname.getAbsolutePath().endsWith(".java") || pathname.isDirectory();
-            }
-        });
-        
-        if (files == null) //Problem finding classes
-            return;
-
         // List all files before all directories:
-        
-        boolean hasAnyFiles = false;
-        for (File file : files) {
-            if (file.isFile()) {
+        File[] files = dir.listFiles(new ImportableClassesFileFilter()); 
+        if (files != null) {
+            for (File file : files) {
                 ImportableClassButton button = new ImportableClassButton(file);
                 addWithIndent(indent, button);
                 buttonGroup.add(button);
-                hasAnyFiles = true;
             }
+            // Only indent if there is a class in the current category to be distinguished from:
+            indent += INDENT_HIERARCHY;
         }
         
-        // Only indent if there is a class in the current category to be distinguished from:
-        if (hasAnyFiles)
-            indent += INDENT_HIERARCHY;
-        
-        for (File file : files) {
-            if (file.isDirectory()) {
-                JLabel label = new JLabel(file.getName());
-                label.setFont(label.getFont().deriveFont(16.0f));
-                addWithIndent(indent, label);
+        // List all directories:
+        File[] folders = dir.listFiles(new ImportableFoldersFileFilter()); 
+        if (folders != null) {
+            for (File folder : folders) {
+                if (hasImportableClasses(folder)) {
+                    JLabel label = new JLabel(folder.getName());
+                    label.setFont(label.getFont().deriveFont(16.0f));
+                    addWithIndent(indent, label);
+                }
                 // Recurse to process sub-directories:
-                findAddImportableClasses(file, indent);
+                findAddImportableClasses(folder, indent);
             }
+        }
+    }
+    
+    private boolean hasImportableClasses(File dir)
+    {
+        File[] files = dir.listFiles(new ImportableClassesFileFilter()); 
+        if ( (files != null) && (files.length > 0) ){
+            return true;
+        }
+        
+        File[] folders = dir.listFiles(new ImportableFoldersFileFilter()); 
+        if (folders != null) {
+            for (File folder : folders) {
+                if (hasImportableClasses(folder)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    
+    
+    private class ImportableClassesFileFilter implements FileFilter
+    {
+        @Override
+        public boolean accept(File pathname)
+        {
+            return pathname.getAbsolutePath().endsWith(".class") || pathname.getAbsolutePath().endsWith(".java");
+        }
+    }
+    
+    private class ImportableFoldersFileFilter implements FileFilter
+    {
+        @Override
+        public boolean accept(File pathname)
+        {
+            return pathname.isDirectory();
         }
     }
     
@@ -425,6 +458,8 @@ public class ImportClassWindow extends JFrame
     
     private void importClass(File srcFile, File srcImage)
     {
+        boolean librariesImportedFlag = false;
+        
         if (srcFile != null) {
             String className = GreenfootUtil.removeExtension(srcFile.getName());
             
@@ -451,6 +486,16 @@ public class ImportClassWindow extends JFrame
             File destFile = new File(project.getDir(), srcFile.getName());
             GreenfootUtil.copyFile(srcFile, destFile);
             
+            // Copy the lib files cross:
+            File libFolder = new File(srcFile.getParentFile(), className + "/lib");
+            if ( (libFolder.exists()) && (libFolder.listFiles().length > 0) ) {
+                for (File srcLibFile : libFolder.listFiles()) {
+                    File destLibFile = new File(project.getDir(), "+libs/" + srcLibFile.getName());
+                    GreenfootUtil.copyFile(srcLibFile, destLibFile);
+                }
+                librariesImportedFlag = true;
+            }
+            
             // We must reload the package to be able to access the GClass object:
             project.getDefaultPackage().reload();
             GClass gclass = project.getDefaultPackage().getClass(className);
@@ -469,7 +514,21 @@ public class ImportClassWindow extends JFrame
             //Finally, update the class browser:
             classBrowser.addClass(new ClassView(classBrowser, gclass, interactionListener));
             classBrowser.updateLayout();
+        
+            if (librariesImportedFlag) {
+                int option = JOptionPane.showConfirmDialog(gfFrame, Config.getString("import.restartMessage"), null, JOptionPane.OK_CANCEL_OPTION);
+                if (option == JOptionPane.OK_OPTION) {
+                    try {
+                        project.getRProject().restartVM();
+                    }
+                    catch (RemoteException ex) {
+                        Debug.reportError("RemoteException restarting VM in ImportClassWindow", ex);
+                    }
+                    catch (ProjectNotOpenException ex) {
+                        Debug.reportError("ProjectNotOpenException restarting VM in ImportClassWindow", ex);
+                    }
+                }
+            }
         }
     }
-
 }

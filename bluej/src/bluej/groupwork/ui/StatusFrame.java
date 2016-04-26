@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2012,2013  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -43,6 +43,7 @@ import javax.swing.JTable;
 
 import bluej.BlueJTheme;
 import bluej.Config;
+import bluej.collect.DataCollector;
 import bluej.groupwork.Repository;
 import bluej.groupwork.StatusHandle;
 import bluej.groupwork.StatusListener;
@@ -277,6 +278,8 @@ public class StatusFrame extends EscapeDialog
                     {
                         statusMap.put(s.getFile(), TeamStatusInfo.getStatusString(s.getStatus()));
                     }
+                    
+                    DataCollector.teamStatusProject(project, repository, statusMap);
                 }
                 refreshButton.setEnabled(true);
             }

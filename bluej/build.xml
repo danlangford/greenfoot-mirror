@@ -14,8 +14,8 @@
      This is the only place you need to change the version number.
      After changing the version number the target "update-version-number" should be run -->
     <property name="bluej.version.major" value="3" />
-    <property name="bluej.version.minor" value="0" />
-    <property name="bluej.version.release" value="9" />
+    <property name="bluej.version.minor" value="1" />
+    <property name="bluej.version.release" value="1" />
     <property name="bluej.version.suffix" value="" />
 	<!-- suffix with no spaces, eg "pre2" -->
 	<property name="bluej.version.nonspace.suffix" value="" />
@@ -53,31 +53,12 @@
         <pathelement location="${bluej_home}/lib/org-netbeans-lib-cvsclient.jar"/>
         <pathelement location="${bluej_home}/lib/svnkit-javahl.jar"/>
         <pathelement location="${bluej_home}/lib/trilead.jar"/>
+        <pathelement location="${bluej_home}/lib/httpclient-4.1.1.jar"/>
+        <pathelement location="${bluej_home}/lib/httpcore-4.1.jar"/>
+        <pathelement location="${bluej_home}/lib/httpmime-4.1.1.jar"/>
+        <pathelement location="${bluej_home}/lib/commons-logging-api-1.1.2.jar"/>
+        <pathelement location="${bluej_home}/lib/diffutils-1.2.1.jar"/>
     </path>
-    
-    <!-- If you change the first or last lines of this license you might want
-     to update the 'add-license-to-sources' target as well -->    
-    <property name="license" value="/*${line.separator}
-This file is part of the BlueJ program. ${line.separator}
-Copyright (C) 1999-2009  Michael Kolling and John Rosenberg ${line.separator}
-${line.separator}
-This program is free software; you can redistribute it and/or ${line.separator}
-modify it under the terms of the GNU General Public License ${line.separator}
-as published by the Free Software Foundation; either version 2 ${line.separator}
-of the License, or (at your option) any later version. ${line.separator}
-${line.separator}
-This program is distributed in the hope that it will be useful, ${line.separator}
-but WITHOUT ANY WARRANTY; without even the implied warranty of ${line.separator}
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the ${line.separator}
-GNU General Public License for more details. ${line.separator}
-${line.separator}
-You should have received a copy of the GNU General Public License ${line.separator}
-along with this program; if not, write to the Free Software ${line.separator}
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. ${line.separator}
-${line.separator}
-This file is subject to the Classpath exception as provided in the  ${line.separator}
-LICENSE.txt file that accompanied this code.${line.separator}
-*/${line.separator}"/>
 
     <!-- taskdef name="jarbundler"
         classname="com.loomcom.ant.tasks.jarbundler.JarBundler" / -->
@@ -98,6 +79,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 target="1.6"
                 deprecation="yes"
                 includeantruntime="false"
+                encoding="utf-8"
         >
         </javac>
 
@@ -119,15 +101,8 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 debug="on"
                 deprecation="yes"
                 includeantruntime="false"
-                excludes="de/**,
-
-                    archiver/**, gnu/**, javax/**, kopi/**,
-                    net/**/test/**,
-                    net/**,
-                    bluej/tester/**,
-                    bluej/browser/**,
-                    bluej/guibuilder/**,
-                    bluej/editor/moe/Moe.java">
+                encoding="utf-8"
+                >
 
             <classpath>
                 <path refid="bluej.class.path"/>
@@ -217,6 +192,12 @@ LICENSE.txt file that accompanied this code.${line.separator}
 
     <target name="ready-to-run" depends="jar-core, jar-editor, jar-extension">
     </target>
+	
+	<target name="ready-to-run-greenfoot" description="prepare to run Greenfoot">
+		<!-- We can exclude version control from the build -->
+		<property name="srcexcludes" value="${src}/bluej/groupwork/cvsnb/**,${src}/bluej/groupwork/svn/**" />
+		<antcall target="ready-to-run" />
+	</target>
 
     <target name="run">
         <!-- delete the greenfoot jar (if it exists) since it screws up BlueJ -->
@@ -277,6 +258,10 @@ LICENSE.txt file that accompanied this code.${line.separator}
 	
 	<target name="windows-msi-dist" depends="dist">
 	    <ant dir="package" target="windows-msi-dist"/>
+	</target>
+	
+	<target name="windows-msi-bundled-dist" depends="dist">
+	    <ant dir="package" target="windows-msi-bundled-dist"/>
 	</target>
 
     <target name="mac-dist" description="build Mac distributable bundles">
@@ -387,20 +372,6 @@ LICENSE.txt file that accompanied this code.${line.separator}
         </replaceregexp>
     </target>
     
-    <target name="add-license-to-sources" description="adds the license to each source file" >	      
-	    <replaceregexp flags="s" encoding="UTF-8">
-	        <regexp pattern="(^\/\*\n This file is part of the BlueJ program.*? file that accompanied this code\.\n.\*\/\n)|^"/> 
-	        <substitution expression="${license}"/> 
-	        <fileset dir="." includes="**/*.java" >
-	        	<exclude name="package/Installer.java"/>
-	        	<exclude name="examples/**"/>
-	        	<exclude name="src/org/syntax/jedit/**"/>
-	            <include name="package/winlaunch/**.cc"/>
-	            <include name="package/winlaunch/**.h"/>
-	        </fileset>
-	    </replaceregexp>
-    </target>        
-        
     <target name="clean-boot">
         <delete quiet="true" dir="${boot.build}"/>
         <delete quiet="true" file="${boot.jar}"/>
@@ -417,6 +388,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
      	<delete >
             <fileset dir="lib">
                 <include name="commons*.jar"/>
+                <exclude name="commons-logging-api-1.1.2.jar"/>
             </fileset>
         </delete>
         <delete dir="package/scenarios" />

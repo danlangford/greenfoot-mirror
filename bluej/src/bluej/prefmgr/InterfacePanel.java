@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -72,6 +72,8 @@ public class InterfacePanel extends JPanel
     
     private ArrayList<String> allLangsInternal;
     private JComboBox langDropdown;
+    
+    private JCheckBox accessibility;
     
     public InterfacePanel()
     {
@@ -146,18 +148,32 @@ public class InterfacePanel extends JPanel
                         break;
                     }
                     
+                    // The format of a language string is:
+                    //    internal-name:display-name:iso3cc
+                    // The iso3cc (ISO country code) is optional.
+                    
                     int colonIndex = langString.indexOf(':');
                     if (colonIndex == -1) {
                         continue; // don't understand this one
                     }
                     
+                    int secondColon = langString.indexOf(':', colonIndex + 1);
+                    if (secondColon == -1) {
+                        secondColon = langString.length();
+                    }
+                    
                     allLangsInternal.add(langString.substring(0, colonIndex));
-                    allLangsReadable.add(langString.substring(colonIndex + 1));
+                    allLangsReadable.add(langString.substring(colonIndex + 1, secondColon));
+                }
+                
+                if (allLangsInternal.isEmpty()) {
+                    // Guard against modified or corrupted bluej.defs file
+                    allLangsInternal.add(Config.language);
+                    allLangsReadable.add(Config.language);
                 }
                 
                 String [] langs = new String[allLangsReadable.size()];
                 allLangsReadable.toArray(langs);
-                
 
                 langDropdown = new JComboBox(langs);
                 langSelBox.add(langDropdown);
@@ -172,6 +188,23 @@ public class InterfacePanel extends JPanel
             langPanel.add(t);
         }
         box.add(langPanel);        
+        
+        JPanel accessibilityPanel = new JPanel();
+        {
+            accessibilityPanel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createTitledBorder(
+                            Config.getString("prefmgr.accessibility.title")),
+                            BlueJTheme.generalBorder)
+                    );
+            accessibilityPanel.setAlignmentX(LEFT_ALIGNMENT);
+            accessibilityPanel.setLayout(new BoxLayout(accessibilityPanel, BoxLayout.Y_AXIS));
+            
+            accessibility = new JCheckBox(Config.getString("prefmgr.accessibility.support"));
+            accessibilityPanel.add(accessibility);
+            
+            accessibilityPanel.add(Box.createVerticalStrut(BlueJTheme.componentSpacingSmall));
+        }
+        box.add(accessibilityPanel);
     }
     
     @Override
@@ -197,6 +230,8 @@ public class InterfacePanel extends JPanel
             curLangIndex = 0;
         }
         langDropdown.setSelectedIndex(curLangIndex);
+        
+        accessibility.setSelected(PrefMgr.getFlag(PrefMgr.ACCESSIBILITY_SUPPORT));
     }
 
     /**
@@ -228,6 +263,8 @@ public class InterfacePanel extends JPanel
         }
         
         Config.putPropString("bluej.language", allLangsInternal.get(langDropdown.getSelectedIndex()));
+        
+        PrefMgr.setFlag(PrefMgr.ACCESSIBILITY_SUPPORT, accessibility.isSelected());
     }
     
     @Override

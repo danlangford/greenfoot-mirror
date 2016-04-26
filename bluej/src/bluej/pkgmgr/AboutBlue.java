@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2013  Michael Kolling and John Rosenberg
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -37,7 +37,6 @@ import javax.swing.*;
  * The BlueJ about box.
  *
  * @author  Michael Kolling
- * @version $Id: AboutBlue.java 9004 2011-06-16 13:15:21Z mik $
  */
 class AboutBlue extends EscapeDialog
 {
@@ -63,13 +62,12 @@ class AboutBlue extends EscapeDialog
         MultiLineLabel text = new MultiLineLabel(LEFT_ALIGNMENT, 6);
         text.setBackground(Color.white);
         text.addText(Config.getString("about.theTeam") + "\n ", false, true);
+        text.addText("  Amjad Altadmri\n");
         text.addText("  Neil Brown\n");
+        text.addText("  Fabio Hedayioglu\n");
         text.addText("  Michael K\u00F6lling\n");
         text.addText("  Davin McCall\n");
-        text.addText("  Philip Stevens\n");
-        text.addText("  John Rosenberg\n");
         text.addText("  Ian Utting\n");
-        text.addText("  Marion Zalk");
 
         aboutPanel.add(text, BorderLayout.CENTER);
 

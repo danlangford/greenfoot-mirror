@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -43,6 +43,9 @@ import javax.swing.AbstractAction;
 import javax.swing.JPopupMenu;
 
 import bluej.Config;
+import bluej.collect.DataCollector;
+import bluej.compiler.CompileObserver;
+import bluej.compiler.Diagnostic;
 import bluej.debugger.DebuggerClass;
 import bluej.debugger.gentype.Reflective;
 import bluej.debugmgr.objectbench.InvokeListener;
@@ -54,7 +57,7 @@ import bluej.extensions.BDependency;
 import bluej.extensions.ExtensionBridge;
 import bluej.extensions.event.ClassEvent;
 import bluej.extensions.event.ClassTargetEvent;
-import bluej.extmgr.ClassMenuObject;
+import bluej.extmgr.ClassExtensionMenu;
 import bluej.extmgr.ExtensionsManager;
 import bluej.extmgr.MenuManager;
 import bluej.graph.GraphEditor;
@@ -571,7 +574,6 @@ public class ClassTarget extends DependentTarget
      */
     @Override
     public void load(Properties props, String prefix)
-        throws NumberFormatException
     {
         super.load(props, prefix);
 
@@ -611,6 +613,16 @@ public class ClassTarget extends DependentTarget
             setNaviviewExpanded(Boolean.parseBoolean(value));
             setProperty(NAVIVIEW_EXPANDED_PROPERTY, String.valueOf(value));
         }
+        
+        String typeParams = props.getProperty(prefix + ".typeParameters");
+        //typeParams is null only if the properties file is saved by an older
+        //version of Bluej, thus the type parameters have to fetched from the code
+        if (typeParams == null) {
+            analyseSource();    
+        }
+        else {
+            typeParameters = typeParams;
+        }
     }
 
     /**
@@ -638,14 +650,15 @@ public class ClassTarget extends DependentTarget
         //else if there was a previous setting use that
         if (editorOpen() && getProperty(NAVIVIEW_EXPANDED_PROPERTY)!=null){
             props.put(prefix + ".naviview.expanded", String.valueOf(getProperty(NAVIVIEW_EXPANDED_PROPERTY)));
-        } else if (isNaviviewExpanded!=null)
+        }
+        else if (isNaviviewExpanded!=null) {
                 props.put(prefix + ".naviview.expanded", String.valueOf(isNaviviewExpanded()));
-            
+        }
+        
         props.put(prefix + ".showInterface", new Boolean(openWithInterface).toString());
+        props.put(prefix + ".typeParameters", getTypeParameters());
 
         getRole().save(props, 0, prefix);
-     
-        
     }
 
     /**
@@ -887,7 +900,7 @@ public class ClassTarget extends DependentTarget
             
             editor = EditorManager.getEditorManager().openClass(filename, docFilename,
                     project.getProjectCharset(),
-                    getBaseName(), this, isCompiled(), editorBounds, resolver,
+                    getBaseName() + " - " + project.getProjectName(), this, isCompiled(), editorBounds, resolver,
                     project.getJavadocResolver());
             
             // editor may be null if source has been deleted
@@ -978,6 +991,12 @@ public class ClassTarget extends DependentTarget
     {
         if (isCompiled() || ! modifiedSinceCompile) {
             String possibleError = getPackage().getDebugger().toggleBreakpoint(getQualifiedName(), lineNo, set, null);
+            
+            if (possibleError == null && getPackage() != null)
+            {
+                DataCollector.debuggerBreakpointToggle(getPackage(), getSourceFile(), lineNo, set);
+            }
+            
             return possibleError;
         }
         else {
@@ -1035,9 +1054,43 @@ public class ClassTarget extends DependentTarget
      * @param editor Description of the Parameter
      */
     @Override
-    public void compile(Editor editor)
+    public void compile(final Editor editor)
     {
-        getPackage().compile(this);
+        if (Config.isGreenfoot()) {
+            // Even though we do a package compile, we must let the editor know when
+            // the compile finishes, so that it updates its status correctly:
+            getPackage().compile(new CompileObserver() {
+                
+                @Override
+                public void startCompile(File[] sources) { }
+                
+                @Override
+                public void endCompile(File[] sources, boolean successful)
+                {
+                    editor.compileFinished(successful);
+                }
+                
+                @Override
+                public boolean compilerMessage(Diagnostic diagnostic) { return false; }
+            });
+        }
+        else {
+            getPackage().compile(this, false, new CompileObserver() {
+                
+                @Override
+                public void startCompile(File[] sources) {}
+
+                @Override
+                public boolean compilerMessage(Diagnostic diagnostic) { return false; }
+                
+                @Override
+                public void endCompile(File[] sources, boolean succesful)
+                {
+                    editor.compileFinished(succesful);
+                }
+            });
+        }
+        
     }
 
     /**
@@ -1436,6 +1489,8 @@ public class ClassTarget extends DependentTarget
                 ExtensionBridge.changeBDependencyTargetName(bDependency, getQualifiedName());
             }
             
+            DataCollector.renamedClass(getPackage(), oldSourceFile, newSourceFile);
+            
             // Inform all listeners about the name change
             ClassEvent event = new ClassEvent(ClassEvent.CHANGED_NAME, getPackage(), getBClass(), oldName);
             ExtensionsManager.getInstance().delegateEvent(event);
@@ -1594,7 +1649,7 @@ public class ClassTarget extends DependentTarget
         role.createRoleMenuEnd(menu, this, state);
 
         MenuManager menuManager = new MenuManager(menu);
-        menuManager.setAttachedObject(new ClassMenuObject(this));
+        menuManager.setMenuGenerator(new ClassExtensionMenu(this));
         menuManager.addExtensionMenu(getPackage().getProject());
 
         return menu;
@@ -1924,8 +1979,13 @@ public class ClassTarget extends DependentTarget
     @Override
     public void remove()
     {
+        File srcFile = getSourceFile();
         prepareForRemoval();
         getPackage().removeTarget(this);
+        
+        // We must remove after the above, because it might involve saving, 
+        // and thus recording edits to the file
+        DataCollector.removeClass(getPackage(), srcFile);
     }
 
     @Override
@@ -2021,4 +2081,11 @@ public class ClassTarget extends DependentTarget
             return null;
         }
     }
+    
+    @Override
+    public void recordEdit(String latest, boolean includeOneLineEdits)
+    {
+        DataCollector.edit(getPackage(), getSourceFile(), latest, includeOneLineEdits);
+    }
+   
 }

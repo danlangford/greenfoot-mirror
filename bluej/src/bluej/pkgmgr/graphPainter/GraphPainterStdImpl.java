@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -75,6 +75,7 @@ public class GraphPainterStdImpl
         paintVertices(g, graph);
         paintGhosts(g, graph);
         paintIntermediateDependency(g, graph);
+        
     }
 
     /**
@@ -239,9 +240,7 @@ public class GraphPainterStdImpl
      */
     private boolean isPermanentFocusOwner()
     {
-        return graphEditor.hasFocus();// graphEditor.hasFocus is overloaded
-        //Component permanentFocusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getPermanentFocusOwner();
-        //return (permanentFocusOwner == graphEditor);
+        return graphEditor.hasPermFocus();
     }
 
     /**

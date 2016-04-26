@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -43,6 +43,7 @@ import java.awt.event.FocusListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -60,6 +61,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSeparator;
 import javax.swing.JTextField;
+import javax.swing.SwingConstants;
 
 import bluej.BlueJTheme;
 import bluej.Config;
@@ -129,6 +131,7 @@ public abstract class CallDialog extends EscapeDialog
             this.history = history;
         }
         
+        @Override
         public JComponent createComponent(JButton addButton, JButton removeButton)
         {
             Box container = new Box(BoxLayout.X_AXIS);
@@ -178,15 +181,16 @@ public abstract class CallDialog extends EscapeDialog
 
         public JComponent getParameterComponent(int index)
         {
-            return (JComponent) parameters.get(index);
+            return parameters.get(index);
         }
 
         public String getType(int index)
         {
             if (isVarArgs && index >= (parameters.size() - 1)) {
-                return (String) types.get(types.size() - 1);
-            } else {
-                return (String) types.get(index);
+                return types.get(types.size() - 1);
+            } 
+            else {
+                return types.get(index);
             }
         }
 
@@ -198,7 +202,8 @@ public abstract class CallDialog extends EscapeDialog
             Object c = parameters.get(parameters.size() - 1);
             if (c instanceof GrowableBox) {
                 return (GrowableBox) parameters.get(parameters.size() - 1);
-            } else {
+            }
+            else {
                 return null;
             }
         }
@@ -223,7 +228,8 @@ public abstract class CallDialog extends EscapeDialog
         {
             if (isVarArgs) {
                 return parameters.size() + getGrowableBox().getComponentCountWithoutEmpty() - 1;
-            } else {
+            }
+            else {
                 return parameters.size();
             }
         }
@@ -234,7 +240,8 @@ public abstract class CallDialog extends EscapeDialog
                 JComponent element = iter.next();
                 if (isVarArgs && !iter.hasNext()) {
                     ((GrowableBox) element).clear();
-                } else {
+                }
+                else {
                     ((JComboBox) element).setSelectedIndex(0);
                 }
             }
@@ -255,7 +262,8 @@ public abstract class CallDialog extends EscapeDialog
                 GrowableBox varArgs = getGrowableBox();
                 VarArgFactory factory = (VarArgFactory) varArgs.getComponentFactory();
                 factory.setHistory(historyList);
-            } else {
+            }
+            else {
                 getParameter(i).setModel(new DefaultComboBoxModel(historyList.toArray()));
                 getParameter(i).insertItemAt(defaultParamValue, 0);
             }
@@ -307,10 +315,12 @@ public abstract class CallDialog extends EscapeDialog
      */
     public void setWaitCursor(boolean wait)
     {
-        if(wait)
+        if(wait) {
             setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
-        else
+        }
+        else {
             setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+        }
     }
 
     /**
@@ -363,8 +373,9 @@ public abstract class CallDialog extends EscapeDialog
     {
         // cut the "location: __SHELL3" bit from some error messages
         int index = message.indexOf("location:");
-        if(index != -1)
+        if(index != -1) {
             message = message.substring(0,index-1);
+        }
 
         errorLabel.setText(message);
         pack();
@@ -378,6 +389,7 @@ public abstract class CallDialog extends EscapeDialog
      * The object was selected interactively (by clicking
      * on it with the mouse pointer).
      */
+    @Override
     public void objectEvent(ObjectBenchEvent obe)
     {
         NamedValue value = obe.getValue();
@@ -395,23 +407,31 @@ public abstract class CallDialog extends EscapeDialog
 
         // create the ok/cancel button panel
         JPanel buttonPanel = new JPanel();
-        buttonPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) buttonPanel.setOpaque(false);
         {
             buttonPanel.setLayout(new FlowLayout(FlowLayout.RIGHT));
 
             //JButton okButton = BlueJTheme.getOkButton();
             okButton = BlueJTheme.getOkButton();
             okButton.addActionListener(new ActionListener() {
-                        public void actionPerformed(ActionEvent evt) { doOk(); }
-                    });
+
+                @Override
+                public void actionPerformed(ActionEvent evt)
+                { 
+                    doOk();
+                }
+            });
 
             JButton cancelButton = BlueJTheme.getCancelButton();
             cancelButton.addActionListener(new ActionListener() {
-                        public void actionPerformed(ActionEvent evt) { doCancel(); }
-                    });
+                @Override
+                public void actionPerformed(ActionEvent evt)
+                { 
+                    doCancel(); 
+                }
+            });
                     
             DialogManager.addOKCancelButtons(buttonPanel, okButton, cancelButton);
-
             getRootPane().setDefaultButton(okButton);
         }
 
@@ -419,10 +439,12 @@ public abstract class CallDialog extends EscapeDialog
         contentPane.setLayout(new BorderLayout(6,6));
         contentPane.setBorder(BlueJTheme.generalBorder);
 
-        if(topComponent != null)
+        if(topComponent != null) {
             contentPane.add(topComponent, BorderLayout.NORTH);
-        if(centerComponent != null)
+        }
+        if(centerComponent != null) {
             contentPane.add(centerComponent, BorderLayout.CENTER);
+        }
         contentPane.add(buttonPanel, BorderLayout.SOUTH);
 
         pack();
@@ -430,10 +452,12 @@ public abstract class CallDialog extends EscapeDialog
 
         // Close Action when close button is pressed
         addWindowListener(new WindowAdapter() {
-                public void windowClosing(WindowEvent event) {
-                    setVisible(false);
-                }
-            });
+            @Override
+            public void windowClosing(WindowEvent event)
+            {
+                setVisible(false);
+            }
+        });
     }
     
     /**
@@ -476,9 +500,10 @@ public abstract class CallDialog extends EscapeDialog
         }
         // treat 'return' in text field as OK
         component.getEditor().addActionListener(new ActionListener() {
+            @Override
             public void actionPerformed(ActionEvent evt)
             {
-               doOk();
+                doOk();
             }
         });
         // add FocusListener for text insertion
@@ -519,25 +544,30 @@ public abstract class CallDialog extends EscapeDialog
                         BoxLayout.Y_AXIS, INSETS.top + INSETS.bottom);
                 //We want the dialog to resize when new args are added
                 component.addComponentListener(new ComponentListener() {
+                    @Override
                     public void componentResized(ComponentEvent e)
                     {
                         CallDialog.this.pack();
                     }
 
+                    @Override
                     public void componentMoved(ComponentEvent e)
                     {
                     }
 
+                    @Override
                     public void componentShown(ComponentEvent e)
                     {
                     }
 
+                    @Override
                     public void componentHidden(ComponentEvent e)
                     {
                     }
                 });
                 parameterList.setVarArg(component, paramString);
-            } else {
+            } 
+            else {
                 List<String> historyList = history.getHistory(paramClasses[i]);
                 JComboBox component = createComboBox(historyList);
                 parameterList.addParameter(i, component, paramString);
@@ -587,8 +617,8 @@ public abstract class CallDialog extends EscapeDialog
             gridBag.setConstraints(component, constraints);
             tmpPanel.add(component);
 
-            JLabel eol = new JLabel(",", JLabel.LEFT);
-            JLabel type = new JLabel(" " + parameterList.getType(i), JLabel.LEFT);
+            JLabel eol = new JLabel(",", SwingConstants.LEFT);
+            JLabel type = new JLabel(" " + parameterList.getType(i), SwingConstants.LEFT);
             if (i == (parameterList.size() - 1)) {
                 eol.setText(endString);
                 eol.setFont(parenthesisFont);
@@ -603,6 +633,7 @@ public abstract class CallDialog extends EscapeDialog
             if(type!=null) {
                     constraints.gridx = 3;
                     tmpPanel.add(type, constraints);
+                    type.setLabelFor(component);
             }            
 
             constraints.gridx = 2;
@@ -641,7 +672,8 @@ public abstract class CallDialog extends EscapeDialog
                 allParams[i] = varArgType;
             }
             return allParams;
-        } else {
+        }
+        else {
             return params;
         }
     }
@@ -671,8 +703,9 @@ public abstract class CallDialog extends EscapeDialog
         if (parameterList != null) {            
             for (int i = 0; i < parameterList.size(); i++) {
                 String arg = (String) parameterList.getParameter(i).getEditor().getItem();
-                if (arg == null || arg.trim().equals(""))
-                    return false;                
+                if (arg == null || arg.trim().equals("")) {
+                    return false;
+                }
             }
         }
         return true;
@@ -691,12 +724,13 @@ public abstract class CallDialog extends EscapeDialog
                 String arg = (String) typeParameterList.getParameter(i).getEditor().getItem();
                 if (arg == null || arg.trim().equals("")) {
                     oneIsEmpty = true;                     
-                } else {
+                }
+                else {
                     oneIsTypedIn = true;
                 }
-                if(oneIsEmpty && oneIsTypedIn) {
+                if (oneIsEmpty && oneIsTypedIn) {
                     return false;
-                }                
+                }             
             }
         }
         return true;
@@ -719,6 +753,7 @@ public abstract class CallDialog extends EscapeDialog
      * Set the visibility of the dialog, clearing parameter edit fields
      * and setting focus.
      */
+    @Override
     public void setVisible(boolean show)
     {
         if (! show) {
@@ -733,6 +768,7 @@ public abstract class CallDialog extends EscapeDialog
     protected void makeDialog(String className, String instanceName)
     {
         super.setContentPane(new JPanel() {
+            @Override
             protected void paintComponent(Graphics g)
             {
                 super.paintComponent(g);
@@ -741,24 +777,29 @@ public abstract class CallDialog extends EscapeDialog
                 int width = getWidth();
                 int height = getHeight();
                 
-                g2d.setPaint(new GradientPaint(width/4, 0, new Color(230,229,228),
-                                               width*3/4, height, new Color(191,186,178)));
+                if (!Config.isRaspberryPi()){
+                    g2d.setPaint(new GradientPaint(width/4, 0, new Color(230,229,228),
+                            width*3/4, height, new Color(191,186,178)));
+                }else{
+                    g2d.setPaint(new Color(214, 217, 223));
+                }
+                
                 g2d.fillRect(0, 0, width, height);
             }
         });
         
         JPanel dialogPanel = new JPanel();
-        dialogPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) dialogPanel.setOpaque(false);
         {
             descPanel = new JPanel();
-            descPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) descPanel.setOpaque(false);
             {
                 descPanel.setLayout(new BoxLayout(descPanel, BoxLayout.Y_AXIS));
                 descPanel.setAlignmentX(LEFT_ALIGNMENT);
             }
 
             JPanel centerPanel = new JPanel();
-            centerPanel.setOpaque(false);
+            if (!Config.isRaspberryPi()) centerPanel.setOpaque(false);
             {
                 centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
                 centerPanel.setAlignmentX(LEFT_ALIGNMENT);
@@ -774,7 +815,11 @@ public abstract class CallDialog extends EscapeDialog
             dialogPanel.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth));
             JSeparator sep = new JSeparator();
             sep.setForeground(new Color(191,190,187));
-            sep.setBackground(new Color(0,0,0,0));
+            if (!Config.isRaspberryPi()) {
+                sep.setBackground(new Color(0,0,0,0));
+            }else {
+                sep.setBackground(new Color(0,0,0));
+            }
             dialogPanel.add(sep);
             dialogPanel.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth));
             dialogPanel.add(centerPanel);
@@ -791,7 +836,7 @@ public abstract class CallDialog extends EscapeDialog
         label.setAlignmentX(LEFT_ALIGNMENT);
         descPanel.removeAll();
         descPanel.add(label);
-        label.setOpaque(false);
+        if (!Config.isRaspberryPi()) label.setOpaque(false);
         invalidate();
         validate();
     }
@@ -917,9 +962,7 @@ public abstract class CallDialog extends EscapeDialog
         }
         
         // handle varargs expansion
-        boolean hasVarArgs = method.isVarArgs() && parameterList != null
-                && parameterList.size() >= params.length;
-        if (hasVarArgs && varArgsExpanded) {
+        if (hasVarArgs(method, params) && varArgsExpanded) {
             int totalParams = parameterList.size();
             JavaType[] allParams = new JavaType[totalParams];
             System.arraycopy(params, 0, allParams, 0, params.length);
@@ -928,9 +971,33 @@ public abstract class CallDialog extends EscapeDialog
                 allParams[i] = varArgType;
             }
             return allParams;
-        } else {
+        }
+        else {
             return params;
         }
+    }
+
+    private boolean hasVarArgs(CallableView method, JavaType[] params)
+    {
+        if (!method.isVarArgs()) {
+            return false;
+        }
+        if (parameterList == null) {
+            return false;
+        }
+        if (parameterList.size() < params.length) {
+            return false;
+        }
+        if (getArgs().length == 1 && isEmptyArg(getArgs()[0]) ) {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isEmptyArg(String value)
+    {
+        String[] emptyArgs = {"{ }", "{}", ""};
+        return  Arrays.asList(emptyArgs).contains(value.trim());
     }
 
     /**
@@ -962,6 +1029,7 @@ public abstract class CallDialog extends EscapeDialog
      * Assigns focusedTextField to work around difficulties in JComboBox
      * firing focus gained events.
      */
+    @Override
     public void focusGained(FocusEvent fe)
     {
         if (fe.getComponent() instanceof JTextField) {
@@ -975,6 +1043,7 @@ public abstract class CallDialog extends EscapeDialog
      * Does nothing at present except for debug message.
      *
      */
+    @Override
     public void focusLost(FocusEvent fe)
     {
         //Debug.message(" Focus Lost: " + fe.paramString());

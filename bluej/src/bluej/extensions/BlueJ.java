@@ -22,6 +22,7 @@
 package bluej.extensions;
 
 import bluej.*;
+import bluej.collect.DataCollector;
 import bluej.extensions.event.*;
 import bluej.extensions.painter.ExtensionClassTargetPainter;
 import bluej.extmgr.*;
@@ -68,7 +69,7 @@ import javax.swing.*;
  * after its <code>terminate()</code> method has been called will result
  * in an (unchecked) <code>ExtensionUnloadedException</code> being thrown.
  *
- * @version    $Id: BlueJ.java 10207 2013-01-14 17:36:41Z davmac $
+ * @version    $Id: BlueJ.java 10528 2013-03-22 14:09:18Z davmac $
  */
 
 /*
@@ -381,6 +382,19 @@ public final class BlueJ
         return Config.getUserConfigDir();
     }
     
+    /**
+     * Returns the data-collection user ID, for use with extensions that
+     * aim to augment the BlueJ data collection project.
+     * 
+     * Since extension version 2.10
+     * 
+     * @return the user ID, as read from the properties file.
+     */
+    public String getDataCollectionUniqueID()
+    {
+        return DataCollector.getUserID();
+    }
+
 
     /**
      * Returns a property from BlueJ's properties,
@@ -921,7 +935,7 @@ public final class BlueJ
      * @param  attachedObject  Description of the Parameter
      * @return                 The menuItem value
      */
-    JMenuItem getMenuItem(ExtensionMenuObject attachedObject)
+    JMenuItem getMenuItem(ExtensionMenu attachedObject)
     {
         if ((currentMenuGen == null) || (attachedObject == null)) {
             return null;
@@ -934,7 +948,7 @@ public final class BlueJ
     /**
      * Post a notification of a menu going to be displayed
      */
-    void postMenuItem(ExtensionMenuObject attachedObject, JMenuItem onThisItem)
+    void postMenuItem(ExtensionMenu attachedObject, JMenuItem onThisItem)
     {
         if ((currentMenuGen != null) && (attachedObject != null)) {
             attachedObject.postMenuItem(currentMenuGen, onThisItem);

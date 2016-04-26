@@ -21,7 +21,6 @@
  */
 package bluej.editor;
 
-
 /**
  * @author Michael Kolling
  * Interface between the editor and the rest of BlueJ
@@ -52,8 +51,7 @@ public interface EditorWatcher
      * @param set    whether the breakpoint is set (true) or cleared
      * @return             An error message or null if okay.
      */
-    String breakpointToggleEvent(Editor editor, int lineNo, 
-                                 boolean set);
+    String breakpointToggleEvent(Editor editor, int lineNo, boolean set);
 
     /**
      * Called by Editor when a file is to be compiled
@@ -74,4 +72,7 @@ public interface EditorWatcher
      * Gets a property
      */
     String getProperty(String key);
-}
+    
+    void recordEdit(String curSource, boolean includeOneLineEdits);
+
+} // end class EditorWatcher

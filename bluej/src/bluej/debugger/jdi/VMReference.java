@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -195,7 +195,7 @@ class VMReference
     public VirtualMachine localhostSocketLaunch(File initDir, URL[] libraries, DebuggerTerminal term,
             VirtualMachineManager mgr)
     {
-        final int CONNECT_TRIES = 2; // try to connect max of 5 times
+        final int CONNECT_TRIES = 1; // try to connect max of 5 times
         final int CONNECT_WAIT = 500; // wait half a sec between each connect
 
         String [] launchParams;
@@ -209,7 +209,12 @@ class VMReference
         System.arraycopy(libraryPaths, 0, classPath, filesPath.length, libraryPaths.length);
         String allClassPath = Utility.toClasspathString(classPath);
         
-        ArrayList<String> paramList = new ArrayList<String>(10);
+        ArrayList<String> paramList = new ArrayList<String>(11);
+        
+        //check if it is a raspberry pi. if so, in order to make Pi4J work out of the box, run JVM with sudo.
+        if (Config.isRaspberryPi()) {
+            paramList.add("/usr/bin/sudo");
+        }
         paramList.add(Config.getJDKExecutablePath(null, "java"));
         
         //check if any vm args are specified in Config, at the moment these
@@ -226,13 +231,20 @@ class VMReference
         
         // Index for where the transport parameter is to be added
         transportIndex = paramList.size();
+
+        streamEncoding = Config.getPropString("bluej.terminal.encoding", null);
+        isDefaultEncoding = (streamEncoding == null);
+        if (! isDefaultEncoding) {
+            // Set the input/output encoding to the same as the terminal encoding, to avoid confusion
+            // that mismatching these two causes. See bug #509.
+            paramList.add("-Dfile.encoding=" + streamEncoding);
+        }
+        
         paramList.add(SERVER_CLASSNAME);
         
         // set output encoding if specified, default is to use system default
         // this gets passed to ExecServer's main as an arg which can then be 
         // used to specify encoding
-        streamEncoding = Config.getPropString("bluej.terminal.encoding", null);
-        isDefaultEncoding = (streamEncoding == null);
         if(!isDefaultEncoding) {
             paramList.add(streamEncoding);
         }
@@ -265,7 +277,8 @@ class VMReference
                     if (timeoutArg != null) {
                         // The timeout appears to be in milliseconds.
                         // The default is apparently no timeout.
-                        timeoutArg.setValue("5000");
+                        String timeOutVal = Config.getPropString("bluej.vm.connect.timeout", "10000");
+                        timeoutArg.setValue(timeOutVal);
                     }
                     
                     // Make sure the local address is localhost, not the

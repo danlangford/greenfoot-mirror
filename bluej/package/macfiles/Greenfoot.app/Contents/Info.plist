@@ -53,13 +53,13 @@
 	<string>GrFo</string>
 	<key>CFBundleVersion</key>
 	<string>VERSION</string>
-	<key>Java</key>
+	<key>JavaProps</key>
 	<dict>
 		<key>Arguments</key>
-		<array>
-			<string>-greenfoot=true</string>
-			<string>-bluej.compiler.showunchecked=false</string>
-		</array>
+			<array>
+				<string>-greenfoot=true</string>
+				<string>-bluej.compiler.showunchecked=false</string>
+			</array>
 		<key>ClassPath</key>
 		<array>
 			<string>$JAVAROOT/bluej.jar</string>
@@ -75,5 +75,7 @@
 			<string>true</string>
 		</dict>
 	</dict>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 </dict>
 </plist>

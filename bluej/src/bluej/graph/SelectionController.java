@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,19 +23,23 @@ package bluej.graph;
 
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
-import java.util.List;
 import java.util.Iterator;
+import java.util.List;
 
 import bluej.Config;
+import bluej.pkgmgr.Package;
 import bluej.pkgmgr.dependency.Dependency;
 import bluej.pkgmgr.graphPainter.GraphPainterStdImpl;
-import bluej.pkgmgr.target.*;
-import bluej.pkgmgr.Package;
+import bluej.pkgmgr.target.ClassTarget;
+import bluej.pkgmgr.target.DependentTarget;
+import bluej.pkgmgr.target.Target;
 
 /**
  * This class controls the selection (the set of selected elements in the graph).
@@ -44,7 +48,7 @@ import bluej.pkgmgr.Package;
  * be inactive.
  */
 public class SelectionController
-    implements MouseListener, MouseMotionListener, KeyListener
+    implements FocusListener, MouseListener, MouseMotionListener, KeyListener
 {
     private GraphEditor graphEditor;
     private Graph graph;
@@ -64,7 +68,7 @@ public class SelectionController
 
     private int currentDependencyIndex;  // for cycling through dependencies
 
-    private TraverseStragegy traverseStragegiImpl = new TraverseStragegyImpl();
+    private TraverseStrategy traverseStragegiImpl = new TraverseStrategyImpl();
 
     
     /**
@@ -78,7 +82,18 @@ public class SelectionController
         this.graph = graphEditor.getGraph();
         marquee = new Marquee(graph);
         selection = new SelectionSet();
-
+        for (Iterator<? extends Vertex> i = graph.getVertices(); i.hasNext(); ) {
+            Vertex v = i.next();
+            if (v.isSelected()) {
+                selection.addExisting(v);
+            }
+        }
+        for (Iterator<? extends Edge> i = graph.getEdges(); i.hasNext(); ) {
+            Edge e = i.next();
+            if (e.isSelected()) {
+                selection.addExisting(e);
+            }
+        }
     }
 
     // ======= MouseListener interface =======
@@ -273,7 +288,7 @@ public class SelectionController
         }
 
         // post context menu
-        else if (evt.getKeyCode() == KeyEvent.VK_SPACE || evt.getKeyCode() == KeyEvent.VK_ENTER) {
+        else if (evt.getKeyCode() == KeyEvent.VK_SPACE || evt.getKeyCode() == KeyEvent.VK_ENTER || evt.getKeyCode() == KeyEvent.VK_CONTEXT_MENU) {
             postMenu();
         }
 
@@ -621,4 +636,21 @@ public class SelectionController
     {
         return rubberBand;
     }
+
+    @Override
+    public void focusGained(FocusEvent e)
+    {
+        Iterator<? extends Vertex> it = graph.getVertices();
+        while (it.hasNext())
+        {
+            Vertex v = it.next();
+            if (v.getComponent() == e.getComponent())
+            {
+                selection.selectOnly(v);
+            }
+        }
+    }
+
+    @Override
+    public void focusLost(FocusEvent e) { }
 }

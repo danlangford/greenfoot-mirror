@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -60,7 +60,7 @@ import bluej.utility.JavaNames;
  * 
  * @author Michael Kolling
  * @author Poul Henriksen
- * @version $Id: ClassInspector.java 9024 2011-06-21 03:07:08Z davmac $
+ * @version $Id: ClassInspector.java 11261 2014-04-10 22:37:02Z fdlh $
  */
 public class ClassInspector extends Inspector
 {
@@ -76,6 +76,7 @@ public class ClassInspector extends Inspector
     protected final static String INTERFACE_NAME_LABEL = Config.getString("debugger.inspector.interface.nameLabel");
 
     protected final static String noFieldsMsg = Config.getString("debugger.inspector.class.noFields");
+    protected final static String numFields = Config.getString("debugger.inspector.numFields");
     
     // === instance variables ===
 
@@ -118,20 +119,21 @@ public class ClassInspector extends Inspector
         
         String className = JavaNames.stripPrefix(myClass.getName());
         String headerString = null;
+        String suffix = " " + numFields + " " + getListData().size();
         if(myClass.isEnum()) {
-            setTitle(ENUM_INSPECT_TITLE);
+            setTitle(ENUM_INSPECT_TITLE + " " + className + suffix);
             headerString = ENUM_NAME_LABEL + " " + className;
         } else if (myClass.isInterface()) {
-            setTitle(INTERFACE_INSPECT_TITLE);
+            setTitle(INTERFACE_INSPECT_TITLE + " " + className + suffix);
             headerString = INTERFACE_NAME_LABEL + " " + className;
         } else {
-            setTitle(CLASS_INSPECT_TITLE);
+            setTitle(CLASS_INSPECT_TITLE + " " + className + suffix);
             headerString = CLASS_NAME_LABEL + " " + className;
         }
         
         // Create the header
         JComponent header = new JPanel();
-        header.setOpaque(false);
+        if (!Config.isRaspberryPi()) header.setOpaque(false);
         header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));        
         JLabel headerLabel = new JLabel(headerString);
 
@@ -140,13 +142,17 @@ public class ClassInspector extends Inspector
         header.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth));
         JSeparator sep = new JSeparator();
         sep.setForeground(new Color(217, 175, 150));
-        sep.setBackground(new Color(0, 0, 0, 0));
+        if (!Config.isRaspberryPi()) {
+            sep.setBackground(new Color(0, 0, 0, 0));
+        }else{
+            sep.setBackground(new Color(0, 0, 0));
+        }
         header.add(sep);
 
         // Create the main panel (field list, Get/Inspect buttons)
 
         JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
-        mainPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) mainPanel.setOpaque(false);
 
         if (getListData().size() != 0) {
             JScrollPane scrollPane = createFieldListScrollPane();
@@ -168,13 +174,13 @@ public class ClassInspector extends Inspector
         // create bottom button pane with "Close" button
 
         JPanel bottomPanel = new JPanel();
-        bottomPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) bottomPanel.setOpaque(false);
         bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.Y_AXIS));
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(10, 5, 5, 5));
 
         JPanel buttonPanel;
         buttonPanel = new JPanel(new BorderLayout());
-        buttonPanel.setOpaque(false);
+        if (!Config.isRaspberryPi()) buttonPanel.setOpaque(false);
         JButton button = createCloseButton();
         buttonPanel.add(button, BorderLayout.EAST);
 
