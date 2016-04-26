@@ -126,7 +126,7 @@ import com.apple.eawt.ApplicationEvent;
  * @author Poul Henriksen
  * @author mik
  *
- * @version $Id: GreenfootFrame.java 6720 2009-09-18 13:49:11Z davmac $
+ * @version $Id: GreenfootFrame.java 6789 2009-10-13 07:04:57Z davmac $
  */
 public class GreenfootFrame extends JFrame
     implements WindowListener, CompileListener, WorldListener, SelectionListener,
@@ -303,7 +303,6 @@ public class GreenfootFrame extends JFrame
         if (isClosedProject) {
             this.project = project;
             worldHandlerDelegate.attachProject(project);
-            worldHandler.setLastWorldClass(project.getProjectProperties().getString("world.lastInstantiated"));
             project.addCompileListener(this);
             setTitle("Greenfoot: " + project.getName());
             enableProjectActions();
@@ -539,25 +538,25 @@ public class GreenfootFrame extends JFrame
     private void populateClassBrowser(ClassBrowser classBrowser, GProject project)
     {
     	if (project != null) {
-    		try {
-    			GPackage pkg = project.getDefaultPackage();
+    	    try {
+    	        GPackage pkg = project.getDefaultPackage();
 
-    			GClass[] classes = pkg.getClasses();
-    			//add the system classes
-    			classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(World.class, project)));
-    			classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(Actor.class, project)));
-    			
-    			for (int i = 0; i < classes.length; i++) {
-    				GClass gClass = classes[i];
-    				classBrowser.quickAddClass(new ClassView(classBrowser, gClass));
-    			}
+    	        GClass[] classes = pkg.getClasses();
+    	        //add the system classes
+    	        classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(World.class, project)));
+    	        classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(Actor.class, project)));
 
-    			classBrowser.updateLayout();
-    		}
-    		catch (Exception exc) {
-    			//Debug.reportError("Could not open classes in scenario", exc);
-    			exc.printStackTrace();
-    		}
+    	        for (int i = 0; i < classes.length; i++) {
+    	            GClass gClass = classes[i];
+    	            classBrowser.quickAddClass(new ClassView(classBrowser, gClass));
+    	        }
+
+    	        classBrowser.updateLayout();
+    	    }
+    	    catch (Exception exc) {
+    	        //Debug.reportError("Could not open classes in scenario", exc);
+    	        exc.printStackTrace();
+    	    }
     	}
     }
 
@@ -854,6 +853,7 @@ public class GreenfootFrame extends JFrame
             resize();
         }
         worldDimensions = worldCanvas.getPreferredSize();
+        project.setLastWorldClassName(newWorld.getClass().getName());
     }
     
     public void worldRemoved(WorldEvent e)

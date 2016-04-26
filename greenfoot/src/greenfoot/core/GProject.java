@@ -230,6 +230,22 @@ public class GProject extends RProjectListenerImpl
     }
     
     /**
+     * Set the name of the most recently instantiated world class.
+     */
+    public void setLastWorldClassName(String name)
+    {
+        projectProperties.setString("world.lastInstantiated", name);
+    }
+    
+    /**
+     * Get the name of the most recently instantiated world class.
+     */
+    public String getLastWorldClassName()
+    {
+        return projectProperties.getString("world.lastInstantiated");
+    }
+    
+    /**
      * Show the readme file for this project in an editor window.
      */
     public void openReadme()
