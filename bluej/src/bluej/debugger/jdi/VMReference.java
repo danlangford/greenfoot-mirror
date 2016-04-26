@@ -184,11 +184,14 @@ class VMReference
      * 
      * @param initDir
      *            the directory to have as a current directory in the remote VM
+     * @param libraries
+     *            libraries to be added to the VM startup classpath
      * @param mgr
      *            the virtual machine manager
      * @return an instance of a VirtualMachine or null if there was an error
      */
-    public VirtualMachine localhostSocketLaunch(File initDir, DebuggerTerminal term, VirtualMachineManager mgr)
+    public VirtualMachine localhostSocketLaunch(File initDir, URL[] libraries, DebuggerTerminal term,
+            VirtualMachineManager mgr)
     {
         final int CONNECT_TRIES = 5; // try to connect max of 5 times
         final int CONNECT_WAIT = 500; // wait half a sec between each connect
@@ -198,7 +201,11 @@ class VMReference
         // launch the VM using the runtime classpath.
         Boot boot = Boot.getInstance();
         File [] filesPath = Utility.urlsToFiles(boot.getRuntimeUserClassPath());
-        String allClassPath = Utility.toClasspathString(filesPath);
+        File [] libraryPaths = Utility.urlsToFiles(libraries);
+        File [] classPath = new File[filesPath.length + libraryPaths.length];
+        System.arraycopy(filesPath, 0, classPath, 0, filesPath.length);
+        System.arraycopy(libraryPaths, 0, classPath, filesPath.length, libraryPaths.length);
+        String allClassPath = Utility.toClasspathString(classPath);
         
         ArrayList<String> paramList = new ArrayList<String>(10);
         paramList.add(Config.getJDKExecutablePath(null, "java"));
@@ -367,31 +374,47 @@ class VMReference
         throws IOException
     {    
         Process vmProcess = Runtime.getRuntime().exec(params, null, initDir);
-        BufferedReader br = new BufferedReader(new InputStreamReader(vmProcess.getInputStream()));
+        BufferedReader bro = new BufferedReader(new InputStreamReader(vmProcess.getInputStream()));
+        BufferedReader bre = new BufferedReader(new InputStreamReader(vmProcess.getErrorStream()));
         
         // grab anything else the VM spits out before we try to connect to it.
         try {
-            br = new BufferedReader(new InputStreamReader(vmProcess.getErrorStream()));
-            StringBuffer extra = new StringBuffer();
+            
+            StringBuffer extraOut = new StringBuffer();
+            StringBuffer extraErr = new StringBuffer();
             // Two streams to check: standard output and standard error
                 
             char [] buf = new char[1024];
+            Thread.sleep(200); // A little extra time for initial output
             for (int i = 0; i < 5; i++) {
                 Thread.sleep(200);
                 
                 // discontinue if no data available or stream closed
-                if (! br.ready()) {
-                    break;
+                boolean keepReading = false;
+                if (bro.ready()) {
+                    int len = bro.read(buf);
+                    if (len != -1) {
+                        extraOut.append(buf, 0, len);
+                    }
+                    keepReading = true;
                 }
-                int len = br.read(buf);
-                if (len == -1) {
-                    break;
+                if (bre.ready()) {
+                    int len = bre.read(buf);
+                    if (len != -1) {
+                        extraErr.append(buf, 0, len);
+                    }
+                    keepReading = true;
                 }
                 
-                extra.append(buf, 0, len);
+                if (! keepReading) {
+                    break;
+                }
             }
-            if (extra.length() != 0) {
-                Debug.message("Extra output from debug VM on launch:" + extra);
+            if (extraOut.length() != 0) {
+                Debug.message("Extra output from debug VM on launch:" + extraOut);
+            }
+            if (extraErr.length() != 0) {
+                Debug.message("Error output from debug VM on launch:" + extraErr);
             }
         }
         catch (InterruptedException ie) {}
@@ -427,13 +450,13 @@ class VMReference
      * Create the second virtual machine and start the execution server (class
      * ExecServer) on that machine.
      */
-    public VMReference(JdiDebugger owner, DebuggerTerminal term, File initialDirectory)
+    public VMReference(JdiDebugger owner, DebuggerTerminal term, File initialDirectory, URL[] libraries)
         throws JdiVmCreationException
     {
         this.owner = owner;
         
         // machine will be suspended at startup
-        machine = localhostSocketLaunch(initialDirectory, term, Bootstrap.virtualMachineManager());
+        machine = localhostSocketLaunch(initialDirectory, libraries, term, Bootstrap.virtualMachineManager());
         //machine = null; //uncomment to simulate inabilty to create debug VM
         
         if (machine == null) {

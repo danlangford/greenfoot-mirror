@@ -47,7 +47,9 @@ import java.lang.reflect.InvocationTargetException;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
+import javax.swing.InputMap;
 import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
@@ -57,7 +59,6 @@ import javax.swing.JSeparator;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
-import javax.swing.text.BadLocationException;
 
 import bluej.BlueJEvent;
 import bluej.BlueJEventListener;
@@ -70,16 +71,17 @@ import bluej.debugger.DebuggerTerminal;
 import bluej.debugmgr.ExecutionEvent;
 import bluej.pkgmgr.Project;
 import bluej.prefmgr.PrefMgr;
+import bluej.testmgr.record.InvokerRecord;
 import bluej.utility.Debug;
 import bluej.utility.DialogManager;
 import bluej.utility.FileUtility;
-import bluej.utility.Utility;
 
 /**
  * The Frame part of the Terminal window used for I/O when running programs
  * under BlueJ.
  *
- * @author  Michael Kolling, Philip Stevens
+ * @author  Michael Kolling
+ * @author  Philip Stevens
  */
 @SuppressWarnings("serial")
 public final class Terminal extends JFrame
@@ -221,8 +223,6 @@ public final class Terminal extends JFrame
             if (!active) {
                 text.getCaret().setVisible(false);
             }
-            //text.setEnabled(active);
-            //text.setBackground(active ? activeBgColour : inactiveBgColour);
             isActive = active;
         }
     }
@@ -353,7 +353,7 @@ public final class Terminal extends JFrame
      */
     private void prepare()
     {
-        if(newMethodCall) {   // prepare only once per method call
+        if (newMethodCall) {   // prepare only once per method call
             showHide(true);
             newMethodCall = false;
         }
@@ -368,27 +368,32 @@ public final class Terminal extends JFrame
     /**
      * An interactive method call has been made by a user.
      */
-    private void methodCall(String callString)
+    private void methodCall(String callString, boolean isVoid)
     {
         newMethodCall = false;
         if(clearOnMethodCall) {
             clear();
         }
         if(recordMethodCalls) {
-            try {
-                if(text.getCaretPosition() !=
-                   text.getLineStartOffset(text.getLineCount())) {
-                    writeToTerminal("\n");
-                }
+            if (isVoid) {
+                text.appendMethodCall(callString + ";\n");
             }
-            catch(BadLocationException exc) {
-                writeToTerminal("\n");
+            else {
+                text.appendMethodCall(callString + "\n");
             }
-            if(callString != null) {
-                writeToTerminal("[ ");
-                writeToTerminal(callString);
-                writeToTerminal(" ]\n");
-            }
+        }
+        newMethodCall = true;
+    }
+    
+    private void constructorCall(InvokerRecord ir)
+    {
+        newMethodCall = false;
+        if(clearOnMethodCall) {
+            clear();
+        }
+        if(recordMethodCalls) {
+            String callString = ir.getResultTypeString() + " " + ir.getResultName() + " = " + ir.toExpression() + ";";
+            text.appendMethodCall(callString + "\n");
         }
         newMethodCall = true;
     }
@@ -396,16 +401,6 @@ public final class Terminal extends JFrame
     private void methodResult(ExecutionEvent event)
     {
         if (recordMethodCalls) {
-            try {
-                if (text.getCaretPosition() !=
-                   text.getLineStartOffset(text.getLineCount())) {
-                    writeToTerminal("\n");
-                }
-            }
-            catch (BadLocationException exc) {
-                writeToTerminal("\n");
-            }
-            
             String result = null;
             String resultType = event.getResult();
             
@@ -413,36 +408,33 @@ public final class Terminal extends JFrame
                 DebuggerObject object = event.getResultObject();
                 if (object != null) {
                     if (event.getClassName() != null && event.getMethodName() == null) {
-                        // constructor call - the result object is the created object
-                        String genTypeStr = object.getGenType().toString();
-                        result = genTypeStr + " result = ";
-                        result += "(new instance of " + genTypeStr + ")";
+                        // Constructor call - the result object is the created object.
+                        // Don't display the result separately:
+                        return;
                     }
                     else {
                         // if the method returns a void, we must handle it differently
                         if (object.isNullObject()) {
-                            result = "void result";
+                            return; // Don't show result of void calls
                         }
                         else {
                             // other - the result object is a wrapper with a single result field
                             DebuggerField resultField = object.getField(0);
-                            result = resultField.getType() + " result = ";
+                            result = "    returned " + resultField.getType().toString(true) + " ";
                             result += resultField.getValueString();
                         }
                     }
                 }
             }
             else if (resultType == ExecutionEvent.EXCEPTION_EXIT) {
-                result = "Exception occurred.";
+                result = "    Exception occurred.";
             }
             else if (resultType == ExecutionEvent.TERMINATED_EXIT) {
-                result = "VM terminated.";
+                result = "    VM terminated.";
             }
             
             if (result != null) {
-                writeToTerminal("[ ");
-                writeToTerminal(result);
-                writeToTerminal(" ]\n");
+                text.appendMethodCall(result + "\n");
             }
         }
     }
@@ -474,30 +466,25 @@ public final class Terminal extends JFrame
         return err;
     }
 
-
     // ---- KeyListener interface ----
 
+    @Override
     public void keyPressed(KeyEvent event)
     {
-        // Let menu commands and dead keys (if active) pass
-        // Dead keys are passed because they wont work on Windows otherwise
-        if(event.getModifiers() != SHORTCUT_MASK && !(Utility.isDeadKey(event) && isActive) )  
-            event.consume();
     }
     
+    @Override
     public void keyReleased(KeyEvent event)
     {
-        // Let menu commands and dead keys (if active) pass
-        // Dead keys are passed because they wont work on Windows otherwise
-        if(event.getModifiers() != SHORTCUT_MASK && !(Utility.isDeadKey(event) && isActive) )  
-            event.consume();
     }
 
+    @Override
     public void keyTyped(KeyEvent event)
     {
-        initialise();
-        char ch = event.getKeyChar();
+        // We handle most things we are interested in here. The InputMap filters out
+        // most other unwanted actions (but allows copy/paste).
         
+        char ch = event.getKeyChar();
         switch (ch) {
             
         case KeyEvent.VK_EQUALS: // increase the font size
@@ -505,6 +492,7 @@ public final class Terminal extends JFrame
             if (event.getModifiers() == SHORTCUT_MASK) {
                 setTerminalFontSize(terminalFontSize + 1);
                 project.getTerminal().resetFont();
+                event.consume();
                 break;
             }
 
@@ -512,6 +500,7 @@ public final class Terminal extends JFrame
             if (event.getModifiers() == SHORTCUT_MASK) {
                 setTerminalFontSize(terminalFontSize - 1);
                 project.getTerminal().resetFont();
+                event.consume();
                 break;
             }
 
@@ -523,14 +512,11 @@ public final class Terminal extends JFrame
             if (isActive) {
                 switch (ch) {
 
-                case 3: // CTRL-C (linux/Windows)
-                case 22: // CTRL-V (linux/Windows)
-                    break;
-
                 case 4:   // CTRL-D (unix/Mac EOF)
                 case 26:  // CTRL-Z (DOS/Windows EOF)
                     buffer.signalEOF();
                     writeToTerminal("\n");
+                    event.consume();
                     break;
 
                 case '\b':  // backspace
@@ -542,6 +528,7 @@ public final class Terminal extends JFrame
                             Debug.reportError("bad location " + exc);
                         }
                     }
+                    event.consume();
                     break;
 
                 case '\r':  // carriage return
@@ -550,18 +537,21 @@ public final class Terminal extends JFrame
                         writeToTerminal(String.valueOf(ch));
                         buffer.notifyReaders();
                     }
+                    event.consume();
                     break;
 
                 default:
-                    if (buffer.putChar(ch)) {
-                        writeToTerminal(String.valueOf(ch));
+                    if (ch >= 32) {
+                        if (buffer.putChar(ch)) {
+                            writeToTerminal(String.valueOf(ch));
+                        }
+                        event.consume();
                     }
                     break;
                 }
             }
             break;
         }
-        event.consume();    // make sure the text area doesn't handle this
     }
 
 
@@ -577,11 +567,18 @@ public final class Terminal extends JFrame
      * @param arg      An event specific parameter. See BlueJEvent for
      *                 definition.
      */
+    @Override
     public void blueJEvent(int eventId, Object arg)
     {
         initialise();
         if(eventId == BlueJEvent.METHOD_CALL) {
-            methodCall((String)arg);
+            InvokerRecord ir = (InvokerRecord) arg;
+            if (ir.getResultName() != null) {
+                constructorCall(ir);
+            }
+            else {
+                methodCall(ir.toExpression(), ir.hasVoidResult());
+            }
         }
         else if (eventId == BlueJEvent.EXECUTION_RESULT) {
             methodResult((ExecutionEvent) arg);
@@ -600,13 +597,43 @@ public final class Terminal extends JFrame
             setIconImage(icon);
         }
         text = new TermTextArea(rows, columns, buffer, this);
+        final InputMap origInputMap = text.getInputMap();
+        text.setInputMap(JComponent.WHEN_FOCUSED, new InputMap() {
+            {
+                setParent(origInputMap);
+            }
+            
+            @Override
+            public Object get(KeyStroke keyStroke)
+            {
+                Object actionName = super.get(keyStroke);
+                
+                if (actionName == null) {
+                    return null;
+                }
+                
+                char keyChar = keyStroke.getKeyChar();
+                if (keyChar == KeyEvent.CHAR_UNDEFINED || keyChar < 32) {
+                    // We might want to filter the action
+                    if ("copy-to-clipboard".equals(actionName)) {
+                        return actionName;
+                    }
+                    if ("paste-from-clipboard".equals(actionName)) {
+                        // Handled via paste() in TermTextArea
+                        return actionName;
+                    }
+                    return null;
+                }
+                
+                return actionName;
+            }
+        });
+        
         scrollPane = new JScrollPane(text);
         text.setFont(getTerminalFont());
         text.setEditable(false);
-        text.setLineWrap(false);
         text.setForeground(FGCOLOUR);
         text.setMargin(new Insets(6, 6, 6, 6));
-        //text.setBackground(inactiveBgColour);
         text.addKeyListener(this);
 
         getContentPane().add(scrollPane, BorderLayout.CENTER);
@@ -652,7 +679,7 @@ public final class Terminal extends JFrame
      */
     private void createErrorPane()
     {
-        errorText = new JTextArea(5, text.getColumns());
+        errorText = new JTextArea(5, 80);
         errorScrollPane = new JScrollPane(errorText);
         errorText.setFont(getTerminalFont());
         errorText.setEditable(false);
@@ -667,7 +694,8 @@ public final class Terminal extends JFrame
     /**
      * Show the errorPane for error output
      */
-    private void showErrorPane() {
+    private void showErrorPane()
+    {
         if(errorShown) {
             return;
         }
@@ -704,9 +732,9 @@ public final class Terminal extends JFrame
     
     /**
      * Hide the pane with the error output.
-     *
      */
-    private void hideErrorPane() {
+    private void hideErrorPane()
+    {
         if(!errorShown) {
             return;
         }
@@ -766,7 +794,8 @@ public final class Terminal extends JFrame
             super(Config.getString("terminal.clear"));
         }
 
-        public void actionPerformed(ActionEvent e) {
+        public void actionPerformed(ActionEvent e)
+        {
             clear();
         }
     }
@@ -778,7 +807,8 @@ public final class Terminal extends JFrame
             super(Config.getString("terminal.save"));
         }
 
-        public void actionPerformed(ActionEvent e) {
+        public void actionPerformed(ActionEvent e)
+        {
             save();
         }
     }
@@ -790,7 +820,8 @@ public final class Terminal extends JFrame
             super(Config.getString("terminal.print"));
         }
 
-        public void actionPerformed(ActionEvent e) {
+        public void actionPerformed(ActionEvent e)
+        {
             print();
         }
     }
@@ -802,7 +833,8 @@ public final class Terminal extends JFrame
             super(Config.getString("terminal.close"));
         }
 
-        public void actionPerformed(ActionEvent e) {
+        public void actionPerformed(ActionEvent e)
+        {
             showHide(false);
         }
     }
@@ -810,9 +842,11 @@ public final class Terminal extends JFrame
     private Action getCopyAction()
     {
         Action[] textActions = text.getActions();
-        for (int i=0; i < textActions.length; i++)
-            if(textActions[i].getValue(Action.NAME).equals("copy-to-clipboard"))
+        for (int i=0; i < textActions.length; i++) {
+            if(textActions[i].getValue(Action.NAME).equals("copy-to-clipboard")) {
                 return textActions[i];
+            }
+        }
 
         return null;
     }
@@ -824,7 +858,8 @@ public final class Terminal extends JFrame
             super(Config.getString("terminal.clearScreen"));
         }
 
-        public void actionPerformed(ActionEvent e) {
+        public void actionPerformed(ActionEvent e)
+        {
             clearOnMethodCall = autoClear.isSelected();
             Config.putPropBoolean(CLEARONMETHODCALLSPROPNAME, clearOnMethodCall);
         }

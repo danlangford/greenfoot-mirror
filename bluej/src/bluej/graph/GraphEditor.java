@@ -35,13 +35,12 @@ import bluej.pkgmgr.graphPainter.GraphPainterStdImpl;
  * 
  * @author Michael Cahill
  * @author Michael Kolling
- * @version $Id: GraphEditor.java 7645 2010-05-20 10:54:49Z nccb $
+ * @version $Id: GraphEditor.java 9013 2011-06-17 08:35:30Z mik $
  */
 public class GraphEditor extends JComponent
     implements MouseMotionListener, GraphListener
 {
-    protected static final Color background = Config.getOptionalItemColour("colour.graph.background");
-    protected final Color envOpColour = Config.getItemColour("colour.menu.environOp");
+    protected final Color envOpColour = Config.ENV_COLOUR;
     
     private final static Cursor handCursor = new Cursor(Cursor.HAND_CURSOR);
     private final static Cursor defaultCursor = new Cursor(Cursor.DEFAULT_CURSOR);
@@ -89,6 +88,7 @@ public class GraphEditor extends JComponent
      * Tell how big we would like to be. The preferred size of the graph editor
      * the the size of the edited graph.
      */
+    @Override
     public Dimension getPreferredSize()
     {
         return graph.getMinimumSize();
@@ -98,6 +98,7 @@ public class GraphEditor extends JComponent
      * Tell how big we would like to be. The minimum size of the graph editor
      * the the size of the edited graph.
      */
+    @Override
     public Dimension getMinimumSize()
     {
         return graph.getMinimumSize();
@@ -106,6 +107,7 @@ public class GraphEditor extends JComponent
     /**
      * Paint this graph editor (this may be on screen or on a printer).
      */
+    @Override
     public void paint(Graphics g)
     {
         Graphics2D g2D = (Graphics2D) g;
@@ -116,7 +118,7 @@ public class GraphEditor extends JComponent
                     d.width/4, 0, new Color(253,253,250),
                     d.width*3/4, d.height, new Color(241,231,196));
 
-            g2D.setPaint(background != null ? background : gp);
+            g2D.setPaint(gp);
             g2D.fillRect(0, 0, d.width, d.height);
         }
 
@@ -169,6 +171,7 @@ public class GraphEditor extends JComponent
      * 
      * This method is called after the corresponding mousePressed method.
      */
+    @Override
     protected void processMouseEvent(MouseEvent evt)
     {
         super.processMouseEvent(evt);
@@ -199,7 +202,7 @@ public class GraphEditor extends JComponent
      */
     public void addToSelection(SelectableGraphElement element)
     {
-    	selectionController.addToSelection(element);
+        selectionController.addToSelection(element);
     }
     
    
@@ -226,6 +229,7 @@ public class GraphEditor extends JComponent
 
     private boolean hasFocus;
     
+    @Override
     public boolean hasFocus(){
         return hasFocus;
     }
@@ -234,6 +238,7 @@ public class GraphEditor extends JComponent
         this.hasFocus = hasFocus;
     }
     
+    @Override
     public String getToolTipText(MouseEvent event)
     {
         int x = event.getX();

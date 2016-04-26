@@ -380,8 +380,9 @@ public class GreenfootFrame extends JFrame
         WorldHandler.initialise(worldCanvas, worldHandlerDelegate);
         worldHandler = WorldHandler.getInstance();
         worldHandler.addWorldListener(this);
-        Simulation.initialize(worldHandler, new SimulationDelegateIDE());
+        Simulation.initialize(new SimulationDelegateIDE());
         Simulation sim = Simulation.getInstance();
+        sim.attachWorldHandler(worldHandler);
        
         // Build the class browser before building the menu, because
         // some menu actions work on the class browser.
@@ -573,7 +574,7 @@ public class GreenfootFrame extends JFrame
             try {
                 GPackage pkg = project.getDefaultPackage();
 
-                GClass[] classes = pkg.getClasses();
+                GClass[] classes = pkg.getClasses(false);
                 //add the system classes
                 classBrowser.quickAddClass(new ClassView(classBrowser,
                         new GCoreClass(World.class, project), worldHandlerDelegate));

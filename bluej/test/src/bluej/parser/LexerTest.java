@@ -356,7 +356,7 @@ public class LexerTest extends junit.framework.TestCase
     
     public void testOther() throws Exception
     {
-        TokenStream ts = getLexerFor("\"a string\" an_identifier99 '\\n' 1234 1234l 0.34 .56f 5.06d 0x1234");
+        TokenStream ts = getLexerFor("\"a string\" an_identifier99 '\\n' 1234 1234l 0.34 .78 .56f 5.06d 0x1234");
         LocatableToken token = (LocatableToken) ts.nextToken();
         assertEquals(JavaTokenTypes.STRING_LITERAL, token.getType());
         token = (LocatableToken) ts.nextToken();
@@ -368,6 +368,8 @@ public class LexerTest extends junit.framework.TestCase
         assertEquals(JavaTokenTypes.NUM_INT, token.getType());
         token = (LocatableToken) ts.nextToken();
         assertEquals(JavaTokenTypes.NUM_LONG, token.getType());
+        token = (LocatableToken) ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_DOUBLE, token.getType());
         token = (LocatableToken) ts.nextToken();
         assertEquals(JavaTokenTypes.NUM_DOUBLE, token.getType());
         token = (LocatableToken) ts.nextToken();
@@ -510,7 +512,36 @@ public class LexerTest extends junit.framework.TestCase
         assertEquals(11, token.getColumn());
         assertEquals(JavaTokenTypes.IDENT, token.getType());
     }
+    
+    public void testJava7NumLiterals() throws Exception
+    {
+        TokenStream ts = getLexerFor("1_000_000 1_000_000_000L 1_2.3_4f 1_2.3_4 1_2e3_4 0x12_34 " +
+                "0b111011001 0B1100110 0b11_00_11 0B11_11_00 0b11001L");
+        LocatableToken token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_INT, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_LONG, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_FLOAT, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_DOUBLE, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_DOUBLE, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_INT, token.getType());
         
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_INT, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_INT, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_INT, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_INT, token.getType());
+        token = ts.nextToken();
+        assertEquals(JavaTokenTypes.NUM_LONG, token.getType());
+    }
+    
     public void testPositionTracking() throws Exception
     {
         TokenStream ts = getLexerFor("one two three\nfour five six  \n  seven eight nine");

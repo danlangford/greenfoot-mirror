@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -44,21 +44,41 @@ public class ConstructionInvokerRecord extends InvokerRecord
         this.argumentValues = argVals;
     }
     
+    @Override
+    public boolean hasVoidResult()
+    {
+        return false;
+    }
+    
+    @Override
     public String [] getArgumentValues()
     {
         return argumentValues;
     }
 
+    @Override
+    public String getResultName()
+    {
+        return name;
+    }
+    
+    @Override
+    public String getResultTypeString()
+    {
+        return type;
+    }
+    
     /**
      * Construct a declaration for any objects constructed
      * by this invoker record.
      * 
      * @return a String representing the object declaration
      *         src or null if there is none.
-     */    
-    public String toFixtureDeclaration()
+     */
+    @Override
+    public String toFixtureDeclaration(String firstIndent)
     {
-        return fieldDeclarationStart + type + " " + name + statementEnd;       
+        return firstIndent + fieldDeclarationStart + type + " " + name + statementEnd;       
     }
 
     /**
@@ -67,8 +87,9 @@ public class ConstructionInvokerRecord extends InvokerRecord
      *  
      * @return a String reprenting the object initialisation
      *         src or null if there is none. 
-     */    
-    public String toFixtureSetup()
+     */
+    @Override
+    public String toFixtureSetup(String secondIndent)
     {
         return secondIndent + name + " = " + command + statementEnd;          
     }
@@ -79,7 +100,8 @@ public class ConstructionInvokerRecord extends InvokerRecord
      * 
      * @return a String representing the test method src
      */
-    public String toTestMethod(PkgMgrFrame pmf)
+    @Override
+    public String toTestMethod(PkgMgrFrame pmf, String secondIndent)
     {
         return secondIndent + type + " " + name + " = " + command + statementEnd;
     }

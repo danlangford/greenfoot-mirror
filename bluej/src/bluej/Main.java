@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,6 +29,8 @@ import java.net.URLEncoder;
 import java.util.Properties;
 import java.util.UUID;
 
+import com.apple.eawt.Application;
+
 import bluej.extensions.event.ApplicationEvent;
 import bluej.extmgr.ExtensionsManager;
 import bluej.pkgmgr.Package;
@@ -45,8 +47,17 @@ import bluej.utility.Debug;
  */
 public class Main
 {
-    private int FIRST_X_LOCATION = 20;
-    private int FIRST_Y_LOCATION = 20;
+    private static final int FIRST_X_LOCATION = 20;
+    private static final int FIRST_Y_LOCATION = 20;
+    
+    /** 
+     * Whether we've officially launched yet. While false "open file" requests only
+     * set initialProject.
+     */
+    private static boolean launched = false;
+    
+    /** On MacOS X, this will be set to the project we should open (if any) */ 
+    private static File initialProject;
 
     /**
      * Entry point to starting up the system. Initialise the system and start
@@ -60,6 +71,13 @@ public class Main
         File bluejLibDir = Boot.getBluejLibDir();
 
         Config.initialise(bluejLibDir, commandLineProps, boot.isGreenfoot());
+        
+        // Note we must do this OFF the AWT dispatch thread. On MacOS X, if the
+        // application was started by double-clicking a project file, an "open file"
+        // event will be generated once we add a listener and will be delivered on
+        // the dispatch thread. It will then be processed before the call to
+        // processArgs() (just below) is called.
+        prepareMacOSApp();
 
         // process command line arguments, start BlueJ!
         EventQueue.invokeLater(new Runnable() {
@@ -83,8 +101,10 @@ public class Main
      * command line when starting BlueJ. Any parameters starting with '-' are
      * ignored for now.
      */
-    private void processArgs(String[] args)
+    private static void processArgs(String[] args)
     {
+        launched = true;
+        
         boolean oneOpened = false;
 
         // Open any projects specified on the command line
@@ -96,6 +116,11 @@ public class Main
                     }
                 }
             }
+        }
+        
+        // Open a project if requested by the OS (Mac OS)
+        if (initialProject != null) {
+            oneOpened |= (PkgMgrFrame.doOpen(initialProject, null));
         }
 
         // if we have orphaned packages, these are re-opened
@@ -123,7 +148,7 @@ public class Main
         // Make sure at least one frame exists
         if (!oneOpened) {
             if (Config.isGreenfoot()) {
-                // TODO: open default project
+                // Handled by Greenfoot
             }
             else {
                 openEmptyFrame();
@@ -133,12 +158,53 @@ public class Main
         Boot.getInstance().disposeSplashWindow();
         ExtensionsManager.getInstance().delegateEvent(new ApplicationEvent(ApplicationEvent.APP_READY_EVENT));
     }
+    
+    /**
+     * Prepare MacOS specific behaviour (About menu, Preferences menu, Quit
+     * menu)
+     */
+    private static void prepareMacOSApp()
+    {
+        Application macApp = Application.getApplication();
+        if (macApp != null) {
+            macApp.setEnabledPreferencesMenu(true);
+            macApp.addApplicationListener(new com.apple.eawt.ApplicationAdapter() {
+                @Override
+                public void handleAbout(com.apple.eawt.ApplicationEvent e)
+                {
+                    PkgMgrFrame.handleAbout();
+                    e.setHandled(true);
+                }
+
+                public void handlePreferences(com.apple.eawt.ApplicationEvent e)
+                {
+                    PkgMgrFrame.handlePreferences();
+                    e.setHandled(true);
+                }
+
+                public void handleQuit(com.apple.eawt.ApplicationEvent e)
+                {
+                    PkgMgrFrame.handleQuit();
+                }
+
+                public void handleOpenFile(com.apple.eawt.ApplicationEvent event) 
+                {
+                    if (launched) {
+                        String projectPath = event.getFilename();
+                        PkgMgrFrame.doOpen(new File(projectPath), null);
+                    }
+                    else {
+                        initialProject = new File(event.getFilename());
+                    }
+                }
+            });
+        }
+    }
 
     /**
      * Open a single empty bluej window.
-     * 
      */
-    private void openEmptyFrame()
+    private static void openEmptyFrame()
     {
         PkgMgrFrame frame = PkgMgrFrame.createFrame();
         frame.setLocation(FIRST_X_LOCATION, FIRST_Y_LOCATION);
@@ -148,13 +214,8 @@ public class Main
     /**
      * Send statistics of use back to bluej.org
      */
-    private void updateStats() 
+    private static void updateStats() 
     {
-        // System property name for honouring web proxy settings
-        // See the JDK docs/technotes/guides/net/proxies.html
-        final String useProxiesProperty = "java.net.useSystemProxies";
-        String oldProxySetting = "false";   // Documented default value
-
         // Platform details, first the ones which vary between BlueJ/Greenfoot
         String uidPropName;
         String baseURL;
@@ -189,11 +250,6 @@ public class Main
         }
         
         try {
-            // Attempt to use local proxy settings to avoid any firewalls, just
-            // for the rest of this method.
-            oldProxySetting = System.getProperty(useProxiesProperty, oldProxySetting);
-            System.setProperty(useProxiesProperty,"true");
-
             URL url = new URL(baseURL +
                 "?uid=" + URLEncoder.encode(uid, "UTF-8") +
                 "&osname=" + URLEncoder.encode(systemID, "UTF-8") +
@@ -210,14 +266,12 @@ public class Main
 
         } catch (Exception ex) {
             Debug.reportError("Update stats failed: " + ex.getClass().getName() + ": " + ex.getMessage());
-        } finally {
-            System.setProperty(useProxiesProperty, oldProxySetting);
         }
     }
 
     /**
      * Exit BlueJ.
-     * 
+     * <p>
      * The open frame count should be zero by this point as PkgMgrFrame is
      * responsible for cleaning itself up before getting here.
      */

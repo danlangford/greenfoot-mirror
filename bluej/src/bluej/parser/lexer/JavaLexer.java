@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2009-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 2009,2010,2011  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -43,7 +43,6 @@ public final class JavaLexer implements TokenStream
     private int rChar; 
     private int beginColumn, beginLine;
     private int endColumn, endLine;
-    private char [] buf = new char[1];
     
     private static Map<String,Integer> keywords = new HashMap<String,Integer>();
     
@@ -141,22 +140,6 @@ public final class JavaLexer implements TokenStream
             readNextChar();
         }
 
-        return createToken();
-    }
-    
-    private LocatableToken makeToken(int type, String txt)
-    {           
-        LocatableToken tok = new LocatableToken(type, txt);
-        tok.setColumn(beginColumn);
-        tok.setLine(beginLine);  
-        tok.setEndLineAndCol(endLine, endColumn);
-        beginColumn = endColumn;
-        beginLine = endLine;
-        return tok;
-    }
-
-    private LocatableToken createToken()
-    {
         if (rChar == -1) {
             // EOF
             return makeToken(JavaTokenTypes.EOF, null); 
@@ -167,9 +150,25 @@ public final class JavaLexer implements TokenStream
             return createWordToken(nextChar); 
         }
         if (Character.isDigit(nextChar)) {
-            return makeToken(getDigitType(nextChar, false), textBuffer.toString());
+            return makeToken(readDigitToken(nextChar, false), textBuffer.toString());
         }
         return makeToken(getSymbolType(nextChar), textBuffer.toString());
+    }
+    
+    /**
+     * Make a token of the given type, with the given text. The token
+     * begins where the previous token ended, and ends at the current
+     * position (as found in endLine and endColumn).
+     */
+    private LocatableToken makeToken(int type, String txt)
+    {           
+        LocatableToken tok = new LocatableToken(type, txt);
+        tok.setColumn(beginColumn);
+        tok.setLine(beginLine);  
+        tok.setEndLineAndCol(endLine, endColumn);
+        beginColumn = endColumn;
+        beginLine = endLine;
+        return tok;
     }
 
     private LocatableToken createWordToken(char nextChar)
@@ -244,13 +243,21 @@ public final class JavaLexer implements TokenStream
         return false;
     }
     
-    
-    private int getDigitType(char ch, boolean dot)
+    /**
+     * Read a numerical literal token.
+     * 
+     * @param ch   The first character of the token (must be a decimal digit)
+     * @param dot  Whether there was a leading dot
+     */
+    private int readDigitToken(char ch, boolean dot)
     {
-        int rval=ch;     
+        int rval = ch;     
         textBuffer.append(ch);
-        int type = JavaTokenTypes.NUM_INT;
+        int type = dot ? JavaTokenTypes.NUM_DOUBLE : JavaTokenTypes.NUM_INT;
 
+        boolean fpValid = true; // whether a subsequent dot would be valid.
+                // (will be set false for a non-decimal literal).
+        
         if (ch == '0') {
             rval = readNextChar();
             if (rval == 'x' || rval == 'X') {
@@ -264,30 +271,46 @@ public final class JavaLexer implements TokenStream
                 do {
                     textBuffer.append((char) rval);
                     rval = readNextChar();
-                } while (isHexDigit((char) rval));
+                } while (isHexDigit((char) rval) || rval == '_');
+                fpValid = false;
+            }
+            else if (rval == 'b' || rval == 'B') {
+                // Java 7 binary literal
+                textBuffer.append((char) rval);
+                rval = readNextChar();
+                if (rval != '0' && rval != '1') {
+                    return JavaTokenTypes.INVALID;
+                }
+                
+                do {
+                    textBuffer.append((char) rval);
+                    rval = readNextChar();
+                } while (rval == '0' || rval == '1' || rval == '_');
+                fpValid = false;
             }
             else if (Character.isDigit((char) rval)) {
                 do {
                     // octal?
                     textBuffer.append((char) rval);
                     rval = readNextChar();
-                } while (Character.isDigit((char) rval));
+                } while (Character.isDigit((char) rval) || rval == '_');
+                fpValid = false;
             }
             ch = (char) rval;
         }
         else {
             rval = readNextChar();
-            while (Character.isDigit((char) rval)) {
+            while (Character.isDigit((char) rval) || rval == '_') {
                 textBuffer.append((char) rval);
                 rval = readNextChar();
             }
         }
         
-        if (rval == '.') {
-            // A decimal. (This might not really be valid).
+        if (rval == '.' && fpValid) {
+            // A decimal.
             textBuffer.append((char) rval);
             rval = readNextChar();
-            while (Character.isDigit((char) rval)) {
+            while (Character.isDigit((char) rval) || rval == '_') {
                 textBuffer.append((char) rval);
                 rval = readNextChar();
             }
@@ -295,7 +318,7 @@ public final class JavaLexer implements TokenStream
                 // exponent
                 textBuffer.append((char) rval);
                 rval = readNextChar();
-                while (Character.isDigit((char) rval)) {
+                while (Character.isDigit((char) rval) || rval == '_') {
                     textBuffer.append((char) rval);
                     rval = readNextChar();
                 }
@@ -314,30 +337,33 @@ public final class JavaLexer implements TokenStream
             return JavaTokenTypes.NUM_DOUBLE;
         }
         
-        if (rval == 'e' || rval == 'E') {
+        if ((rval == 'e' || rval == 'E') && fpValid) {
             // exponent
             textBuffer.append((char) rval);
             rval = readNextChar();
-            while (Character.isDigit((char) rval)) {
+            while (Character.isDigit((char) rval) || rval == '_') {
                 textBuffer.append((char) rval);
                 rval = readNextChar();
             }
+            type = JavaTokenTypes.NUM_DOUBLE;
         }
-        
-        if (rval == 'l' || rval == 'L') {
+        else if (rval == 'l' || rval == 'L') {
             textBuffer.append((char) rval);
             rval = readNextChar();
             return JavaTokenTypes.NUM_LONG;
         }
-        if (rval == 'f' || rval == 'F') {
-            textBuffer.append((char) rval);
-            rval = readNextChar();
-            return JavaTokenTypes.NUM_FLOAT;
-        }
-        if (rval == 'd' || rval == 'D') {
-            textBuffer.append((char) rval);
-            rval = readNextChar();
-            return JavaTokenTypes.NUM_DOUBLE;
+        
+        if (fpValid) {
+            if (rval == 'f' || rval == 'F') {
+                textBuffer.append((char) rval);
+                rval = readNextChar();
+                return JavaTokenTypes.NUM_FLOAT;
+            }
+            if (rval == 'd' || rval == 'D') {
+                textBuffer.append((char) rval);
+                rval = readNextChar();
+                return JavaTokenTypes.NUM_DOUBLE;
+            }
         }
         
         return type;
@@ -459,7 +485,7 @@ public final class JavaLexer implements TokenStream
         if ('/' == ch)
             return getForwardSlashType();
         if ('.' == ch)
-            return getDotType();
+            return getDotToken();
         if ('*' == ch)
             return getStarType();
         if ('>' == ch)
@@ -583,7 +609,7 @@ public final class JavaLexer implements TokenStream
     private int getEqualType()
     {
         //=, ==
-        int rval=readNextChar();
+        int rval = readNextChar();
         char thisChar=(char)rval; 
         if (thisChar=='='){
             textBuffer.append(thisChar); 
@@ -717,13 +743,13 @@ public final class JavaLexer implements TokenStream
         return JavaTokenTypes.LNOT;
     }
 
-    private int getDotType()
+    private int getDotToken()
     {
         //. or .56f .12 
         int rval = readNextChar();
         char ch = (char)rval;
         if (Character.isDigit(ch)){
-            return getDigitType(ch, true);
+            return readDigitToken(ch, true);
         }
         //...
         else if (ch=='.'){
@@ -746,21 +772,15 @@ public final class JavaLexer implements TokenStream
 
     private int readNextChar()
     {
-        int rval=-1;
         endColumn = reader.getColumn();
         endLine = reader.getLine();
         try{
-            rval = reader.read(buf, 0, 1);
-            rChar = buf[0];
-            if (rval == -1) {
-                rChar = -1;
-            }
-            return rChar;
+            rChar = reader.read();
         } catch(IOException e) {
             rChar = -1;
         }
 
-        return -1;
+        return rChar;
     }
 
     private int getWordType()

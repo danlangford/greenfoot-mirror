@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -41,7 +41,7 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
     private JavaType returnType;
     private String benchType;
     protected String benchName;
-	
+    
     /** How many times has this record been used. */
     private int usageCount;
     
@@ -56,11 +56,17 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
      */
     public MethodInvokerRecord(JavaType returnType, String command, String [] argumentValues)
     {
-    	super(command, argumentValues);
-    	
+        super(command, argumentValues);
+    
         this.returnType = returnType;
         this.benchType = returnType.toString(false);
         this.benchName = null;
+    }
+    
+    @Override
+    public boolean hasVoidResult()
+    {
+        return false;
     }
 
     /**
@@ -71,6 +77,7 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
      * @param name
      * @param type
      */
+    @Override
     public void setBenchName(String name, String type)
     {
         benchName = name;
@@ -83,16 +90,19 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
      * 
      * @return a String representing the object declaration
      *         src or null if there is none.
-     */    
-    public String toFixtureDeclaration()
+     */
+    @Override
+    public String toFixtureDeclaration(String firstIndent)
     {
         // if it hasn't been assigned a name there is nothing to do for
         // fixture declaration
-        if (benchName == null)
+        if (benchName == null) {
             return null;
+        }
 
-        // declare the variable		
+        // declare the variable
         StringBuffer sb = new StringBuffer();
+        sb.append(firstIndent);
         sb.append(fieldDeclarationStart);
         sb.append(benchDeclaration());
         sb.append(benchName);
@@ -107,8 +117,9 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
      *  
      * @return a String reprenting the object initialisation
      *         src or null if there is none. 
-     */    
-    public String toFixtureSetup()
+     */
+    @Override
+    public String toFixtureSetup(String secondIndent)
     {
         if (benchName == null) {
             return secondIndent + command + statementEnd;
@@ -126,10 +137,10 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
      * @see bluej.testmgr.record.VoidMethodInvokerRecord#toTestMethod(bluej.pkgmgr.PkgMgrFrame)
      */
     @Override
-    public String toTestMethod(PkgMgrFrame pmf)
+    public String toTestMethod(PkgMgrFrame pmf, String secondIndent)
     {
         StringBuffer sb = new StringBuffer();
-        sb.append(toTestMethodInit(pmf));
+        sb.append(toTestMethodInit(pmf, secondIndent));
 
         String resultRef = toExpression();
 
@@ -154,7 +165,7 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
      * up local variables if the result of the method is used more than once or
      * placed on the bench by using "Get".
      */
-    private String toTestMethodInit(PkgMgrFrame pkgMgrFrame)
+    private String toTestMethodInit(PkgMgrFrame pkgMgrFrame, String secondIndent)
     {
         // If we have already prepared the method call, we return the name that
         // references it.

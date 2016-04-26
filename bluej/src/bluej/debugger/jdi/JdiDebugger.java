@@ -22,6 +22,7 @@
 package bluej.debugger.jdi;
 
 import java.io.File;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -122,7 +123,12 @@ public class JdiDebugger extends Debugger
     // indicate whether we want to see system threads
     private boolean hideSystemThreads;
     
-    // current machine state
+    /**
+     * Current machine state. This is changed only by the VM event queue (see VMEventHandler),
+     * but write access is also protected by the listener list mutex. This makes it possible to
+     * add a listener and know the state at the time the listener was added. Furthermore the
+     * state will only be set to RUNNING while the server thread lock is also held.
+     */
     private int machineState = NOTREADY;
     
     // classpath to be used for the remote VM
@@ -130,6 +136,9 @@ public class JdiDebugger extends Debugger
     
     // most recent exception description
     private ExceptionDescription lastException;
+    
+    /** User libraries to be added to VM classpath */
+    private URL[] libraries = {};
 
     /**
      * Construct an instance of the debugger.
@@ -154,9 +163,16 @@ public class JdiDebugger extends Debugger
         hideSystemThreads = true;
     }
 
+    @Override
+    public void setUserLibraries(URL[] libraries)
+    {
+        this.libraries = libraries;
+    }
+    
     /**
      * Start debugging.
      */
+    @Override
     public synchronized void launch()
     {
         // This could be either an initial launch (selfRestart == false) or
@@ -193,6 +209,7 @@ public class JdiDebugger extends Debugger
     /**
      * Close this VM, possibly restart it.
      */
+    @Override
     public synchronized void close(boolean restart)
     {
         // There are essentially three states the remote process could be in:
@@ -250,10 +267,11 @@ public class JdiDebugger extends Debugger
      * @param l
      *            the DebuggerListener to add
      */
-    public void addDebuggerListener(DebuggerListener l)
+    public int addDebuggerListener(DebuggerListener l)
     {
         synchronized (listenerList) {
             listenerList.add(l);
+            return machineState;
         }
     }
 
@@ -681,6 +699,8 @@ public class JdiDebugger extends Debugger
             
         ReferenceType classMirror;
         synchronized (serverThreadLock) {
+            // machineState can only be changed *to* RUNNING while the serverThreadLock is held, so
+            // this check is safe:
             if (initialize && machineState != Debugger.RUNNING) {
                 classMirror = vmr.loadInitClass(className);
             }
@@ -709,11 +729,6 @@ public class JdiDebugger extends Debugger
         }
     }
     
-    private void fireTargetEvent(DebuggerEvent ce)
-    {
-        fireTargetEvent(ce, false);
-    }
-
     void raiseStateChangeEvent(int newState)
     {
         // It might look this method should be synchronized, but it shouldn't,
@@ -724,20 +739,30 @@ public class JdiDebugger extends Debugger
             
             // Going from SUSPENDED to any other state must ass through RUNNING
             if (machineState == SUSPENDED && newState != RUNNING) {
-                machineState = RUNNING;
-                fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_STATECHANGED, SUSPENDED, RUNNING));
+                doStateChange(SUSPENDED, RUNNING);
             }
             
             // If going from RUNNING state to NOTREADY state, first pass
             // through IDLE state
             if (machineState == RUNNING && newState == NOTREADY) {
-                machineState = IDLE;
-                fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_STATECHANGED, RUNNING, IDLE));
+                doStateChange(RUNNING, IDLE);
             }
             
-            int oldState = machineState;
+            doStateChange(machineState, newState);
+        }
+    }
+    
+    private void doStateChange(int oldState, int newState)
+    {
+        DebuggerListener[] ll;
+        synchronized (listenerList) {
+            ll = listenerList.toArray(new DebuggerListener[listenerList.size()]);
             machineState = newState;
-            fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_STATECHANGED, oldState, newState));
+        }
+        
+        for (DebuggerListener l : ll) {
+            l.processDebuggerEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_STATECHANGED,
+                    oldState, newState), false);
         }
     }
 
@@ -1074,7 +1099,7 @@ public class JdiDebugger extends Debugger
         public void run()
         {
             try {
-                VMReference newVM = new VMReference(JdiDebugger.this, terminal, startingDirectory);
+                VMReference newVM = new VMReference(JdiDebugger.this, terminal, startingDirectory, libraries);
 
                 BPClassLoader lastLoader;
                 synchronized(JdiDebugger.this) {

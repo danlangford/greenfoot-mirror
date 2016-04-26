@@ -24,6 +24,7 @@ package bluej.compiler;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -36,6 +37,8 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
+
+import bluej.Config;
 
 /**
  * A compiler implementation using the Compiler API introduced in Java 6.
@@ -64,8 +67,9 @@ public class CompilerAPICompiler extends Compiler
      * 
      * @return  true if successful
      */
+    @Override
     public boolean compile(final File[] sources, final CompileObserver observer,
-            final boolean internal, List<String> userOptions) 
+            final boolean internal, List<String> userOptions, Charset fileCharset) 
     {
         boolean result = true;
         JavaCompiler jc = ToolProvider.getSystemJavaCompiler();
@@ -78,11 +82,22 @@ public class CompilerAPICompiler extends Compiler
                 String src = null;
                 if (diag.getSource() != null)
                 {
-                    // See bug: http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6419926
-                    // JDK6 returns URIs without a scheme in some cases, so always resolve against a
-                    // known "file:/" URI:
-                    URI srcUri = sources[0].toURI().resolve(diag.getSource().toUri());
-                    src = new File(srcUri).getPath();
+                    // With JDK 6, diag.getSource().getName()  apparently just returns the base
+                    // name without a path. To get the path we need to ask for the URI.
+                    //     However:
+                    // With JDK 7, the diag.getSource().toURI() returns an unusable URI if the
+                    // path is a UNC path (\\server\sharename\projdir\somefile.java).
+                    
+                    if (Config.isJava17()) {
+                        src = diag.getSource().getName();
+                    }
+                    else {
+                        // See bug: http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6419926
+                        // JDK6 returns URIs without a scheme in some cases, so always resolve against a
+                        // known "file:/" URI:
+                        URI srcUri = sources[0].toURI().resolve(diag.getSource().toUri());
+                        src = new File(srcUri).getPath();
+                    }
                 }
                 
                 int diagType;
@@ -99,6 +114,10 @@ public class CompilerAPICompiler extends Compiler
                             diag.getLineNumber(), endCol);
                 }
                 else if (diag.getKind() == Diagnostic.Kind.WARNING) {
+                    if (message.startsWith("bootstrap class path not set in conjunction with -source ")) {
+                        // Java 7 produces this warning if "-source 1.6" is specified
+                        return;
+                    }
                     diagType = bluej.compiler.Diagnostic.WARNING;
                     long beginCol = diag.getColumnNumber();
                     long endCol = diag.getEndPosition() - diag.getPosition() + beginCol;
@@ -109,8 +128,12 @@ public class CompilerAPICompiler extends Compiler
                 else {
                     diagType = bluej.compiler.Diagnostic.NOTE;
                     bjDiagnostic = new bluej.compiler.Diagnostic(diagType, message);
+                    // Two variants of the warning message:
+                    // - for a single file, "xyz.java uses unchecked or unsafe operations"
+                    // - for multiple, "Some input files use unchecked or unsafe operations"
                     if (internal &&
                             (message.endsWith(" uses unchecked or unsafe operations.") ||
+                            message.endsWith("Some input files use unchecked or unsafe operations.") ||
                             message.startsWith("Note: Recompile with -Xlint:unchecked "))) {
                         return;
                     }
@@ -123,7 +146,7 @@ public class CompilerAPICompiler extends Compiler
         try
         {  
             //setup the filemanager
-            StandardJavaFileManager sjfm = jc.getStandardFileManager(diagListener, null, null);
+            StandardJavaFileManager sjfm = jc.getStandardFileManager(diagListener, null, fileCharset);
             List<File> pathList = new ArrayList<File>();
             List<File> outputList = new ArrayList<File>();
             outputList.add(getDestDir());

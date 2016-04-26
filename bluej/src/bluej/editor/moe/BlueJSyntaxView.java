@@ -37,11 +37,13 @@ import java.util.Map;
 import java.util.Stack;
 
 import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentEvent.ElementChange;
 import javax.swing.event.DocumentEvent.EventType;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Element;
 import javax.swing.text.Position;
 import javax.swing.text.Segment;
+import javax.swing.text.TabExpander;
 import javax.swing.text.Utilities;
 import javax.swing.text.ViewFactory;
 
@@ -157,6 +159,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
         MoeSyntaxDocument document = (MoeSyntaxDocument)getDocument();
 
         Color def = MoeSyntaxDocument.getDefaultColor();
+        TabExpander tx = new MoeTabExpander(tabSize, x);
 
         try {
             Element lineElement = getElement().getElement(lineIndex);
@@ -166,7 +169,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
             document.getText(start, end - (start + 1), line);
             g.setColor(def);
 
-            paintTaggedLine(line, lineIndex, g, x, y, document, def, lineElement);
+            paintTaggedLine(line, lineIndex, g, x, y, document, def, lineElement, tx);
         }
         catch (BadLocationException bl) {
             // shouldn't happen
@@ -188,9 +191,9 @@ public abstract class BlueJSyntaxView extends MoePlainView
      *           to the left of this point)
      */
     protected void paintTaggedLine(Segment line, int lineIndex, Graphics g, int x, int y, 
-            MoeSyntaxDocument document, Color def, Element lineElement)
+            MoeSyntaxDocument document, Color def, Element lineElement, TabExpander tx)
     {
-        paintSyntaxLine(line, lineIndex, x, y, g, document, def);
+        paintSyntaxLine(line, lineIndex, x, y, g, document, def, tx);
     }
 
     /**
@@ -200,7 +203,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
      */
     protected final void paintSyntaxLine(Segment line, int lineIndex, int x, int y,
             Graphics g, MoeSyntaxDocument document, 
-            Color def)
+            Color def, TabExpander tx)
     {
         Color[] colors = MoeSyntaxDocument.getColors();
         Token tokens = document.getTokensForLine(lineIndex);
@@ -220,7 +223,8 @@ public abstract class BlueJSyntaxView extends MoePlainView
             }
             g.setColor(color);
             line.count = length;
-            x = Utilities.drawTabbedText(line,x,y,g,this,offset);
+            
+            x = Utilities.drawTabbedText(line,x,y,g,tx,offset);
             line.offset += length;
             offset += length;
 
@@ -348,6 +352,12 @@ public abstract class BlueJSyntaxView extends MoePlainView
 
     /**
      * Draw the scope highlighting for one line of the document.
+     * 
+     * @param a              the shape to render into
+     * @param g              the graphics context to render to
+     * @param document       the document
+     * @param lines          the previous, current and next lines (segments and elements)
+     * @param prevScopeStack the stack of nodes (from outermost to innermost) at the beginning of the current line
      */
     private void drawScopes(Shape a, Graphics g, MoeSyntaxDocument document, ThreeLines lines,
             int charWidth, List<NodeAndPosition<ParsedNode>> prevScopeStack, boolean small,
@@ -382,7 +392,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
         while (li.hasNext()) {
             NodeAndPosition<ParsedNode> nap = li.next();
             int napPos = nap.getPosition();
-            int napEnd = napPos + nap.getSize();
+            int napEnd = nap.getEnd();
 
             if (napPos >= lines.thisLineEl.getEndOffset()) {
                 // The node isn't even on this line, go to the next line
@@ -401,9 +411,9 @@ public abstract class BlueJSyntaxView extends MoePlainView
             // Draw the start node
             int xpos = getNodeIndent(a, document, nap, lines.thisLineEl,
                     lines.thisLineSeg);
-            boolean starts = nodeSkipsStart(napPos, napEnd, lines.aboveLineEl, lines.aboveLineSeg);
+            boolean starts = nodeSkipsStart(nap, lines.aboveLineEl, lines.aboveLineSeg);
             boolean ends = nodeSkipsEnd(napPos, napEnd, lines.belowLineEl, lines.belowLineSeg);
-            int rbound = getNodeRBound(a, napEnd, fullWidth - rightMargin, nodeDepth,
+            int rbound = getNodeRBound(a, nap, fullWidth - rightMargin, nodeDepth,
                     lines.thisLineEl, lines.thisLineSeg);
 
             drawInfo.node = nap.getNode();
@@ -448,18 +458,18 @@ public abstract class BlueJSyntaxView extends MoePlainView
                 nodeDepth++;
                 napPos = nextNap.getPosition();
                 napEnd = napPos + nextNap.getSize();
-                if (! nodeSkipsStart(napPos, napEnd, lines.thisLineEl, lines.thisLineSeg)) {
+                if (! nodeSkipsStart(nextNap, lines.thisLineEl, lines.thisLineSeg)) {
                     if (drawNode(drawInfo, nextNap, napParent, onlyMethods)) {
                         // Draw it
                         int xpos = getNodeIndent(a, document, nextNap, lines.thisLineEl,
                                 lines.thisLineSeg);
-                        int rbound = getNodeRBound(a, napEnd, fullWidth - rightMargin, nodeDepth,
+                        int rbound = getNodeRBound(a, nextNap, fullWidth - rightMargin, nodeDepth,
                                 lines.thisLineEl, lines.thisLineSeg);
                         drawInfo.node = nextNap.getNode();
                         Color [] colors = colorsForNode(drawInfo.node);
                         drawInfo.color1 = colors[0];
                         drawInfo.color2 = colors[1];
-                        drawInfo.starts = nodeSkipsStart(napPos, napEnd, lines.aboveLineEl,
+                        drawInfo.starts = nodeSkipsStart(nextNap, lines.aboveLineEl,
                                 lines.aboveLineSeg);
                         drawInfo.ends = nodeSkipsEnd(napPos, napEnd, lines.belowLineEl,
                                 lines.belowLineSeg);
@@ -513,7 +523,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
              */
         }
 
-        if (nodeSkipsStart(napPos, napEnd, info.lines.thisLineEl, info.lines.thisLineSeg)) {
+        if (nodeSkipsStart(nap, info.lines.thisLineEl, info.lines.thisLineSeg)) {
             return false; // just white space on this line
         }
 
@@ -662,11 +672,19 @@ public abstract class BlueJSyntaxView extends MoePlainView
     }
 
     /**
-     * Find the rightmost bound of a node.
+     * Find the rightmost bound of a node on a particular line.
+     * 
+     * @param a       The view allocation
+     * @param napEnd  The end of the node (position in the document just beyond the node)
+     * @param fullWidth  The full width to draw to (for the outermost mode)
+     * @param nodeDepth  The node depth
+     * @param lineEl   line element of the line to find the bound for
+     * @param lineSeg  Segment containing text of the current line
      */
-    private int getNodeRBound(Shape a, int napEnd, int fullWidth, int nodeDepth,
+    private int getNodeRBound(Shape a, NodeAndPosition<ParsedNode> nap, int fullWidth, int nodeDepth,
             Element lineEl, Segment lineSeg) throws BadLocationException
     {
+        int napEnd = nap.getEnd();
         int rbound = fullWidth - nodeDepth * RIGHT_SCOPE_MARGIN;
         if (lineEl == null || napEnd >= lineEl.getEndOffset()) {
             return rbound;
@@ -674,7 +692,10 @@ public abstract class BlueJSyntaxView extends MoePlainView
         if (napEnd < lineEl.getStartOffset()) {
             return rbound;
         }
-        int nwsb = findNonWhitespace(lineSeg, napEnd - lineEl.getStartOffset());
+        
+        // If there is some text between the node end and the end of the line, we want to clip the
+        // node short so that the text does not appear to be part of the node.
+        int nwsb = findNonWhitespaceComment(nap, lineEl, lineSeg, napEnd - lineEl.getStartOffset());
         if (nwsb != -1) {
             Rectangle ebounds = modelToView(napEnd, a, Position.Bias.Backward).getBounds();
             return Math.min(rbound, ebounds.x);
@@ -687,8 +708,11 @@ public abstract class BlueJSyntaxView extends MoePlainView
      * starts later). This takes into account that the node may "officially" start on the
      * line, but only have white space, in which case it can be moved down to the next line.
      */
-    private boolean nodeSkipsStart(int napPos, int napEnd, Element lineEl, Segment segment)
+    private boolean nodeSkipsStart(NodeAndPosition<ParsedNode> nap, Element lineEl, Segment segment)
     {
+        int napPos = nap.getPosition();
+        int napEnd = nap.getEnd();
+        
         if (lineEl == null) {
             return true;
         }
@@ -698,7 +722,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
             if (napPos >= lineEl.getEndOffset()) {
                 return true;
             }
-            int nws = findNonWhitespace(segment, napPos - lineEl.getStartOffset());
+            int nws = findNonWhitespaceComment(nap, lineEl, segment, napPos - lineEl.getStartOffset());
             if (nws == -1) {
                 return true;
             }
@@ -743,21 +767,21 @@ public abstract class BlueJSyntaxView extends MoePlainView
         throws BadLocationException
     {
         int napPos = nap.getPosition();
-        int napEnd = napPos + nap.getSize();
+        int napEnd = nap.getEnd();
 
         if (lineEl == null) {
             return Integer.MAX_VALUE;
         }
 
-        if (nap.getPosition() >= lineEl.getEndOffset()) {
+        if (napPos >= lineEl.getEndOffset()) {
             return Integer.MAX_VALUE;
         }
 
-        if (nap.getPosition() + nap.getSize() <= lineEl.getStartOffset()) {
+        if (napEnd <= lineEl.getStartOffset()) {
             return Integer.MAX_VALUE;
         }
 
-        if (nodeSkipsStart(napPos, napEnd, lineEl, segment)
+        if (nodeSkipsStart(nap, lineEl, segment)
                 || nodeSkipsEnd(napPos, napEnd, lineEl, segment)) {
             return Integer.MAX_VALUE;
         }
@@ -795,37 +819,51 @@ public abstract class BlueJSyntaxView extends MoePlainView
             int indent = Integer.MAX_VALUE;
 
             int curpos = nap.getPosition();
-            int napEnd = curpos + nap.getSize();
+            int napEnd = nap.getEnd();
 
             Element map = doc.getDefaultRootElement();
             Stack<NodeAndPosition<ParsedNode>> scopeStack = new Stack<NodeAndPosition<ParsedNode>>();
             scopeStack.add(nap);
 
+            outer:
             while (curpos < napEnd) {
-                // First skip over inner nodes
+                // Remove any nodes from the scope stack who we have now skipped over
                 NodeAndPosition<ParsedNode> top = scopeStack.get(scopeStack.size() - 1);
-                while (top.getEnd() > napEnd) {
+                while (top.getEnd() <= curpos) {
                     scopeStack.remove(scopeStack.size() - 1);
                     top = scopeStack.get(scopeStack.size() - 1);
                 }
-                NodeAndPosition<ParsedNode> nextChild = top.getNode().findNodeAt(curpos, top.getPosition());
-                while (nextChild != null && ! nextChild.getNode().isInner()) {
+                
+                // Re-build the scope stack and skip inner nodes.
+                // Note, we find nodes at curpos + 1 to avoid nodes which *end* here.
+                NodeAndPosition<ParsedNode> nextChild = top.getNode().findNodeAt(curpos + 1, top.getPosition());
+                while (nextChild != null) {
+                    if (nextChild.getNode().isInner()) {
+                        curpos = nextChild.getEnd();
+                        continue outer;
+                    }
+                    scopeStack.add(nextChild);
                     top = nextChild;
-                    nextChild = top.getNode().findNodeAt(curpos, top.getPosition());
+                    nextChild = top.getNode().findNodeAt(curpos + 1, top.getPosition());
                 }
                 
-                if (nextChild != null) {
-                    curpos = nextChild.getEnd();
-                }
-
                 // Ok, we've skipped inner nodes
                 int line = map.getElementIndex(curpos);
                 Element lineEl = map.getElement(line);
                 Segment segment = new Segment();
-                doc.getText(curpos, lineEl.getEndOffset() - curpos, segment);
-                int nws = findNonWhitespace(segment, 0);
+                doc.getText(lineEl.getStartOffset(), lineEl.getEndOffset() - lineEl.getStartOffset(), segment);
 
-                if (nws == 0) {
+                int lineOffset = curpos - lineEl.getStartOffset();
+
+                int nws;
+                if (lineEl.getStartOffset() < nap.getPosition() && nap.getNode().isInner()) {
+                    // The node is an inner node starting on this line
+                    nws = findNonWhitespaceComment(nap, lineEl, segment, lineOffset);
+                } else {
+                    nws = findNonWhitespace(segment, lineOffset);
+                }
+
+                if (nws == lineOffset) {
                     // Ok, at this position we have non-white space and are not in an inner
                     Rectangle cbounds = modelToView(curpos, a, Position.Bias.Forward).getBounds();
                     indent = Math.min(indent, cbounds.x);
@@ -835,7 +873,8 @@ public abstract class BlueJSyntaxView extends MoePlainView
                     curpos = lineEl.getEndOffset();
                 }
                 else {
-                    curpos += nws;
+                    // We need to check for inner nodes at the adjusted position
+                    curpos += nws - lineOffset;
                 }
             }
 
@@ -846,7 +885,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
         }
     }
     
-    private int[] reassessIndents(Shape a, int dmgStart, int dmgEnd, boolean remove)
+    private int[] reassessIndentsAdd(Shape a, int dmgStart, int dmgEnd)
     {
         MoeSyntaxDocument doc = (MoeSyntaxDocument) getDocument();
         ParsedCUNode pcuNode = doc.getParsedNode();
@@ -864,7 +903,6 @@ public abstract class BlueJSyntaxView extends MoePlainView
             dmgRange[0] = dmgStart;
             dmgRange[1] = dmgEnd;
 
-            // It's a multiple line change
             int i = ls;
             List<NodeAndPosition<ParsedNode>> scopeStack = new LinkedList<NodeAndPosition<ParsedNode>>();
             int lineEndPos = map.getElement(le).getEndOffset();
@@ -880,47 +918,25 @@ public abstract class BlueJSyntaxView extends MoePlainView
                 return dmgRange;
             }
             if (top.getPosition() >= lineEl.getEndOffset()) {
-                // The first node we found is on the next line.
+                // The first node we found begins on a line following the additions.
                 i = map.getElementIndex(top.getPosition());
                 if (i > le) {
                     return dmgRange;
                 }
             }
             
-            if (remove) {
-                doc.getText(lineEl.getStartOffset(),
-                        lineEl.getEndOffset() - lineEl.getStartOffset(), segment);
-                int nws = findNonWhitespace(segment, 0);
-                if (nws == -1) {
-                    List<NodeAndPosition<ParsedNode>> rscopeStack = new LinkedList<NodeAndPosition<ParsedNode>>();
-                    getScopeStackAfter(doc.getParsedNode(), 0, lineEl.getStartOffset(), rscopeStack);
-                    rscopeStack.remove(0); // remove the root node
-                    while (! rscopeStack.isEmpty()) {
-                        NodeAndPosition<ParsedNode> rtop = rscopeStack.remove(rscopeStack.size() - 1);
-                        while (rtop != null && rtop.getPosition() < lineEl.getEndOffset()) {
-                            nodeIndents.remove(rtop.getNode());
-                            rtop = rtop.nextSibling();
-                        }
-                    }
-                }
-            }
-            
             scopeStack.add(top);
-            NodeAndPosition<ParsedNode> nap = top.getNode().findNodeAtOrAfter(lineEl.getStartOffset(),
+            NodeAndPosition<ParsedNode> nap = top.getNode().findNodeAtOrAfter(lineEl.getStartOffset() + 1,
                     top.getPosition());
-            while (nap != null && nap.getEnd() == lineEl.getStartOffset()) nap = nap.nextSibling(); 
             while (nap != null) {
                 scopeStack.add(nap);
-                nap = nap.getNode().findNodeAtOrAfter(lineEl.getStartOffset(),
-                        nap.getPosition());                
-                while (nap != null && nap.getEnd() == lineEl.getStartOffset()) nap = nap.nextSibling(); 
+                nap = nap.getNode().findNodeAtOrAfter(lineEl.getStartOffset() + 1, nap.getPosition());                
             }
             
             outer:
             while (true) {
                 // Skip to the next line which has text on it
-                doc.getText(lineEl.getStartOffset(),
-                        lineEl.getEndOffset() - lineEl.getStartOffset(), segment);
+                doc.getText(lineEl.getStartOffset(), lineEl.getEndOffset() - lineEl.getStartOffset(), segment);
                 int nws = findNonWhitespace(segment, 0);
                 while (nws == -1) {
                     if (++i > le) {
@@ -945,22 +961,29 @@ public abstract class BlueJSyntaxView extends MoePlainView
                     j.remove();
                 } while (j.hasPrevious());
 
-                // Rebuild the scope stack
                 if (topNap != null) {
+                    // Rebuild the scope stack
                     do {
                         topNap = topNap.nextSibling();
                     } while (topNap != null && topNap.getEnd() <= curpos);
                     while (topNap != null && topNap.getPosition() < lineEndPos) {
                         scopeStack.add(topNap);
-                        topNap = topNap.getNode().findNodeAtOrAfter(curpos,
-                                topNap.getPosition());
-                        while (topNap != null && topNap.getEnd() == curpos) topNap = topNap.nextSibling();
+                        topNap = topNap.getNode().findNodeAtOrAfter(curpos + 1, topNap.getPosition());
                     }
                 }
                 
                 if (scopeStack.isEmpty()) {
                     break;
                 }
+                
+                // At this point:
+                // - curpos is the position of the first non-whitespace on the current line (it may be
+                //   prior to damageStart, but in that case it will be on the same line)
+                // - i is the current line index
+                // - lineEl is the current line element
+                // - segment contains the text of the current line
+                // - scopeStack contains a stack of elements which overlap or follow curpos, and
+                //   which start on or before the current line.
 
                 // Calculate/store indent
                 Rectangle cbounds = modelToView(lineEl.getStartOffset() + nws, a, Position.Bias.Forward).getBounds();
@@ -1032,9 +1055,137 @@ public abstract class BlueJSyntaxView extends MoePlainView
             return dmgRange;
         }
         catch (BadLocationException ble) {
-            ble.printStackTrace();
+            throw new RuntimeException(ble);
         }
-        return null;
+    }
+
+    private int[] reassessIndentsRemove(Shape a, int dmgPoint, boolean multiLine)
+    {
+        MoeSyntaxDocument doc = (MoeSyntaxDocument) getDocument();
+        ParsedCUNode pcuNode = doc.getParsedNode();
+        
+        int [] dmgRange = new int[2];
+        dmgRange[0] = dmgPoint;
+        dmgRange[1] = dmgPoint;
+        
+        if (pcuNode == null) {
+            return dmgRange;
+        }
+        
+        Element map = doc.getDefaultRootElement();
+        int ls = map.getElementIndex(dmgPoint);
+        Element lineEl = map.getElement(ls);
+
+        NodeAndPosition<ParsedNode> top =
+            pcuNode.findNodeAtOrAfter(lineEl.getStartOffset(), 0);
+        while (top != null && top.getEnd() == lineEl.getStartOffset()) {
+            top = top.nextSibling();
+        }
+        
+        if (top == null) {
+            // No nodes at all.
+            return dmgRange;
+        }
+
+        if (top.getPosition() >= lineEl.getEndOffset()) {
+            // The first node we found is on the next line.
+            return dmgRange;
+        }
+        
+        try {
+            // At this point lineEl/segment are the line containing the deletion point. Some lines beyond
+            // this point may have been removed (if multiLine true).
+            Segment segment = new Segment();
+            doc.getText(lineEl.getStartOffset(),
+                    lineEl.getEndOffset() - lineEl.getStartOffset(), segment);
+            
+            // All nodes for this line with a cached indent greater than or equal to the damage point
+            // indent should have their indents re-assessed: If the indent of the node on this line is
+            // lower than (or the same as) the cached indent, it becomes the new cached indent; otherwise
+            // the cached indent must be discarded.
+            // Except: if the node does not span the damage point, its cached indent need not be discarded,
+            //   since in that case the node indent cannot have increased.
+
+            List<NodeAndPosition<ParsedNode>> rscopeStack = new LinkedList<NodeAndPosition<ParsedNode>>();
+            getScopeStackAfter(doc.getParsedNode(), 0, dmgPoint, rscopeStack);
+            rscopeStack.remove(0); // remove the root node
+
+            boolean doContinue = true;
+
+            Rectangle cbounds = modelToView(dmgPoint, a, Position.Bias.Forward).getBounds();
+            int dpI = cbounds.x; // damage point indent
+
+            while (doContinue && ! rscopeStack.isEmpty()) {
+                NodeAndPosition<ParsedNode> rtop = rscopeStack.remove(rscopeStack.size() - 1);
+                while (rtop != null && rtop.getPosition() < lineEl.getEndOffset()) {
+                    if (rtop.getPosition() <= dmgPoint && rtop.getEnd() >= lineEl.getEndOffset()) {
+                        // Content of inner nodes can't affect containing nodes:
+                        doContinue &= ! rtop.getNode().isInner();
+                    }
+
+                    Integer cachedIndent = nodeIndents.get(rtop.getNode());
+                    if (cachedIndent == null) {
+                        rtop = rtop.nextSibling();
+                        continue;
+                    }
+
+                    // If the cached indent is smaller than the damage point indent, then it
+                    // is still valid - unless this is a multiple line remove.
+                    if (!multiLine && cachedIndent < dpI) {
+                        rtop = rtop.nextSibling();
+                        continue;
+                    }
+
+                    if (nodeSkipsStart(rtop, lineEl, segment)) {
+                        if (rtop.getPosition() <= dmgPoint) {
+                            // The remove may have made this line empty
+                            nodeIndents.remove(rtop.getNode());
+                            dmgRange[0] = Math.min(dmgRange[0], rtop.getPosition());
+                            dmgRange[1] = Math.max(dmgRange[1], rtop.getEnd());
+                        }
+                        break; // no more siblings can be on this line
+                    }
+
+                    int nwsP = Math.max(lineEl.getStartOffset(), rtop.getPosition());
+                    int nws = findNonWhitespace(segment, nwsP - lineEl.getStartOffset());
+                    if (nws == -1 || nws + lineEl.getStartOffset() >= rtop.getEnd()) {
+                        // Two separate cases which we can handle in the same manner.
+                        if (rtop.getPosition() <= dmgPoint) {
+                            // The remove may have made this line empty
+                            nodeIndents.remove(rtop.getNode());
+                            dmgRange[0] = Math.min(dmgRange[0], rtop.getPosition());
+                            dmgRange[1] = Math.max(dmgRange[1], rtop.getEnd());
+                        }
+
+                        rtop = rtop.nextSibling();
+                        continue;
+                    }
+
+                    cbounds = modelToView(nws + lineEl.getStartOffset(), a, Position.Bias.Forward).getBounds();
+                    int newIndent = cbounds.x;
+
+                    if (newIndent < cachedIndent) {
+                        nodeIndents.put(rtop.getNode(), newIndent);
+                        dmgRange[0] = Math.min(dmgRange[0], rtop.getPosition());
+                        dmgRange[1] = Math.max(dmgRange[1], rtop.getEnd());
+                    }
+                    else if (newIndent > cachedIndent) {
+                        if (rtop.getPosition() <= dmgPoint) {
+                            nodeIndents.remove(rtop.getNode());
+                            dmgRange[0] = Math.min(dmgRange[0], rtop.getPosition());
+                            dmgRange[1] = Math.max(dmgRange[1], rtop.getEnd());
+                        }
+                    }
+
+                    rtop = rtop.nextSibling();
+                }
+            }
+            
+            return dmgRange;
+        }
+        catch (BadLocationException ble) {
+            throw new RuntimeException(ble);
+        }
     }
     
     /**
@@ -1068,6 +1219,16 @@ public abstract class BlueJSyntaxView extends MoePlainView
         }
     }
     
+    /**
+     * Get a stack of ParsedNodes which overlap or follow a particular document position. The stack shall
+     * contain the outermost node (at the bottom of the stack) through to the innermost node which overlaps
+     * (but does not end at) or which is the node first following the specified position.
+     * 
+     * @param root     The root node
+     * @param rootPos  The position of the root node
+     * @param position The position for which to build the scope stack
+     * @param list     The list into which to store the stack. Items are added to the end of the list.
+     */
     private void getScopeStackAfter(ParsedNode root, int rootPos, int position, List<NodeAndPosition<ParsedNode>> list)
     {
         // Note we add 1 to the given position to skip nodes which actually end at the position,
@@ -1099,6 +1260,34 @@ public abstract class BlueJSyntaxView extends MoePlainView
     }
 
     /**
+     * Search for a non-whitespace character, starting from the given offset in the segment; treat
+     * single-line comments as whitespace. Returns -1 if the line consists only of whitespace.
+     */
+    private int findNonWhitespaceComment(NodeAndPosition<ParsedNode> nap, Element lineEl, Segment segment, int startPos)
+    {
+        int nws = findNonWhitespace(segment, startPos);
+        if (nws != -1) {
+            int pos = nws + lineEl.getStartOffset();
+            
+            if (nap.getEnd() > pos) {
+                NodeAndPosition<ParsedNode> inNap = nap.getNode().findNodeAt(pos, nap.getPosition());
+                if (inNap != null && inNap.getNode().getNodeType() == ParsedNode.NODETYPE_COMMENT
+                        && inNap.getPosition() == pos && inNap.getEnd() == lineEl.getEndOffset() - 1) {
+                    return -1;
+                }
+            }
+            else {
+                NodeAndPosition<ParsedNode> nnap = nap.nextSibling();
+                if (nnap != null && nnap.getNode().getNodeType() == ParsedNode.NODETYPE_COMMENT
+                        && nnap.getPosition() == pos && nnap.getEnd() == lineEl.getEndOffset() - 1) {
+                    return -1;
+                }
+            }
+        }
+        return nws;
+    }
+    
+    /**
      * Search backwards for a non-whitespace character. If no such character
      * is found, returns (endPos - 1).
      */
@@ -1112,7 +1301,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
                 return i - segment.offset;
             }
         }
-        return i - segment.offset - 1;
+        return endPos - 1;
     }
 
     /**
@@ -1151,6 +1340,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
      * Need to override this method to handle node updates. If a node indentation changes,
      * the whole node needs to be repainted.
      */
+    @Override
     protected void updateDamage(DocumentEvent changes, Shape a, ViewFactory f)
     {
         if (a == null) {
@@ -1200,14 +1390,17 @@ public abstract class BlueJSyntaxView extends MoePlainView
         if (changes.getType() == EventType.INSERT) {
             damageStart = Math.min(damageStart, changes.getOffset());
             damageEnd = Math.max(damageEnd, changes.getOffset() + changes.getLength());
-            int [] r = reassessIndents(a, damageStart, damageEnd, false);
+            int [] r = reassessIndentsAdd(a, damageStart, damageEnd);
             damageStart = r[0];
             damageEnd = r[1];
         }
         else if (changes.getType() == EventType.REMOVE) {
             damageStart = Math.min(damageStart, changes.getOffset());
             damageEnd = Math.max(damageEnd, changes.getOffset());
-            int [] r = reassessIndents(a, damageStart, damageStart, true);
+            ElementChange ec = changes.getChange(document.getDefaultRootElement());
+            // Element [] childrenRemoved = changes.getChange(document.getDefaultRootElement()).getChildrenRemoved();
+            boolean multiLine = ec != null;
+            int [] r = reassessIndentsRemove(a, damageStart, multiLine);
             damageStart = r[0];
             damageEnd = r[1];
         }

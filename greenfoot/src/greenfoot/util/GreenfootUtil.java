@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -50,7 +50,6 @@ import java.io.InputStream;
 import java.lang.reflect.Modifier;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.security.AccessControlException;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -117,7 +116,7 @@ public class GreenfootUtil
     
     /**
      * Get a spacer along the specified axis and with the specified width.
-     * 
+     * <p>
      * A Spacer is like a strut, but with a minimum height/width of 0,
      * so it will collapse to provide additional space to other
      * components if necessary.
@@ -162,6 +161,7 @@ public class GreenfootUtil
 
     /**
      * Check whether a given file is an image that can be read by Java.
+     * 
      * @param file the file to check
      * @return true if the file is a valid image, false otherwise.
      */
@@ -355,6 +355,7 @@ public class GreenfootUtil
          *  (non-Javadoc)
          * @see java.awt.image.ImageObserver#imageUpdate(java.awt.Image, int, int, int, int, int)
          */
+        @Override
         public synchronized boolean imageUpdate(Image img, int infoflags, int x, int y, int width, int height)
         {
             // First stage: get image dimensions
@@ -390,9 +391,7 @@ public class GreenfootUtil
     
     
     /**
-     * 
      * Copies the src-DIR recursively into dst.
-     * 
      */
     public static void copyDir(File src, File dst)
     {
@@ -416,8 +415,8 @@ public class GreenfootUtil
     }
 
     /**
-     * Copies the src to dst. Creating parent dirs for dst. If dst exist it
-     * overrides it.
+     * Copies the src to dst, creating parent dirs for dst. If dst exists it
+     * is overwritten.
      * 
      * @param src
      *            The source. It must be a file
@@ -457,11 +456,19 @@ public class GreenfootUtil
 
         }
     }
+    
+    /**
+     * Gets a list of the sound files in this scenario
+     * @return A list of files in the sounds subdirectory, without the path prefix (e.g. "foo.wav")
+     */
+    public static Iterable<String> getSoundFiles()
+    {
+        return delegate.getSoundFiles();
+    }
 
     /**
-     * Tries to find the filename using the classloader. It first searches in
-     * 'projectdir/dir/', then in the 'projectdir' and last as an absolute
-     * filename or URL.
+     * Tries to find the specified file using the classloader. It first searches in
+     * 'projectdir/dir/', then in the 'projectdir' and last as an absolute filename or URL.
      * 
      * @param filename Name of the file
      * @param dir directory to search in first
@@ -474,43 +481,10 @@ public class GreenfootUtil
             throw new NullPointerException("Filename must not be null.");
         }
         
-        URL url = null;
-       
-        // If the 'dir' is part of the filename already, we attempt to use the
-        // filename alone first in order to avoid a wrong lookup for applets,
-        // because this can take a while over the net.
-        boolean pathContainsDir = false;
-        if (dir != null) {
-            // TODO It might not actually be the file system separator that
-            // should be used. Should also check for "/" to make it work on
-            // windows. If an applet it is probably "/" that is used on all 
-            // platforms.
-            int sepLoc = filename.lastIndexOf(System.getProperty("file.separator"));
-            if(sepLoc > 0) {
-              String pathOnly = filename.substring(0,sepLoc);
-              pathContainsDir = pathOnly.endsWith(dir);
-            }
-        }        
-
-        // Also look for ':' which will indicate some sort of protocol (http,
-        // jar, file, etc) which will be absolute and hence no need to use
-        // 'dir'.
-        boolean pathContainsColon = filename.contains(":");
-        
-        boolean dirSearched = false;     
-        if (!pathContainsColon && !pathContainsDir) {
-            // First, try the project directory, unless it is already part of the filename or an absolute path.
-            url = delegate.getResource(dir + "/" + filename);
-            dirSearched = true;
-        } 
+        URL url = delegate.getResource(dir + "/" + filename);
 
         if (url == null) {
             url = delegate.getResource(filename);
-        }
-        if (url == null && !dirSearched) {
-            // Second, try the specified dir
-            url = delegate.getResource(dir + "/" + filename);
-            dirSearched = true;
         }
         if (url == null) {
             // Third, try as an absolute file
@@ -522,13 +496,11 @@ public class GreenfootUtil
                 }
             }
             catch (MalformedURLException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                // Not a URL that Java can handle
             }
-            catch (AccessControlException ace) {
-                // Can get this when running in an applet (on Mac, when filename contains whitespace)
-                // Should be safe to ignore, since it will be picked up as an URL below.
-            }        
+            catch (SecurityException se) {
+                // Can get this when running as an applet
+            }
         }
         if(url == null) {
             // Fourth, try as an absolute  URL.
@@ -539,10 +511,10 @@ public class GreenfootUtil
                 s.close();
             }
             catch (MalformedURLException e) {
-                url =null;
+                url = null;
             }
             catch (IOException e) {
-                url =null;
+                url = null;
             } finally {
                 if(s != null) {
                     try {
@@ -847,9 +819,11 @@ public class GreenfootUtil
     }
     
     /**
-     * Gets the cached image of the requested name
-     * @param name of the image
-     * @return GreenfootImage
+     * Gets the cached image (if any) of the requested name. Thread-safe.
+     * 
+     * @param name   name of the image file
+     * @return The cached image (should not be modified), or null if the image
+     *         is not cached.
      */
     public static GreenfootImage getCachedImage(String name)
     {
@@ -875,5 +849,22 @@ public class GreenfootUtil
     public static void displayMessage(Component parent, String messageText)
     {
         delegate.displayMessage(parent, messageText);
+    }
+
+    /**
+     * Given a string that represents a filename (or long path),
+     * chops off the extension if any is present.
+     * 
+     * So Crab.java becomes Crab, and /tmp/pic.png becomes /tmp/pic
+     */
+    public static String removeExtension(String full)
+    {
+        int n = full.lastIndexOf('.');
+        if (n == -1) {
+            return full;
+        }
+        else {
+            return full.substring(0, n);
+        }
     }
 }

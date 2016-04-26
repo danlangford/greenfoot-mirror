@@ -26,6 +26,7 @@ import greenfoot.core.Simulation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +53,13 @@ import bluej.utility.Debug;
 public class LocalDebugger extends Debugger
 {
     @Override
-    public void addDebuggerListener(DebuggerListener l)
+    public void setUserLibraries(URL[] libraries)
+    {
+        throw new UnsupportedOperationException();
+    }
+    
+    @Override
+    public int addDebuggerListener(DebuggerListener l)
     {
         throw new UnsupportedOperationException();
     }

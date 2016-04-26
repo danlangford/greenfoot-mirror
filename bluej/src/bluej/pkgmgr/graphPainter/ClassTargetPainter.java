@@ -43,9 +43,9 @@ public class ClassTargetPainter
     private static final int HANDLE_SIZE = 20;
     private static final String STEREOTYPE_OPEN = "<<";
     private static final String STEREOTYPE_CLOSE = ">>";
-    private static final Color textcolor = Config.getItemColour("colour.text.fg");
-    private static final Color borderColor = Config.getItemColour("colour.target.border");
-    private static final Color stripeColor = Config.getItemColour("colour.target.stripes");
+    private static final Color textcolor = Color.BLACK;
+    private static final Color borderColor = Color.BLACK;
+    private static final Color stripeColor = new Color(158,139,116);
     private static final Image brokenImage = Config.getFixedImageAsIcon("broken-symbol.png").getImage();
     private static final Font targetFont = PrefMgr.getTargetFont();
 

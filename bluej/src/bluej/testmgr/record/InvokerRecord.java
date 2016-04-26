@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -37,12 +37,9 @@ import bluej.pkgmgr.PkgMgrFrame;
  */
 public abstract class InvokerRecord
 {
-    final static String firstIndent = "\t";
-    final static String secondIndent = "\t\t";
-    final static String thirdIndent = "\t\t\t";
     final static String statementEnd = ";\n";
     
-    final static String fieldDeclarationStart = firstIndent + "private ";
+    final static String fieldDeclarationStart = "private ";
 
     // -------------- instance fields ----------------
     
@@ -66,13 +63,35 @@ public abstract class InvokerRecord
     }
     
     /**
+     * If the result of this invocation is to be consigned to the object bench, get
+     * its name (otherwise returns null).
+     */
+    public String getResultName()
+    {
+        return null;
+    }
+    
+    /**
+     * Get the (static, compile time) result type of the invocation, if known. 
+     */
+    public String getResultTypeString()
+    {
+        return null;
+    }
+    
+    /**
+     * Check whether this record represents an invocation that has no result.
+     */
+    public abstract boolean hasVoidResult();
+    
+    /**
      * Construct a declaration for any objects constructed
      * by this invoker record.
      * 
      * @return a String representing the object declaration
      *         src or null if there is none.
      */    
-    public abstract String toFixtureDeclaration();
+    public abstract String toFixtureDeclaration(String firstIndent);
 
     /**
      * Construct a portion of an initialisation method for
@@ -81,7 +100,7 @@ public abstract class InvokerRecord
      * @return a String reprenting the object initialisation
      *         src or null if there is none. 
      */    
-    public abstract String toFixtureSetup();
+    public abstract String toFixtureSetup(String secondIndent);
 
     /**
      * Construct a portion of a test method for this
@@ -89,7 +108,7 @@ public abstract class InvokerRecord
      * 
      * @return a String representing the test method src
      */
-    public abstract String toTestMethod(PkgMgrFrame pmf);
+    public abstract String toTestMethod(PkgMgrFrame pmf, String secondIndent);
 
     /**
      * Construct an expression. This is an open expression which is not ended by
@@ -124,7 +143,7 @@ public abstract class InvokerRecord
     
     public int getAssertionCount()
     {
-    	return assertions.size();
+        return assertions.size();
     }
     
     public String getAssertion(int i)

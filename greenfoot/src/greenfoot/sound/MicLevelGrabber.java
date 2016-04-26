@@ -53,7 +53,7 @@ public class MicLevelGrabber
                     TargetDataLine line = (TargetDataLine) AudioSystem.getLine(new DataLine.Info(TargetDataLine.class, format));
                     line.open();
                     line.start();
-                    int bufferSize = (int) (format.getSampleRate() / 2) * format.getFrameSize();
+                    int bufferSize = (int) (format.getSampleRate() / 20) * format.getFrameSize();
                     byte buffer[] = new byte[bufferSize];
                     int bytesRead = line.read(buffer, 0, bufferSize);
                     line.stop();
@@ -93,6 +93,8 @@ public class MicLevelGrabber
      * level. It will most likely be the previous result that's returned,
      * however for things like meters where the level is being constantly
      * monitored this shouldn't be a problem.
+     * 
+     * @return  a microphone input level, between 0 and 100
      */
     public int getLevel()
     {

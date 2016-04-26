@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,20 +30,18 @@ import bluej.Config;
 /**
  * BlueJFileReader - a (static) class grouping all functions to read and write
  * BlueJ specific files.
- * 
+ * <p>
  * The BlueJ files are help files (used for compiler help, exception help,
  * editor help), dialogue files (for message and error dialogues) and templates
  * (for class skeletons).
- * 
+ * <p>
  * Help texts and dialogue texts are handled through the "readHelpText" method.
  * The files consist of text IDs (a short string) followed by the full text.
- * 
+ * <p>
  * Class skeletons (handled by the "translateFile" method) are text files with
  * place holders (variables) in them that will be replaced using a dictionary.
  * 
- * 
  * @author Michael Kolling
- * @version $Id: BlueJFileReader.java 7779 2010-06-16 14:44:28Z davmac $
  */
 public class BlueJFileReader
 {
@@ -53,11 +51,11 @@ public class BlueJFileReader
     
     /**
      * Read a help text out of a help file.
-     *
-     * Help files are named <language>/<baseFileName>.help (for example
+     * <p>
+     * Help files are named (language)/(baseFileName).help (for example
      * "english/moe.help"). Help texts inside the file are identified by
      * a help ID (a string).
-     *
+     * <p>
      * The files are expected to be in ISO 8859-1 character encoding, with "slash-u-XXXX" unicode
      * escape sequences.
      *
@@ -82,10 +80,12 @@ public class BlueJFileReader
 
             while ((msg = in.readLine()) != null) {
                 msg = msg.trim();
-                if(exactMatch)
+                if(exactMatch) {
                     match = msg.equals(textID);
-                else
+                }
+                else {
                     match = helpTextMatch(textID, msg);
+                }
 
                 if(match) {
                     // found it - read help text
@@ -103,8 +103,9 @@ public class BlueJFileReader
                 else {
                     // skip help text
                     line = in.readLine();
-                    while ((line != null) && (line.length() > 0))
+                    while ((line != null) && (line.length() > 0)) {
                         line = in.readLine();
+                    }
                 }
             }
         }
@@ -120,7 +121,7 @@ public class BlueJFileReader
                 catch(Exception e) {}
             }
         }
-        return null;	// not found
+        return null; // not found
     }
 
     /**
@@ -130,27 +131,32 @@ public class BlueJFileReader
      */
     private static boolean helpTextMatch(String message, String pattern)
     {
-        if(pattern.length() == 0)
+        if(pattern.length() == 0) {
             return false;
+        }
+        
         if(pattern.charAt(pattern.length()-1) == '*') {
             if(pattern.charAt(0) == '*') {  // * at both ends
                 pattern = pattern.substring(1, pattern.length()-3);
                 return (message.indexOf(pattern) > -1);
             }
-            else  // * at end
+            else { // * at end
                 return message.startsWith(
                      pattern.substring(0, pattern.length()-2));
+            }
         }
-        else if(pattern.charAt(0) == '*')
+        else if(pattern.charAt(0) == '*') {
             return message.endsWith(pattern.substring(1));
-        else
+        }
+        else {
             return pattern.equals(message);
+        }
     }
 
     /**
      * Copy a file while replacing special keywords within the file by
      * definitions.
-     * 
+     * <p>
      * Keywords are marked with a dollar sign and a name ($KEYWORD).
      * 'translations' contains definitions to be used as replacements. This is
      * used to create shell files from the shell file template.
@@ -166,13 +172,10 @@ public class BlueJFileReader
     }
 
     /**
-     * Copy a file while replacing special keywords
-     * within the file by definitions.
-     *
-     * Keywords are marked with a dollar
-     * sign and a name ($KEYWORD). 'translations' contains definitions
-     * to be used as replacements.
-     * This is used to create shell files from the shell file template.
+     * Copy a file while replacing special keywords within the file by definitions.
+     * <p>
+     * Keywords are marked with a dollar sign and a name ($KEYWORD). 'translations' contains definitions
+     * to be used as replacements. This is used to create shell files from the shell file template.
      * 
      * @param templateCharset Charset that should be used to read the template file.
      * @param outputCharset  Charset that should be used to write the output file.
@@ -188,7 +191,7 @@ public class BlueJFileReader
       
         try {
             in = new InputStreamReader(new FileInputStream(template), templateCharset);
-            out = new FileWriter(dest);
+            out = new OutputStreamWriter(new FileOutputStream(dest), outputCharset);
             
             for(int c; (c = in.read()) != -1; ) {
                 if(c == '$') {
@@ -245,9 +248,11 @@ public class BlueJFileReader
 
             in.close();
             out.close();
-        } catch(IOException e) {
-            if(in != null)
+        }
+        catch(IOException e) {
+            if(in != null) {
                 in.close();
+            }
             if(out != null) {
                 out.close();
             }
@@ -257,7 +262,6 @@ public class BlueJFileReader
     
     /**
      * Convert tab chars to the applicable number of spaces
-     *
      */
     private static String convertTabsToSpaces(String tabString)
     {

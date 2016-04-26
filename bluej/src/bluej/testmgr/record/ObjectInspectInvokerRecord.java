@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -48,6 +48,12 @@ public class ObjectInspectInvokerRecord extends InvokerRecord
         this.name = name;
     }
 
+    @Override
+    public boolean hasVoidResult()
+    {
+        return false;
+    }    
+    
     /**
      * Object inspection from another inspector.
      * 
@@ -61,17 +67,20 @@ public class ObjectInspectInvokerRecord extends InvokerRecord
         this.parentIr = ir;
     }
 
-    public String toFixtureDeclaration()
+    @Override
+    public String toFixtureDeclaration(String firstIndent)
     {
         return null;
     }
     
-    public String toFixtureSetup()
+    @Override
+    public String toFixtureSetup(String secondIndent)
     {
         return null;
     }
 
-    public String toTestMethod(PkgMgrFrame pmf)
+    @Override
+    public String toTestMethod(PkgMgrFrame pmf, String secondIndent)
     {
         return null;
     }
@@ -87,6 +96,7 @@ public class ObjectInspectInvokerRecord extends InvokerRecord
         }
     }
 
+    @Override
     public void incUsageCount()
     {
         if(parentIr != null) {

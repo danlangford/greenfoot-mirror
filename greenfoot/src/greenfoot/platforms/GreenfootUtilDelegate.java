@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -42,7 +42,20 @@ public interface GreenfootUtilDelegate
     /**
      * Get some resource from the project, specified by a relative path.
      */
-    public URL getResource(String path);  
+    public URL getResource(String path);
+    
+    /**
+     * Gets a list of sound files (as plain names, e.g. "foo.wav") that
+     * accompany this scenario.  For the IDE version, this scans the filesystem,
+     * and for the standalone version it looks at a list that's included
+     * in the exported JAR.
+     * <p>
+     * The return value will not be null, but it may have no contents if there
+     * was an error (e.g. problem reading the directory/JAR, or no list of sounds in the JAR)
+     * and you should not rely on it being accurate (e.g. if files were just added/removed in the sounds directory,
+     * or the JAR has been modified since export). 
+     */
+    public Iterable<String> getSoundFiles();
 
     /**
      * Get the project-relative path of the Greenfoot logo.
@@ -56,13 +69,19 @@ public interface GreenfootUtilDelegate
     public void removeCachedImage(String fileName);
 
     /**
-     * Adds a filename with the associated image into the cache. 
-     * Returns whether the image was cached. Thread-safe
+     * Requests that an image with associated name be added into the cache. The image may be null,
+     * in which case the null response will be cached. Thread-safe.
+     * 
+     * @return  whether the image was cached.
      */
     public boolean addCachedImage(String fileName, GreenfootImage image);
 
     /**
-     * Gets the cached image of the requested fileName. Thread-safe
+     * Gets the cached image of the requested fileName. Thread-safe.
+     *
+     * @param name   name of the image file
+     * @return The cached image (should not be modified), or null if the image
+     *         is not cached.
      */
     public GreenfootImage getCachedImage(String fileName);
     

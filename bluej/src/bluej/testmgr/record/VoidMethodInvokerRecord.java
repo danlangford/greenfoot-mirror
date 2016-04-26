@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -43,9 +43,16 @@ public class VoidMethodInvokerRecord extends InvokerRecord
         this.argumentValues = argVals;
     }
     
+    @Override
     public String [] getArgumentValues()
     {
         return argumentValues;
+    }
+    
+    @Override
+    public boolean hasVoidResult()
+    {
+        return true;
     }
 
     /**
@@ -53,8 +60,9 @@ public class VoidMethodInvokerRecord extends InvokerRecord
      * by this invoker record.
      * 
      * @return null because a void method results in no objects
-     */    
-    public String toFixtureDeclaration()
+     */
+    @Override
+    public String toFixtureDeclaration(String firstIndent)
     {
         return null;
     }
@@ -66,14 +74,15 @@ public class VoidMethodInvokerRecord extends InvokerRecord
      * @return a String reprenting the object initialisation
      *         src or null if there is none. 
      */    
-    public String toFixtureSetup()
+    @Override
+    public String toFixtureSetup(String secondIndent)
     {
-    	// code for the fixture setup involves just inserting the method call
+        // code for the fixture setup involves just inserting the method call
         return secondIndent + command + statementEnd;
     }
 
     @Override
-    public String toTestMethod(PkgMgrFrame pmf)
+    public String toTestMethod(PkgMgrFrame pmf, String secondIndent)
     {
         // code for the test method involves just inserting the method call
         return secondIndent + command + statementEnd;

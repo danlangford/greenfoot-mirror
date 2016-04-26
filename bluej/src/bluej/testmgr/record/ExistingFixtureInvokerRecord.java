@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -49,6 +49,12 @@ public class ExistingFixtureInvokerRecord extends InvokerRecord
     {
         fieldsSrc = new ArrayList<String>();
     }
+    
+    @Override
+    public boolean hasVoidResult()
+    {
+        return false;
+    }
 
     public void addFieldDeclaration(String fieldDecl)
     {
@@ -66,8 +72,9 @@ public class ExistingFixtureInvokerRecord extends InvokerRecord
      * 
      * @return a String representing the object declaration
      *         src or null if there is none.
-     */    
-    public String toFixtureDeclaration()
+     */
+    @Override
+    public String toFixtureDeclaration(String firstIndent)
     {
         StringBuffer sb = new StringBuffer();
 
@@ -90,8 +97,9 @@ public class ExistingFixtureInvokerRecord extends InvokerRecord
      *  
      * @return a String reprenting the object initialisation
      *         src or null if there is none. 
-     */    
-    public String toFixtureSetup()
+     */
+    @Override
+    public String toFixtureSetup(String secondIndent)
     {
         StringBuffer sb = new StringBuffer();
         sb.append(secondIndent);
@@ -107,7 +115,8 @@ public class ExistingFixtureInvokerRecord extends InvokerRecord
      * 
      * @return a String representing the test method src
      */
-    public String toTestMethod(PkgMgrFrame pmf)
+    @Override
+    public String toTestMethod(PkgMgrFrame pmf, String secondIndent)
     {
         return null;
     }

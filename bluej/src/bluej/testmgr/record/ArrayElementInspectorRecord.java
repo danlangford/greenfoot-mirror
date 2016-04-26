@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -35,25 +35,31 @@ public class ArrayElementInspectorRecord extends InvokerRecord
     }
     
     @Override
+    public boolean hasVoidResult()
+    {
+        return false;
+    }    
+    
+    @Override
     public String toExpression()
     {
         return parentIr.toExpression() + "[" + element + "]";
     }
 
     @Override
-    public String toFixtureDeclaration()
+    public String toFixtureDeclaration(String firstIndent)
     {
         return null;
     }
 
     @Override
-    public String toFixtureSetup()
+    public String toFixtureSetup(String secondIndent)
     {
         return null;
     }
 
     @Override
-    public String toTestMethod(PkgMgrFrame pmf)
+    public String toTestMethod(PkgMgrFrame pmf, String secondIndent)
     {
         return null;
     }

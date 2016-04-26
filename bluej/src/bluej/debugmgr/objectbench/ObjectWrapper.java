@@ -97,8 +97,7 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
     static String inheritedFrom = Config.getString("debugger.objectwrapper.inherited");
 
     // Colors
-    static final Color bg = Config.getItemColour("colour.wrapper.bg");
-    static final Color envOpColour = Config.getItemColour("colour.menu.environOp");
+    static final Color envOpColour = Config.ENV_COLOUR;
     static final Color textColour = Color.white;
     
     // Images
@@ -764,7 +763,7 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
             
             public void beginExecution(InvokerRecord ir)
             {
-                BlueJEvent.raiseEvent(BlueJEvent.METHOD_CALL, ir.toExpression());
+                BlueJEvent.raiseEvent(BlueJEvent.METHOD_CALL, ir);
                 pmf.setWaitCursor(false);
             }
             

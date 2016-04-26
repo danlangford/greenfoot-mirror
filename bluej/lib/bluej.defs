@@ -431,24 +431,6 @@ bluej.javame.showtools=false
 ### Colours. All are specified as RGB values.
 #######################################################################
 
-colour.background=208,212,208
-colour.text.fg=0,0,0
-
-colour.arrow.uses=0,0,0
-colour.arrow.implements=0,0,0
-colour.arrow.extends=0,0,0
-
-colour.target.border=0,0,0
-colour.target.bg.compiling=200,150,100
-colour.target.stripes=158,139,116
-
-# object bench
-colour.wrapper.bg=205,38,38
-colour.wrapper.shadow=152,152,152
-
-#text colour for environment specific commands in popup menus
-colour.menu.environOp=152,32,32
-
 #colour for selections (in text and otherwise)
 colour.selection=233,225,0
 colour.selection2=255,250,0

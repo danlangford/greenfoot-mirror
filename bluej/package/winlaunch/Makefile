@@ -14,7 +14,7 @@ GREENFOOTDEF=-DGREENFOOT
 EXECNAME=gflaunch.exe
 REQUIREDJAVA=\"1.6\"
 
-JDKDIR=/c/Program Files/Java/jdk1.6.0_21
+JDKDIR=/c/Program Files/Java/jdk1.6.0_26
 
 OBJECTS = resources.o bjlaunch.o javatest.o javaprops.o bjdialog.o
 
@@ -27,7 +27,7 @@ resources.o: bjlaunch.rc resources.h
 	windres $(GREENFOOTDEF) bjlaunch.rc resources.o
 
 bjlaunch.o: bjlaunch.cc resources.h
-	g++ $(GREENFOOTDEF) -DAPPNAME=$(APPNAME) -Os -I"$(JDKDIR)/include" -I"$(JDKDIR)/include/win32" -c bjlaunch.cc -o bjlaunch.o
+	g++ $(GREENFOOTDEF) -DAPPNAME=$(APPNAME) -DREQUIREDJAVA=$(REQUIREDJAVA) -Os -I"$(JDKDIR)/include" -I"$(JDKDIR)/include/win32" -c bjlaunch.cc -o bjlaunch.o
 
 javaprops.o: javaprops.cc winfilebuf.h
 	g++ -DAPPNAME=$(APPNAME) -Os -c javaprops.cc -o javaprops.o

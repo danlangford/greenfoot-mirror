@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,24 +21,33 @@
  */
 package bluej.terminal;
 
-import java.awt.datatransfer.UnsupportedFlavorException;
-import java.io.IOException;
-import javax.swing.JTextArea;
-import javax.swing.text.BadLocationException;
-
-import bluej.utility.Debug;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.io.IOException;
+
+import javax.swing.JEditorPane;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultEditorKit;
+import javax.swing.text.Document;
+import javax.swing.text.Element;
+import javax.swing.text.View;
+import javax.swing.text.ViewFactory;
+
+import bluej.utility.Debug;
 
 /**
  * A customised text area for use in the BlueJ text terminal.
  *
  * @author  Michael Kolling
- * @version $Id: TermTextArea.java 7054 2010-01-27 03:58:25Z davmac $
  */
-public final class TermTextArea extends JTextArea
+public final class TermTextArea extends JEditorPane
 {
     private static final int BUFFER_LINES = 48;
 
@@ -46,15 +55,58 @@ public final class TermTextArea extends JTextArea
 
     private InputBuffer buffer;
     private Terminal terminal;
+    
+    private int preferredRows;
+    private int preferredColumns;
 
     /**
      * Create a new text area with given size.
      */
     public TermTextArea(int rows, int columns, InputBuffer buffer, Terminal terminal)
     {
-        super(rows, columns);
+        preferredRows = rows;
+        preferredColumns = columns;
+        resetPreferredSize();
         this.buffer = buffer;
         this.terminal = terminal;
+        setEditorKit(new DefaultEditorKit() {
+            
+            @Override
+            public Document createDefaultDocument()
+            {
+                return new TerminalDocument();
+            }
+            
+            @Override
+            public ViewFactory getViewFactory()
+            {
+                return new ViewFactory() {
+                    @Override
+                    public View create(Element elem)
+                    {
+                        return new TerminalView(elem);
+                    }
+                };
+            } 
+        });
+    }
+    
+    @Override
+    public void setFont(Font font)
+    {
+        super.setFont(font);
+        resetPreferredSize();
+    }
+    
+    /**
+     * Reset the preferred size according to font metrics and desired rows/columns
+     */
+    private void resetPreferredSize()
+    {
+        FontMetrics metrics = getFontMetrics(getFont());
+        int mwidth = metrics.charWidth('m');
+        int mheight = metrics.getHeight();
+        setPreferredSize(new Dimension(mwidth * preferredColumns, mheight * preferredRows));
     }
 
     public void setUnlimitedBuffering(boolean arg)
@@ -62,22 +114,84 @@ public final class TermTextArea extends JTextArea
         unlimitedBuffer = arg;
     }
 
-    @Override
+    /**
+     * Append some text to the terminal text area.
+     */
     public void append(String s)
     {
-        super.append(s);
+        append(s, null);
+    }
+    
+    /**
+     * Append some text to the terminal text area.
+     */
+    public void append(String s, AttributeSet attribs)
+    {
+        int length = getDocument().getLength();
+        try {
+            getDocument().insertString(length, s, attribs);
+        }
+        catch (BadLocationException ble) {
+            throw new RuntimeException(ble);
+        }
 
         if(!unlimitedBuffer) {             // possibly remove top line
             int lines = getLineCount();
             if(lines > BUFFER_LINES) {
-                try {
-                    int linePos = getLineStartOffset(lines-BUFFER_LINES);
-                    replaceRange(null, 0, linePos);
-                }
-                catch(BadLocationException exc) {
-                    Debug.reportError("bad location in terminal operation");
-                }
+                int linePos = getLineStartOffset(lines-BUFFER_LINES);
+                replaceRange(null, 0, linePos);
             }
+        }
+    }
+    
+    /**
+     * Append a line of text from a method call recording.
+     */
+    public void appendMethodCall(String s)
+    {
+        int length = getDocument().getLength();
+        int lineCount = getLineCount();
+        if (length != getLineStartOffset(lineCount - 1)) {
+            // Start a new line for the method call details
+            append("\n");
+            lineCount++;
+        }
+        
+        append(s, null);
+        
+        TerminalDocument doc = (TerminalDocument) getDocument();
+        doc.markLineAsMethodOutput(lineCount - 1);
+    }
+    
+    /**
+     * Get the number of lines in the text area
+     */
+    public int getLineCount()
+    {
+        return getDocument().getDefaultRootElement().getElementCount();
+    }
+    
+    /**
+     * Get the start offset of a particular line (line 0 is the first line).
+     */
+    public int getLineStartOffset(int line)
+    {
+        return getDocument().getDefaultRootElement().getElement(line).getStartOffset();
+    }
+    
+    /**
+     * Replace the text in some portion of the document with the given string.
+     */
+    public void replaceRange(String s, int startPos, int endPos)
+    {
+        try {
+            getDocument().remove(startPos, endPos - startPos);
+            if (s != null) {
+                getDocument().insertString(startPos, s, null);
+            }
+        }
+        catch (BadLocationException ble) {
+            throw new RuntimeException(ble);
         }
     }
 
@@ -114,7 +228,7 @@ public final class TermTextArea extends JTextArea
                 }
             }
         } else {
-            // if it isn't a string, let the usual paint method handle it.
+            // if it isn't a string, let the usual paste method handle it.
             super.paste();
         }
     }

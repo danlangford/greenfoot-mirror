@@ -15,7 +15,7 @@
      After changing the version number the target "update-version-number" should be run -->
     <property name="bluej.version.major" value="3" />
     <property name="bluej.version.minor" value="0" />
-    <property name="bluej.version.release" value="4" />
+    <property name="bluej.version.release" value="5" />
     <property name="bluej.version.suffix" value="" />
 	<!-- suffix with no spaces, eg "pre2" -->
 	<property name="bluej.version.nonspace.suffix" value="" />
@@ -272,6 +272,10 @@ LICENSE.txt file that accompanied this code.${line.separator}
     <target name="windows-dist">
         <ant dir="package" target="windows-dist"/>
     </target>
+	
+	<target name="windows-msi-dist">
+	    <ant dir="package" target="windows-msi-dist"/>
+	</target>
 
     <target name="mac-dist">
         <jarbundler dir="package"

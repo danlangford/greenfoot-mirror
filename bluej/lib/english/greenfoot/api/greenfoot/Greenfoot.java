@@ -45,7 +45,7 @@ import greenfoot.sound.SoundFactory;
  *     punctuation marks. getKey() also returns uppercase characters when
  *     appropriate.
  * <li>"up", "down", "left", "right" (the cursor keys)
- * <li>"enter", "space", "tab", "escape", "backspace"
+ * <li>"enter", "space", "tab", "escape", "backspace", "shift", "control"
  * <li>"F1", "F2", .., "F12" (the function keys)
  * </ul>
  * 
@@ -280,6 +280,12 @@ public class Greenfoot
         return WorldHandler.getInstance().getMouseManager().getMouseInfo();
     }
     
+    /**
+     * Get the microphone input level. This level is an approximation of the loudness
+     * any noise that is currently being received by the microphone.
+     * 
+     * @return The microphone input level (between 0 and 100, inclusive).
+     */
     public static int getMicLevel()
     {
         return MicLevelGrabber.getInstance().getLevel();

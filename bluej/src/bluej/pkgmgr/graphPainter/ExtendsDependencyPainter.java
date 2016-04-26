@@ -23,7 +23,6 @@ package bluej.pkgmgr.graphPainter;
 
 import java.awt.*;
 
-import bluej.Config;
 import bluej.graph.RubberBand;
 import bluej.pkgmgr.dependency.Dependency;
 import bluej.pkgmgr.dependency.ExtendsDependency;
@@ -34,7 +33,7 @@ import bluej.pkgmgr.dependency.Dependency.Line;
  * 
  * @author fisker
  * @author Michael Kolling
- * @version $Id: ExtendsDependencyPainter.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: ExtendsDependencyPainter.java 9034 2011-06-24 02:42:21Z davmac $
  */
 public class ExtendsDependencyPainter
     implements DependencyPainter
@@ -42,7 +41,7 @@ public class ExtendsDependencyPainter
     protected static final float strokeWidthDefault = 1.0f;
     protected static final float strokeWidthSelected = 2.0f;
 
-    static final Color normalColour = Config.getItemColour("colour.arrow.extends");
+    static final Color normalColour = Color.BLACK;
     private static final BasicStroke normalSelected = new BasicStroke(strokeWidthSelected);
     private static final BasicStroke normalUnselected = new BasicStroke(strokeWidthDefault);
     static final int ARROW_SIZE = 18; // pixels

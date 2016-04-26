@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,9 +22,11 @@
 package greenfoot.export;
 
 import greenfoot.core.GProject;
+import greenfoot.util.GreenfootUtil;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -32,6 +34,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -46,6 +49,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipOutputStream;
 
+import bluej.Boot;
 import bluej.Config;
 import bluej.pkgmgr.Project;
 import bluej.utility.BlueJFileReader;
@@ -162,9 +166,6 @@ public class JarCreator
         // skip the export dir (in case it is in the projectDir)
         addSkipDir(exportDir.getAbsolutePath());
         
-        // skip the greenfoot subdir that are in the projects
-        addSkipDir(projectDir.getPath() + System.getProperty("file.separator") + "greenfoot");
-        
         // skip BlueJ files
         addSkipFile(".ctxt");
         addSkipFile("bluej.pkg");
@@ -179,6 +180,10 @@ public class JarCreator
         
         // Add the properties read by the GreenfootScenarioViewer
         properties.put("project.name", scenarioName);
+        properties.put("project.greenfootversion", Boot.GREENFOOT_VERSION);
+        properties.put("project.javaspecversion", System.getProperty("java.specification.version"));
+        properties.put("project.javaversion", System.getProperty("java.version"));
+        properties.put("project.javaclassversion", System.getProperty("java.class.version"));
         properties.put("main.class", worldClass);
         properties.put("scenario.lock", "" + lockScenario);
         properties.put("scenario.viewer.appletInfo", Config.getString("scenario.viewer.appletInfo"));
@@ -257,6 +262,7 @@ public class JarCreator
     {        
         File jarFile = new File(exportDir, jarName);
         File propertiesFile = null;
+        File soundFile = null;
         OutputStream oStream = null;
         ZipOutputStream jStream = null;
 
@@ -268,6 +274,8 @@ public class JarCreator
                 writeManifest();
                 propertiesFile = new File(projectDir, "standalone.properties");
                 writePropertiesFile(propertiesFile);
+                soundFile = new File(projectDir, "soundindex.list");
+                writeSoundFilesList(soundFile);
                 jStream = new JarOutputStream(oStream, manifest);
             }
             else {
@@ -300,6 +308,25 @@ public class JarCreator
                 propertiesFile.delete();
             }
         }
+    }
+
+    private void writeSoundFilesList(File file)
+    {
+        BufferedWriter os = null;
+        try {
+            file.createNewFile();
+            os = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file)));
+            for (String name : GreenfootUtil.getSoundFiles())
+            {
+                os.write(name + "\n");
+            }
+            os.close();
+        }
+        catch (IOException e)
+        {
+            Debug.reportError("Error writing list of sounds: ", e);
+        }
+        
     }
 
     /**
@@ -354,7 +381,7 @@ public class JarCreator
         String newLineRegExp = "(?m)(?s)$.^";
         //\\z matches end of input, so this will match all trailing newlines.
         String trailingNewLineReqExp = "$.\\z";
-		String[] lines = value.split(newLineRegExp + "|" + trailingNewLineReqExp );
+        String[] lines = value.split(newLineRegExp + "|" + trailingNewLineReqExp );
         for (int i = 0; i < lines.length; i++) {
             String string = lines[i];
             if(i!=0) {

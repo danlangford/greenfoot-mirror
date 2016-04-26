@@ -81,7 +81,7 @@ import bluej.views.CallableView;
 public class WorldHandlerDelegateIDE
     implements WorldHandlerDelegate, ObjectBenchInterface, InteractionListener, SimulationUIListener
 {
-    protected final Color envOpColour = Config.getItemColour("colour.menu.environOp");
+    protected final Color envOpColour = Config.ENV_COLOUR;
 
     private final static String missingConstructorTitle = Config.getString("world.missing.constructor.title");
     private final static String missingConstructorMsg = Config.getString("world.missing.constructor.msg");
@@ -405,6 +405,7 @@ public class WorldHandlerDelegateIDE
                     WorldHandler.getInstance().clearWorldSet();
                     World newWorld = (World) Simulation.newInstance(cons);
                     if (! WorldHandler.getInstance().checkWorldSet()) {
+                        GreenfootUtilDelegateIDE.getInstance().clearImageCache();
                         WorldHandler.getInstance().setWorld(newWorld);
                     }
                     saveWorldAction.setRecordingValid(true);
