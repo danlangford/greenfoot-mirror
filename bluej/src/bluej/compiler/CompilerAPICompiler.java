@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -109,6 +109,12 @@ public class CompilerAPICompiler extends Compiler
                     message = processMessage(src, (int) diag.getLineNumber(), message);
                     long beginCol = diag.getColumnNumber();
                     long endCol = diag.getEndPosition() - diag.getPosition() + beginCol;
+                    // http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=7158654
+                    // getEndPosition() shouldn't return NOPOS (-1) if getStartPosition()
+                    //    doesn't - but sometimes it does.
+                    if (diag.getEndPosition() == Diagnostic.NOPOS) {
+                        endCol = beginCol;
+                    }
                     bjDiagnostic = new bluej.compiler.Diagnostic(diagType,
                             message, src, diag.getLineNumber(), beginCol,
                             diag.getLineNumber(), endCol);
@@ -134,7 +140,7 @@ public class CompilerAPICompiler extends Compiler
                     if (internal &&
                             (message.endsWith(" uses unchecked or unsafe operations.") ||
                             message.endsWith("Some input files use unchecked or unsafe operations.") ||
-                            message.startsWith("Note: Recompile with -Xlint:unchecked "))) {
+                            message.endsWith("Recompile with -Xlint:unchecked for details."))) {
                         return;
                     }
                 }

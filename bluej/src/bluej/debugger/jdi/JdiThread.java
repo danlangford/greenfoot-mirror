@@ -355,27 +355,64 @@ class JdiThread extends DebuggerThread
      */
     public List<String> getLocalVariables(int frameNo)
     {
-        //Debug.message("[JdiThread] getLocalVariables");
         try {
             if(rt.isSuspended()) {
                 StackFrame frame = rt.frame(frameNo);
                 List<LocalVariable> vars = frame.visibleVariables();
                 List<String> localVars = new ArrayList<String>();
-
+                
+                // To work around a JDI bug (probably related to the other one described
+                // below) we collect information we need about the variables on the
+                // stack frame before we do anything which might cause types to be
+                // loaded:
+                
+                List<String> localVals = new ArrayList<String>();
+                List<Type> localTypes = new ArrayList<Type>();
+                List<String> genericSigs = new ArrayList<String>();
+                List<String> typeNames = new ArrayList<String>();
+                ReferenceType declaringType = frame.location().declaringType();
+                
+                for(int i = 0; i < vars.size(); i++) {
+                    LocalVariable var = vars.get(i);
+                    String val = JdiUtils.getJdiUtils().getValueString(frame.getValue(var));
+                    localVals.add(val);
+                    
+                    try {
+                        localTypes.add(var.type());
+                    }
+                    catch (ClassNotLoadedException cnle) {
+                        localTypes.add(null);
+                    }
+                    
+                    genericSigs.add(var.genericSignature());
+                    typeNames.add(var.typeName());
+                }
+                
                 for(int i = 0; i < vars.size(); i++) {
                     LocalVariable var = vars.get(i);
 
                     // Add "type name = value" to the list
-                    JavaType vartype = JdiReflective.fromLocalVar(frame, var);
-                    String val = JdiUtils.getJdiUtils().getValueString(frame.getValue(var));
+                    JavaType vartype = JdiReflective.fromLocalVar(localTypes.get(i), genericSigs.get(i),
+                            typeNames.get(i), declaringType);
                     localVars.add(vartype.toString(true) + " " + var.name()
-                            + " = " + val);
+                            + " = " + localVals.get(i));
                 }
                 return localVars;
             }
         }
-        catch(Exception e) {
-            // nothing can be done...
+        catch (IncompatibleThreadStateException itse) { }
+        catch (AbsentInformationException ase) { }
+        catch (VMDisconnectedException vmde) { }
+        catch (InvalidStackFrameException e) {
+            // This shouldn't happen, as we've checked the thread status, 
+            // but it does, apparently; seems like a JDK bug.
+            // Probably related to: http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6644945
+            // Occurs (at least) in JDK 1.6.0_25.
+            try {
+                Thread.sleep(100);
+                return getLocalVariables(frameNo);
+            }
+            catch (InterruptedException ie) {}
         }
         return new ArrayList<String>();
     }

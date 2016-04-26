@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -94,6 +94,8 @@ import bluej.debugmgr.objectbench.ObjectWrapper;
 import bluej.debugmgr.texteval.TextEvalArea;
 import bluej.extmgr.ExtensionsManager;
 import bluej.extmgr.MenuManager;
+import bluej.extmgr.ToolsMenuObject;
+import bluej.extmgr.ViewMenuObject;
 import bluej.groupwork.actions.CheckoutAction;
 import bluej.groupwork.actions.TeamActionGroup;
 import bluej.groupwork.ui.ActivityIndicator;
@@ -204,7 +206,8 @@ public class PkgMgrFrame extends JFrame
     private JMenuBar menubar = null;
     private JMenu recentProjectsMenu;
     private JMenu testingMenu;
-    private MenuManager menuManager;
+    private MenuManager toolsMenuManager;
+    private MenuManager viewMenuManager;
     
     private JMenu teamMenu;
     private JMenuItem shareProjectMenuItem;
@@ -292,7 +295,7 @@ public class PkgMgrFrame extends JFrame
     private static ExtensionsManager extMgr = ExtensionsManager.getInstance();
 
     private ExportManager exporter;
-    
+
     /**
      * Open a PkgMgrFrame with no package. Packages can be installed into this
      * frame using the methods openPackage/closePackage.
@@ -435,7 +438,7 @@ public class PkgMgrFrame extends JFrame
             }
         }
 
-        if (list.size() == 0)
+        if (list.isEmpty())
             return null;
 
         return list.toArray(new PkgMgrFrame[list.size()]);
@@ -448,19 +451,19 @@ public class PkgMgrFrame extends JFrame
      */
     public static PkgMgrFrame getMostRecent()
     {
-        PkgMgrFrame[] frames = getAllFrames();
+        PkgMgrFrame[] allFrames = getAllFrames();
 
         // If there are no frames open, yet...
-        if (frames.length < 1)
+        if (allFrames.length < 1)
             return null;
 
         // Assume that the most recent is the first one. Not really the best
         // thing to do...
-        PkgMgrFrame mostRecent = frames[0];
+        PkgMgrFrame mostRecent = allFrames[0];
 
-        for (int i = 0; i < frames.length; i++)
-            if (frames[i].getFocusOwner() != null)
-                mostRecent = frames[i];
+        for (int i = 0; i < allFrames.length; i++)
+            if (allFrames[i].getFocusOwner() != null)
+                mostRecent = allFrames[i];
 
         return mostRecent;
     }
@@ -732,8 +735,11 @@ public class PkgMgrFrame extends JFrame
             
             updateTextEvalBackground(isEmptyFrame());
                     
-            this.menuManager.setAttachedObject(pkg);
-            this.menuManager.addExtensionMenu(pkg.getProject());
+            this.toolsMenuManager.setAttachedObject(new ToolsMenuObject(pkg));
+            this.toolsMenuManager.addExtensionMenu(pkg.getProject());
+
+            this.viewMenuManager.setAttachedObject(new ViewMenuObject(pkg));
+            this.viewMenuManager.addExtensionMenu(pkg.getProject());
         
             teamActions = pkg.getProject().getTeamActions();
             resetTeamActions();             
@@ -748,7 +754,7 @@ public class PkgMgrFrame extends JFrame
             else {
                 showTestingTools(wantToSeeTestingTools());
             }                
-        };
+        }
 
         extMgr.packageOpened(pkg);
     }
@@ -798,7 +804,7 @@ public class PkgMgrFrame extends JFrame
     /**
      * Closes the current package.
      */
-    private void closePackage()
+    public void closePackage()
     {
         if (isEmptyFrame()) {
             return;
@@ -811,7 +817,8 @@ public class PkgMgrFrame extends JFrame
             classScroller.setBorder(Config.normalBorder);
             editor.removeMouseListener(this);
             editor.removeFocusListener(this);
-            this.menuManager.setAttachedObject(pkg);
+            this.toolsMenuManager.setAttachedObject(new ToolsMenuObject(pkg));
+            this.viewMenuManager.setAttachedObject(new ViewMenuObject(pkg));
             
             getObjectBench().removeAllObjects(getProject().getUniqueId());
             clearTextEval();
@@ -837,13 +844,13 @@ public class PkgMgrFrame extends JFrame
     /**
      * Override standard show to add de-iconify and bring-to-front.
      */
+    @Override
     public void setVisible(boolean visible)
     {
         if(!visible) {
             super.setVisible(false);
         }
         else if (!Config.isGreenfoot()) {
-//        else if (true) {
             super.setVisible(true);
             setState(Frame.NORMAL);
         }
@@ -879,7 +886,7 @@ public class PkgMgrFrame extends JFrame
     /**
      * Set the window title to show the current package name.
      */
-    protected String updateWindowTitle()
+    protected final String updateWindowTitle()
     {
         if (isEmptyFrame()) {
             setTitle("BlueJ");
@@ -902,7 +909,7 @@ public class PkgMgrFrame extends JFrame
     /**
      * Display a message in the status bar of the frame
      */
-    public void setStatus(final String status)
+    public final void setStatus(final String status)
     {
          EventQueue.invokeLater(new Runnable() {
             public void run() {
@@ -1294,17 +1301,17 @@ public class PkgMgrFrame extends JFrame
         if (openProj == null)
             return false;
         else {
-            Package pkg = openProj.getPackage(openProj.getInitialPackageName());
+            Package initialPkg = openProj.getPackage(openProj.getInitialPackageName());
 
-            PkgMgrFrame pmf = findFrame(pkg);
+            PkgMgrFrame pmf = findFrame(initialPkg);
 
             if (pmf == null) {
                 if (isEmptyFrame()) {
                     pmf = this;
-                    openPackage(pkg);
+                    openPackage(initialPkg);
                 }
                 else {
-                    pmf = createFrame(pkg);
+                    pmf = createFrame(initialPkg);
 
                     DialogManager.tileWindow(pmf, this);
                 }
@@ -1391,11 +1398,11 @@ public class PkgMgrFrame extends JFrame
      */
     public static void closeProject(Project project) 
     {
-        PkgMgrFrame[] frames = getAllProjectFrames(project);
+        PkgMgrFrame[] allFrames = getAllProjectFrames(project);
 
-        if (frames != null) {
-            for (int i = 0; i < frames.length; i++) {
-                frames[i].doClose(true, true);
+        if (allFrames != null) {
+            for (int i = 0; i < allFrames.length; i++) {
+                allFrames[i].doClose(true, true);
             }
         }
     }
@@ -1426,10 +1433,11 @@ public class PkgMgrFrame extends JFrame
                 updateRecentProjects();
                 enableFunctions(false); // changes menu items
                 updateWindowTitle();
-                menuManager.addExtensionMenu(null);
+                toolsMenuManager.addExtensionMenu(null);
+                viewMenuManager.addExtensionMenu(null);
             }
             else { // all frames gone, lets quit
-                doQuit();
+                bluej.Main.doQuit();
             }
         }
         else {
@@ -1439,99 +1447,9 @@ public class PkgMgrFrame extends JFrame
     }
 
     /**
-     * Quit menu item was chosen.
-     */
-    public void wantToQuit()
-    {
-        int answer = 0;
-        if (Project.getOpenProjectCount() > 1)
-            answer = DialogManager.askQuestion(this, "quit-all");
-        if (answer == 0)
-            doQuit();
-    }
-
-    /**
-     * perform the closing down and quitting of BlueJ. Note that the order of
-     * the events is relevant - Extensions should be unloaded after package
-     * close
-     */
-    private void doQuit()
-    {
-        PkgMgrFrame[] pkgFrames = getAllFrames();
-
-        // handle open packages so they are re-opened on startup
-        handleOrphanPackages(pkgFrames);
-
-        // We replicate some of the behaviour of doClose() here
-        // rather than call it to avoid a nasty recursion
-        for (int i = pkgFrames.length - 1; i >= 0; i--) {
-            PkgMgrFrame aFrame = pkgFrames[i];
-            aFrame.doSave();
-            aFrame.closePackage();
-            PkgMgrFrame.closeFrame(aFrame);
-        }
-
-        extMgr.unloadExtensions();
-        bluej.Main.exit();
-    }
-
-    /**
-     * When bluej is exited with open packages we want it to open these the next
-     * time that is started (this is default action, can be changed by setting
-     * 
-     * @param openFrames
-     */
-    private void handleOrphanPackages(PkgMgrFrame[] openFrames)
-    {
-        // if there was a previous list, delete it
-        if (hadOrphanPackages())
-            removeOrphanPackageList();
-        // add an entry for each open package
-        for (int i = 0; i < openFrames.length; i++) {
-            PkgMgrFrame aFrame = openFrames[i];
-            if (!aFrame.isEmptyFrame()) {
-                Config.putPropString(Config.BLUEJ_OPENPACKAGE + (i + 1), aFrame.getPackage().getPath().toString());
-            }
-        }
-    }
-
-    /**
-     * Checks if there were orphan packages on last exit by looking for
-     * existence of a valid BlueJ project among the saved values for the
-     * orphaned packages.
-     * 
-     * @return whether a valid orphaned package exist.
-     */
-    public static boolean hadOrphanPackages()
-    {
-        String dir = "";
-        // iterate through unknown number of orphans
-        for (int i = 1; dir != null; i++) {
-            dir = Config.getPropString(Config.BLUEJ_OPENPACKAGE + i, null);
-            if (dir != null) {
-                if(Project.isProject(dir)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * removes previously listed orphan packages from bluej properties
-     */
-    private void removeOrphanPackageList()
-    {
-        String exists = "";
-        for (int i = 1; exists != null; i++) {
-            exists = Config.removeProperty(Config.BLUEJ_OPENPACKAGE + i);
-        }
-    }
-
-    /**
      * Save this package. Don't ask questions - just do it.
      */
-    protected void doSave()
+    public void doSave()
     {
         if (isEmptyFrame()) {
             return;
@@ -1558,8 +1476,8 @@ public class PkgMgrFrame extends JFrame
             p.put("package.editor.x", Integer.toString(point.x));
             p.put("package.editor.y", Integer.toString(point.y));
     
-            p.put("package.showUses", new Boolean(isShowUses()).toString());
-            p.put("package.showExtends", new Boolean(isShowExtends()).toString());
+            p.put("package.showUses", Boolean.toString(isShowUses()));
+            p.put("package.showExtends", Boolean.toString(isShowExtends()));
         }
         pkg.save(p);
     }
@@ -2575,7 +2493,7 @@ public class PkgMgrFrame extends JFrame
                 break;
             case BlueJEvent.CREATE_VM_FAILED :
                 DialogManager.showError(this, "error-create-vm");
-                doQuit();
+                bluej.Main.doQuit();
                 break;
         }
     }
@@ -2623,6 +2541,7 @@ public class PkgMgrFrame extends JFrame
     /**
      * String representation for debugging only.
      */
+    @Override
     public String toString()
     {
         String str = "PkgMgrFrame(): ";
@@ -2888,6 +2807,7 @@ public class PkgMgrFrame extends JFrame
         pack();
 
         addWindowListener(new WindowAdapter() {
+            @Override
             public void windowClosing(WindowEvent E)
             {
                 PkgMgrFrame pmf = (PkgMgrFrame) E.getWindow();
@@ -3086,13 +3006,13 @@ public class PkgMgrFrame extends JFrame
                 createMenuItem(PreferencesAction.getInstance(), menu);
             }
 
-            // Create the menu manager that looks after extension menus
-            menuManager = new MenuManager(menu.getPopupMenu());
+            // Create the menu manager that looks after extension tools menus
+            toolsMenuManager = new MenuManager(menu.getPopupMenu());
 
-            // If this is the first frame create the extension menu now.
+            // If this is the first frame create the extension tools menu now.
             // (Otherwise, it will be created during project open.)
             if (frames.size() <= 1)
-                menuManager.addExtensionMenu(null);
+                toolsMenuManager.addExtensionMenu(null);
         }
 
         menu = new JMenu(Config.getString("menu.view"));
@@ -3112,6 +3032,15 @@ public class PkgMgrFrame extends JFrame
 
             showTestResultsItem = createCheckboxMenuItem(ShowTestResultsAction.getInstance(), menu, false);
             testItems.add(showTestResultsItem);
+
+            // Create the menu manager that looks after extension view menus
+            viewMenuManager = new MenuManager(menu.getPopupMenu());
+
+            // If this is the first frame create the extension view menu now.
+            // (Otherwise, it will be created during project open.)
+            if (frames.size() <= 1) {
+                viewMenuManager.addExtensionMenu(null);
+            }
         }
 
         menu = new JMenu(Config.getString("menu.help"));
@@ -3299,6 +3228,7 @@ public class PkgMgrFrame extends JFrame
         public URLDisplayer()
         {}
 
+        @Override
         public void actionPerformed(ActionEvent evt)
         {
             String url = evt.getActionCommand();
@@ -3312,6 +3242,7 @@ public class PkgMgrFrame extends JFrame
         public ProjectOpener()
         {}
 
+        @Override
         public void actionPerformed(ActionEvent evt)
         {
             String project = evt.getActionCommand();

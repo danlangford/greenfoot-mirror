@@ -27,6 +27,7 @@ import greenfoot.actions.AboutGreenfootAction;
 import greenfoot.actions.CloseProjectAction;
 import greenfoot.actions.CompileAllAction;
 import greenfoot.actions.ExportProjectAction;
+import greenfoot.actions.ImportClassAction;
 import greenfoot.actions.NewClassAction;
 import greenfoot.actions.NewProjectAction;
 import greenfoot.actions.OpenProjectAction;
@@ -38,9 +39,10 @@ import greenfoot.actions.RemoveSelectedClassAction;
 import greenfoot.actions.ResetWorldAction;
 import greenfoot.actions.RunOnceSimulationAction;
 import greenfoot.actions.RunSimulationAction;
-import greenfoot.actions.SaveCopyAction;
+import greenfoot.actions.SaveAsAction;
 import greenfoot.actions.SaveProjectAction;
 import greenfoot.actions.SaveWorldAction;
+import greenfoot.actions.SetPlayerAction;
 import greenfoot.actions.ShowApiDocAction;
 import greenfoot.actions.ShowCopyrightAction;
 import greenfoot.actions.ShowReadMeAction;
@@ -80,6 +82,7 @@ import java.awt.HeadlessException;
 import java.awt.Image;
 import java.awt.Menu;
 import java.awt.Toolkit;
+import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -88,6 +91,7 @@ import java.awt.event.WindowListener;
 import java.util.Iterator;
 import java.util.List;
 
+import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.ButtonModel;
@@ -110,9 +114,14 @@ import bluej.Config;
 import bluej.prefmgr.PrefMgr;
 import bluej.utility.DBox;
 
+import com.apple.eawt.AboutHandler;
+import com.apple.eawt.AppEvent.AboutEvent;
+import com.apple.eawt.AppEvent.PreferencesEvent;
+import com.apple.eawt.AppEvent.QuitEvent;
 import com.apple.eawt.Application;
-import com.apple.eawt.ApplicationAdapter;
-import com.apple.eawt.ApplicationEvent;
+import com.apple.eawt.PreferencesHandler;
+import com.apple.eawt.QuitHandler;
+import com.apple.eawt.QuitResponse;
 
 /**
  * The main frame for a Greenfoot project (one per project)
@@ -130,6 +139,7 @@ public class GreenfootFrame extends JFrame
     private static final int accelModifier = Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
     private static final int shiftAccelModifier = accelModifier | KeyEvent.SHIFT_MASK;
 
+    private RBlueJ rBlueJ;
     private GProject project;
     private GreenfootInspectorManager inspectorManager = new GreenfootInspectorManager();
         
@@ -144,8 +154,9 @@ public class GreenfootFrame extends JFrame
     private JComponent centrePanel;
     
     private NewClassAction newClassAction;
+    private ImportClassAction importClassAction;
     private SaveProjectAction saveProjectAction;
-    private SaveCopyAction saveCopyAction;
+    private SaveAsAction saveAsAction;
     private ShowReadMeAction showReadMeAction;
     private ExportProjectAction exportProjectAction;
     private ExportProjectAction shareAction;
@@ -153,6 +164,7 @@ public class GreenfootFrame extends JFrame
     private RemoveSelectedClassAction removeSelectedClassAction;
     private CompileAllAction compileAllAction;
     private SaveWorldAction saveWorldAction;
+    private SetPlayerAction setPlayerAction;
     
     private ToggleDebuggerAction toggleDebuggerAction;
     private ToggleSoundAction toggleSoundAction;
@@ -198,6 +210,8 @@ public class GreenfootFrame extends JFrame
         throws HeadlessException
     {
         super("Greenfoot");
+        
+        this.rBlueJ = blueJ;
         
         LocationTracker.instance(); //force initialisation
         Image icon = BlueJTheme.getApplicationIcon("greenfoot");
@@ -261,31 +275,36 @@ public class GreenfootFrame extends JFrame
      */
     private Application prepareMacOSApp()
     {
-        Application macApp = Application.getApplication();
-        if (macApp != null) {
-            macApp.setEnabledPreferencesMenu(true);
-            macApp.addApplicationListener(new ApplicationAdapter() {
-                public void handleAbout(ApplicationEvent e)
-                {
-                    AboutGreenfootAction.getInstance(GreenfootFrame.this).actionPerformed(null);
-                    e.setHandled(true);
-                }
-
-                public void handlePreferences(ApplicationEvent e)
+        if (Config.isMacOS()) {
+            Application macApp = Application.getApplication();
+            macApp.setPreferencesHandler(new PreferencesHandler() {
+                @Override
+                public void handlePreferences(PreferencesEvent e)
                 {
                     PreferencesAction.getInstance().actionPerformed(null);
-                    e.setHandled(true);
-                }
-
-                public void handleQuit(ApplicationEvent e)
-                {
-                    exit();
-                    e.setHandled(true);
                 }
             });
+            macApp.setAboutHandler(new AboutHandler() {
+                @Override
+                public void handleAbout(AboutEvent arg0)
+                {
+                    AboutGreenfootAction.getInstance(GreenfootFrame.this).actionPerformed(null);                    
+                }
+            });
+            macApp.setQuitHandler(new QuitHandler() {
+                @Override
+                public void handleQuitRequestWith(QuitEvent e,
+                        QuitResponse response)
+                {
+                    exit();
+                    // response.confirmQuit() does not need to be called, since System.exit(0) is called explicitly
+                }
+            });
+            
+            return macApp;
         }
-
-        return macApp;
+        
+        return null;
     }
     
     /**
@@ -388,7 +407,7 @@ public class GreenfootFrame extends JFrame
         // some menu actions work on the class browser.
         buildClassBrowser();
         setupActions();
-        setJMenuBar(buildMenu());
+        setJMenuBar(buildMenu(classStateManager));
         setGlassPane(DragGlassPane.getInstance());
 
         // build the centre panel. this includes the world and the controls
@@ -501,6 +520,9 @@ public class GreenfootFrame extends JFrame
         contentPane.add(centrePanel, BorderLayout.CENTER);
         contentPane.add(eastPanel, BorderLayout.EAST);
 
+        contentPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(Config.GREENFOOT_SET_PLAYER_NAME_SHORTCUT, "setPlayerAction");
+        contentPane.getActionMap().put("setPlayerAction", setPlayerAction);
+        
         pack();
     }
 
@@ -599,11 +621,13 @@ public class GreenfootFrame extends JFrame
     {
         newClassAction = new NewClassAction(this, worldHandlerDelegate);
         saveProjectAction = new SaveProjectAction(this);
-        saveCopyAction = new SaveCopyAction(this);
+        saveAsAction = new SaveAsAction(this, rBlueJ);
         showReadMeAction = new ShowReadMeAction(this);
         saveWorldAction = worldHandlerDelegate.getSaveWorldAction();
+        setPlayerAction = new SetPlayerAction(this);
         exportProjectAction = new ExportProjectAction(this, false);
         shareAction = new ExportProjectAction(this, true);
+        importClassAction = new ImportClassAction(this, worldHandlerDelegate);
         closeProjectAction = new CloseProjectAction(this);
         removeSelectedClassAction = new RemoveSelectedClassAction(this);
         removeSelectedClassAction.setEnabled(false);
@@ -612,8 +636,9 @@ public class GreenfootFrame extends JFrame
     
     /**
      * Build the menu bar.
+     * @param classStateManager
      */
-    private JMenuBar buildMenu()
+    private JMenuBar buildMenu(ClassStateManager classStateManager)
     {
         JMenuBar menuBar = new JMenuBar();
 
@@ -624,11 +649,11 @@ public class GreenfootFrame extends JFrame
         
         recentProjectsMenu = new JMenu(Config.getString("menu.openRecent"));
         projectMenu.add(recentProjectsMenu);
-        updateRecentProjects();
+        updateRecentProjects(classStateManager);
         
         addMenuItem(closeProjectAction, projectMenu, KeyEvent.VK_W, false, KeyEvent.VK_C);
         addMenuItem(saveProjectAction, projectMenu, KeyEvent.VK_S, false, KeyEvent.VK_S);
-        addMenuItem(saveCopyAction, projectMenu, -1, false, -1);
+        addMenuItem(saveAsAction, projectMenu, -1, false, -1);
         projectMenu.addSeparator();
         addMenuItem(showReadMeAction, projectMenu, -1, false, -1);
         addMenuItem(exportProjectAction, projectMenu, KeyEvent.VK_E, false, KeyEvent.VK_E);
@@ -641,6 +666,7 @@ public class GreenfootFrame extends JFrame
         JMenu editMenu = addMenu(Config.getString("menu.edit"), menuBar, 'e');
         
         addMenuItem(newClassAction, editMenu, KeyEvent.VK_N, false, KeyEvent.VK_N);
+        addMenuItem(importClassAction, editMenu, KeyEvent.VK_I, false, KeyEvent.VK_I);
         addMenuItem(removeSelectedClassAction, editMenu, KeyEvent.VK_D, false, KeyEvent.VK_R);
                 
         if (!Config.usingMacScreenMenubar()) { // no "Preferences" here for
@@ -758,13 +784,26 @@ public class GreenfootFrame extends JFrame
     }
     
     /**
-     * Update the 'Open Recent' menu
+     * Update the 'Open Recent' menu, trying to include
+     * the current project as the first item where possible.
+     * @param classStateManager
      */
-    private void updateRecentProjects()
+    private void updateRecentProjects(ClassStateManager classStateManager)
     {
+        JMenuItem item = null;
+        
+        // can only add in the current project if there is a current project
+        if (classStateManager != null && classStateManager.getProject() != null) {
+            String currentName = classStateManager.getProject().getDir().getPath();
+            item = new JMenuItem(currentName);
+            item.addActionListener(OpenRecentProjectAction.getInstance());
+            recentProjectsMenu.add(item);
+            recentProjectsMenu.addSeparator();
+        }
+        
         List<?> projects = PrefMgr.getRecentProjects();
         for (Iterator<?> it = projects.iterator(); it.hasNext();) {
-            JMenuItem item = new JMenuItem((String)it.next());
+            item = new JMenuItem((String)it.next());
             item.addActionListener(OpenRecentProjectAction.getInstance());
             recentProjectsMenu.add(item);
         }
@@ -780,8 +819,9 @@ public class GreenfootFrame extends JFrame
     
         closeProjectAction.setEnabled(state);
         saveProjectAction.setEnabled(state);
-        saveCopyAction.setEnabled(state);
+        saveAsAction.setEnabled(state);
         newClassAction.setEnabled(state);
+        importClassAction.setEnabled(state);
         showReadMeAction.setEnabled(state);
         saveWorldAction.setEnabled(state);
         exportProjectAction.setEnabled(state);

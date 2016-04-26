@@ -27,7 +27,7 @@ import bluej.pkgmgr.PkgMgrFrame;
  * Quit command. Save all projects, close all windows.
  * 
  * @author Davin McCall
- * @version $Id: QuitAction.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: QuitAction.java 9277 2011-11-01 12:17:20Z mik $
  */
 final public class QuitAction extends PkgMgrAction {
     
@@ -50,9 +50,10 @@ final public class QuitAction extends PkgMgrAction {
         super("menu.package.quit");
     }
     
+    @Override
     public void actionPerformed(PkgMgrFrame pmf)
     {
         pmf.menuCall(); 
-        pmf.wantToQuit();
+        bluej.Main.wantToQuit();
     }
 }

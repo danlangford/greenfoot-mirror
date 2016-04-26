@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -28,6 +28,7 @@ import java.awt.Image;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
+import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.io.FileInputStream;
@@ -152,6 +153,11 @@ public final class Config
     
     protected static final int SHORTCUT_MASK =
         Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
+    
+    // Bit ugly having it here, but it's needed by MiscPrefPanel (which may just be in BlueJ)
+    // and by Greenfoot
+    public static final KeyStroke GREENFOOT_SET_PLAYER_NAME_SHORTCUT =
+        KeyStroke.getKeyStroke(KeyEvent.VK_P, SHORTCUT_MASK | InputEvent.SHIFT_DOWN_MASK);
     
     private static Color selectionColour;
     private static Color selectionColour2;
@@ -1514,16 +1520,30 @@ public final class Config
             }
             // treat Linux and Solaris the same at the moment
             else if(isLinux() || isSolaris()) {
-                UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+                LookAndFeelInfo [] lafi = UIManager.getInstalledLookAndFeels();
+                LookAndFeelInfo nimbus = null;
+                for (LookAndFeelInfo lafInstance : lafi) {
+                    if (lafInstance.getName().equals("Nimbus")) {
+                        nimbus = lafInstance;
+                        break;
+                    }
+                }
+                
+                if (nimbus != null) {
+                    UIManager.setLookAndFeel(nimbus.getClassName());
+                }
+                else {
+                    UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+                }
             }
         } catch (ClassNotFoundException e) {
-            e.printStackTrace();
+            Debug.log("Could not find look-and-feel class: " + e.getMessage());
         } catch (InstantiationException e) {
             e.printStackTrace();
         } catch (IllegalAccessException e) {
             e.printStackTrace();
         } catch (UnsupportedLookAndFeelException e) {
-            e.printStackTrace();
+            Debug.log("Unsupported look-and-feel: " + e.getMessage());
         }
     }
     

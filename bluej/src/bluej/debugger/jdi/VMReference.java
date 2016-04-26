@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,6 +29,7 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.net.InetAddress;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -118,7 +119,7 @@ import com.sun.jdi.request.EventRequestManager;
  * <p>We can now execute commands on the remote VM by invoking methods using the
  * server thread (which is suspended at the breakpoint). 
  * 
- * <p>Non-user code used by BlueJ is run a seperate "worker" thread.
+ * <p>Non-user code used by BlueJ is run a separate "worker" thread.
  * 
  * @author Michael Kolling
  */
@@ -265,22 +266,34 @@ class VMReference
                     if (timeoutArg != null) {
                         // The timeout appears to be in milliseconds.
                         // The default is apparently no timeout.
-                        timeoutArg.setValue("1000");
+                        timeoutArg.setValue("2000");
                     }
                     
                     // Make sure the local address is localhost, not the
                     // machine name, as using the machine name causes problems on some systems
                     // when the network is disconnected (because the machine name binds to
                     // the network IP, not to localhost):
+                    String listenAddress = null;
                     if (connector.transport().name().equals("dt_socket") && arguments.containsKey("localAddress"))
                     {
-                        arguments.get("localAddress").setValue("localhost");
+                        listenAddress = InetAddress.getByName(null).getHostAddress();
+                        arguments.get("localAddress").setValue(listenAddress);
                     }
                     
                     // Listening connectors can only listen on one address at a time -
                     // Synchronize to prevent problems.
                     synchronized (connector) {
                         String address = connector.startListening(arguments);
+                        if (listenAddress != null) {
+                            // It seems the address name returned by connector.startListening(...) may be the host name,
+                            // even though we specifically asked for localhost. So here we'll force it to the localhost
+                            // IP address:
+                            int colonIndex = address.lastIndexOf(':');
+                            if (colonIndex != -1) {
+                                address = listenAddress + address.substring(colonIndex);
+                            }
+                        }
+                        Debug.log("Listening for JDWP connection on address: " + address);
                         paramList.add(transportIndex, "-Xrunjdwp:transport=" + connector.transport().name()
                                 + ",address=" + address);
                         launchParams = paramList.toArray(new String[paramList.size()]);
@@ -309,7 +322,7 @@ class VMReference
                         }
                     }
                     
-                    Debug.log("Connected to debug VM via dt_socket transport...");
+                    Debug.log("Connected to debug VM via " + connector.transport().name() + " transport...");
                     setupEventHandling();
                     if (waitForStartup()) {
                         Debug.log("Communication with debug VM fully established.");
@@ -336,8 +349,12 @@ class VMReference
         Debug.message("Failed to connect to debug VM. Reasons follow:");
         for (int i = 0; i < connectors.size(); i++) {
             Debug.message(connectors.get(i).transport().name() + " transport:");
-            failureReasons[i].printStackTrace(new PrintWriter(Debug.getDebugStream()));
+            PrintWriter pw = new PrintWriter(Debug.getDebugStream());
+            failureReasons[i].printStackTrace(pw);
+            pw.flush();
         }
+
+        NetworkTest.doTest();
         
         return null;
     }

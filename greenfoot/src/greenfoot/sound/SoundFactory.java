@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2011,2012  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -44,8 +44,6 @@ public class SoundFactory
      */
     private SoundCollection soundCollection;
     
-    private SoundCache soundCache = new SoundCache();
-
     /**
      * Only use clips when the size of the clip is below this value (size of the
      * file in bytes). 
@@ -64,10 +62,13 @@ public class SoundFactory
             // the sound cache.  It also happens to make objects for
             // non-SoundClip items, but since they are all streams,
             // that shouldn't cause a big slowdown or waste of resources.
-            getCachedSound(soundFile);
+            Sound s = createSound(soundFile, true);
             
-            if (!soundCache.hasFreeSpace())
-                return; // No point continuing to overwrite things in the cache once all slots are filled
+            if (s instanceof SoundClip)
+                ((SoundClip)s).preLoad();
+            
+            // if (!soundCache.hasFreeSpace())
+            //    return; // No point continuing
         }
     }
 
@@ -88,8 +89,11 @@ public class SoundFactory
      * Creates the sound from file.
      * 
      * @param file Name of a file or an url
+     * @param quiet   if true, failure is silent; otherwise an IllegalArgumentException may be thrown
+     * @throws IllegalArgumentException if the specified sound is invalid or cannot be played, unless quiet is true
+     * @return  a sound, or if quiet is true, possibly null
      */
-    public Sound createSound(final String file)
+    public Sound createSound(final String file, boolean quiet)
     {      
         try {
             URL url = GreenfootUtil.getURL(file, "sounds");
@@ -112,29 +116,17 @@ public class SoundFactory
                 return new SoundClip(file, url, soundCollection);
             }
         } catch (IOException e) {
-            SoundExceptionHandler.handleIOException(e, file);
+            if (! quiet) {
+                SoundExceptionHandler.handleIOException(e, file);
+            }
         } catch (UnsupportedAudioFileException e) {
-            SoundExceptionHandler.handleUnsupportedAudioFileException(e, file);
+            if (! quiet) {
+                SoundExceptionHandler.handleUnsupportedAudioFileException(e, file);
+            }
         }  
         return null;
     }
     
-    /**
-     * Gets a cached sound file if possible. If not possible, it will return a new sound.
-     * 
-     */
-    public Sound getCachedSound(final String file)  
-    {      
-        Sound sound = soundCache.get(file);
-        if(sound == null) {
-            sound = createSound(file);
-            if(sound instanceof SoundClip) {
-                soundCache.put((SoundClip) sound);
-            }
-        } 
-        return sound;
-    }     
-
     private boolean isJavaAudioStream(int size)
     {
         // If we can not get the size, or if it is a big file we stream

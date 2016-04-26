@@ -43,7 +43,7 @@ import java.util.List;
  * The method here is empty, and subclasses normally provide their own implementations.
  * 
  * @author Poul Henriksen
- * @version 2.2
+ * @version 2.4
  */
 public abstract class Actor
 {
@@ -226,10 +226,22 @@ public abstract class Actor
             sizeChanged();
         }
     }
+    
+    /**
+     * Turn this actor to face towards a certain location.
+     * 
+     * @param x  The x-coordinate of the cell to turn towards
+     * @param y  The y-coordinate of the cell to turn towards
+     */
+    public void turnTowards(int x, int y)
+    {
+        double a = Math.atan2(y - this.y, x - this.x);
+        setRotation((int) Math.toDegrees(a));
+    }
 
     /**
      * Assign a new location for this actor. This moves the actor to the specified
-     * location. The location is specified as the co-ordinates of a cell in the world.
+     * location. The location is specified as the coordinates of a cell in the world.
      * 
      * <p>If this method is overridden it is important to call this method as
      * "super.setLocation(x,y)" from the overriding method, to avoid infinite recursion.
@@ -257,18 +269,13 @@ public abstract class Actor
      */
     public void move(int distance)
     {
-        World world = getWorld();
+        double radians = Math.toRadians(rotation);
 
-        if (world != null) {
-            int adjustedDistance = getWorld().cellSize * distance;
-            double radians = Math.toRadians(rotation);
-
-            // We round to the nearest integer, to allow moving one unit at an angle
-            // to actually move.
-            int dx = (int) Math.round(Math.cos(radians) * adjustedDistance);
-            int dy = (int) Math.round(Math.sin(radians) * adjustedDistance);
-            setLocation(x + dx, y + dy);
-        }
+        // We round to the nearest integer, to allow moving one unit at an angle
+        // to actually move.
+        int dx = (int) Math.round(Math.cos(radians) * distance);
+        int dy = (int) Math.round(Math.sin(radians) * distance);
+        setLocation(x + dx, y + dy);
     }
     
     /**

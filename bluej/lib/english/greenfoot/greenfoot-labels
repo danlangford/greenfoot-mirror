@@ -36,6 +36,9 @@ project.version.changes.4=2.1.0 Greenfoot has been made case sensitive when deal
 project.version.changes.5=2.1.0 World's methods 'setTiled' and 'getTiled' have been removed.
 project.version.changes.6=2.1.0 World's 'getBackground' now returns an image that is the size of the entire background.
 project.version.changes.7=2.2.0 A 'move' method and a 'turn' method have been added to the Actor class.
+project.version.changes.8=2.3.0 Greenfoot.getMouseInfo() now only returns null if the mouse is not in the world.
+project.version.changes.9=2.3.0 A 'turnTowards(int,int)' method has been added to the Actor class.
+project.version.changes.10=2.4.0 A 'UserInfo' class was added (renamed from 'PlayerData' in the Greenfoot 2.2.0 beta).
 
 project.version.newer.part1=The scenario being opened has been written using a newer version of Greenfoot (API version 
 # project version inserted here by Greenfoot
@@ -60,7 +63,7 @@ reset.world=Reset
 run.once=Act
 run.simulation=Run
 project.save=Save
-project.savecopy=Save a Copy As...
+project.saveAs=Save As...
 select.image=Set image...
 show.readme=Scenario Information
 pause.simulation=Pause
@@ -72,8 +75,8 @@ remove.confirm.title=Confirm removal of class
 remove.confirm.text1=About to remove class
 remove.confirm.text2=Continue?
 
-# Save project copy dialog
-project.savecopy.title=Save Scenario Copy
+# Save As project dialog
+project.saveAs.title=Save Scenario As
 
 # Export scenario dialog
 export.project=Share...
@@ -254,7 +257,15 @@ soundRecorder.closeQuestion=Sound has been changed since you last saved.  If you
 
 import.import=Import
 import.dialogTitle=Import Class
-import.action=Import Class
+import.action=Import Class...
+
+set.player=Set Player Name
+playername.dialog.title=Set Player Name
+playername.dialog.help=Set the username used by the UserInfo class
+playername.dialog.playerName=Player Name
+
+prefmgr.misc.playername.title=Player Name
+prefmgr.misc.playerNameNote=You can change this quickly using the shortcut:
 
 # Menus
 

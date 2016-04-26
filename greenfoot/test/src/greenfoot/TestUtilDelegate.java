@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.List;
 
 public class TestUtilDelegate implements GreenfootUtilDelegate
 {
@@ -51,10 +52,11 @@ public class TestUtilDelegate implements GreenfootUtilDelegate
 
     public String getGreenfootLogoPath()
     {
-        String classes = getClass().getClassLoader().getResource(".").toString();
+        String resourceName = "greenfoot/TestUtilDelegate.class";
+        String classes = getClass().getClassLoader().getResource(resourceName).toString();
         File startingDir = null;
         try {
-            startingDir = (new File(new URI(classes)).getParentFile());
+            startingDir = new File(new URI(classes)).getParentFile().getParentFile();
         }
         catch (URISyntaxException e) {
             e.printStackTrace();
@@ -111,6 +113,48 @@ public class TestUtilDelegate implements GreenfootUtilDelegate
     
     @Override
     public Iterable<String> getSoundFiles()
+    {
+        return null;
+    }
+
+    @Override
+    public boolean isStorageSupported()
+    {
+        return false;
+    }
+
+    @Override
+    public UserInfo getCurrentUserInfo()
+    {
+        return null;
+    }
+
+    @Override
+    public boolean storeCurrentUserInfo(UserInfo info)
+    {
+        return false;
+    }
+
+    @Override
+    public List<UserInfo> getTopUserInfo(int limit)
+    {
+        return null;
+    }
+
+    @Override
+    public GreenfootImage getUserImage(String userName)
+    {
+        return null;
+    }
+
+    @Override
+    public String getUserName()
+    {
+        return null;
+    }
+
+    @Override
+    public List<UserInfo> getNearbyUserInfo(int maxAmount)
     {
         return null;
     }

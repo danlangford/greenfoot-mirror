@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -46,6 +46,7 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 
 import bluej.BlueJEvent;
@@ -363,6 +364,78 @@ public class Project implements DebuggerListener, InspectorManager
             // Debug.message("no BlueJ package file found in directory " + startingDir);
             return null;
         }
+        
+        boolean readOnly = false;
+
+        if(Config.isModernWinOS()) {
+            WriteCapabilities capabilities = FileUtility.getVistaWriteCapabilities(projectDir);
+            switch (capabilities) {
+            case VIRTUALIZED_WRITE:
+                Utility.bringToFront(null);
+                DialogManager.showMessage(parent, "project-is-virtualized");
+                break;
+            case READ_ONLY:
+                readOnly = true;
+                break;
+            case NORMAL_WRITE:
+                break;
+            default:
+                break;
+            }
+        }
+        else if (!projectDir.canWrite()) {
+            readOnly = true;
+        }
+        
+        String greenfootStartupProjectDir = new File(Config.getBlueJLibDir(), "greenfoot/startupProject").getAbsolutePath();
+        
+        boolean isGreenfootStartupProject = greenfootStartupProjectDir.equals(projectDir.getAbsolutePath()); 
+        // Suppress the read-only warning if we know they are opening the Greenfoot startup project
+        
+        if (readOnly && !isGreenfootStartupProject) {
+            Utility.bringToFront(null);
+            DialogManager.showMessageWithText(parent, "project-is-readonly", new String [] {projectDir.toString()});
+            
+            // Prompt user to "Save elsewhere"
+
+            boolean done = false;
+
+            while (!done)
+            {
+                // Get a file name to save under
+                File newName = FileUtility.getDirName(null,
+                        Config.getString("pkgmgr.saveAs.title"),
+                        Config.getString("pkgmgr.saveAs.buttonLabel"),
+                        new JFileChooser().getFileSystemView().getDefaultDirectory(),
+                        false, true);
+
+                if (newName != null) {
+                    int result = FileUtility.copyDirectory(projectDir, newName);
+
+                    switch (result) {
+                    case FileUtility.NO_ERROR:
+                        // It worked, use this as the new project:
+                        projectDir = newName;
+                        done = true;
+                        break;
+
+                    case FileUtility.DEST_EXISTS:
+                        DialogManager.showError(null, "directory-exists");
+
+                        break;
+
+                    case FileUtility.SRC_NOT_DIRECTORY:
+                    case FileUtility.COPY_ERROR:
+                        DialogManager.showError(null, "cannot-save-project");
+
+                        break;
+                    }
+                }
+                else {
+                    done = true; // if they pressed cancel, just continue with old project
+                }
+            }
+        }
 
         // check whether it already exists
         Project proj = (Project) projects.get(projectDir);
@@ -390,25 +463,7 @@ public class Project implements DebuggerListener, InspectorManager
         else {
             proj.initialPackageName = startingPackageName;
         }
-
-        if(Config.isModernWinOS()) {
-            WriteCapabilities capabilities = FileUtility.getVistaWriteCapabilities(projectDir);
-            switch (capabilities) {
-            case VIRTUALIZED_WRITE:
-                DialogManager.showMessage(parent, "project-is-virtualized");
-                break;
-            case READ_ONLY:
-                DialogManager.showMessage(parent, "project-is-readonly");
-                break;
-            case NORMAL_WRITE:
-                break;
-            default:
-                break;
-            }
-        }
-        else if (!projectDir.canWrite()) {
-            DialogManager.showMessage(parent, "project-is-readonly");
-        }
+        
         
         ExtensionsManager.getInstance().projectOpening(proj);
 

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2011, 2012  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -99,13 +99,13 @@ public class GreenfootInspectorManager implements InspectorManager
             ClassInspectInvokerRecord ir = new ClassInspectInvokerRecord(clss.getName());
             inspector = new GreenfootClassInspector(clss, this, pkg, ir, parent);
             classInspectors.put(clss.getName(), inspector);
-        }
-        else {
+        } else {
             inspector.update();
             inspector.updateLayout();
-            inspector.setVisible(true);
-            inspector.bringToFront();
         }
+        
+        inspector.setVisible(true);
+        inspector.bringToFront();
 
         return inspector;
     }

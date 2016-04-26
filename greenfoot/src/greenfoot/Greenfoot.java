@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2011,2012  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -50,11 +50,11 @@ import greenfoot.sound.SoundFactory;
  * </ul>
  * 
  * @author Davin McCall
- * @version 2.2
+ * @version 2.4
  */
 public class Greenfoot
 {
-    
+
     private static Random randomGenerator = new Random();
 
     /**
@@ -149,7 +149,6 @@ public class Greenfoot
      * Play sound from a file. The following formats are supported: AIFF, AU and
      * WAV.
      * <p>
-     * 
      * The file name may be an absolute path, a base name for a file located in
      * the project directory or in the sounds directory of the project
      * directory.
@@ -160,7 +159,7 @@ public class Greenfoot
      */
     public static void playSound(final String soundFile)
     {
-        Sound sound = SoundFactory.getInstance().getCachedSound(soundFile);
+        Sound sound = SoundFactory.getInstance().createSound(soundFile, false);
 
         if( sound != null) {
             sound.play();
@@ -206,7 +205,7 @@ public class Greenfoot
     }
 
     /**
-     * True if the mouse has been dragged on the given object. The mouse is
+     * True if the mouse is currently being dragged on the given object. The mouse is
      * considered to be dragged on an object if the drag started on that
      * object - even if the mouse has since been moved outside of that object.
      * <p>
@@ -272,8 +271,8 @@ public class Greenfoot
      * Return a mouse info object with information about the state of the
      * mouse.
      * 
-     * @return The info about the current state of the mouse. Or null if nothing
-     *         has happened with the mouse since it was last checked.
+     * @return The info about the current state of the mouse, or null if the mouse
+     *         cursor is outside the world boundary (unless being dragged).
      */
     public static MouseInfo getMouseInfo()
     {

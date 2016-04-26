@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -55,7 +55,7 @@ import bluej.utility.Utility;
  * Class that controls the runtime of code executed within BlueJ.
  * Sets up the initial thread state, etc.
  *
- * This class both holds runtime attributes and executes commands.
+ * <p>This class both holds runtime attributes and executes commands.
  * Execution is done through JDI reflection from the JdiDebugger class.
  *
  * @author  Michael Kolling
@@ -167,10 +167,11 @@ public class ExecServer
         System.setIn(new BJInputStream(System.in));
         
         // Set up encoding for the terminal, the only arg that should be passed in
-        // is the encoding eg. "UTF-8, otherwise do nothing
+        // is the encoding eg. "UTF-8", otherwise do nothing
         if(args.length > 0 && !args[0].equals("")) {
             try {
                 System.setOut(new PrintStream(System.out, true, args[0]));
+                System.setErr(new PrintStream(System.err, true, args[0]));
             }
             catch (UnsupportedEncodingException uee) {
                 // Do nothing; don't use the requested encoding
@@ -178,7 +179,7 @@ public class ExecServer
         }
         
         // Set up the worker thread. The worker thread can be used to perform certain actions
-        // when the main thread is busy. Actions on the worker thread are guarenteed to execute
+        // when the main thread is busy. Actions on the worker thread are guaranteed to execute
         // in a timely manner - for this reason they must not execute user code.
         workerThread = new Thread("BlueJ worker thread")
         {
@@ -483,8 +484,6 @@ public class ExecServer
      */
     private static Object[] runTestSetUp(String className)
     {
-        // Debug.message("[VM] runTestSetUp" + className);
-
         Class<?> cl = loadAndInitClass(className);
         
         try {
@@ -707,6 +706,8 @@ public class ExecServer
                 // Execute the command
                 methodReturn = null;
                 exception = null;
+                Thread.currentThread().setContextClassLoader(currentLoader);
+
                 try {
                     switch(execAction) {
                         case EXEC_SHELL:

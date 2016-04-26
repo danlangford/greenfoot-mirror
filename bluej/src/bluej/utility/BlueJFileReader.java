@@ -110,8 +110,8 @@ public class BlueJFileReader
             }
         }
         catch(IOException e) {
-            DialogManager.showErrorWithText(null, "cannot-read-help",
-                                            file.toString());
+            // This use to show a dialog, but showing a dialog involves reading the
+            // help file... infinite recursion! just ignore and return null
         }
         finally {
             if(in != null) {

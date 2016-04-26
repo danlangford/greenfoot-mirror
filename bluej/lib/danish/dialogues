@@ -230,9 +230,6 @@ applet-height-width
 H\u00F8jde og bredde for
 appletten skal angives.
 
-cannot-read-help
-Kan ikke l\u00E6se hj\u00E6lpefil:
-
 not-yet-implemented
 Ikke implementeret endnu - desv\u00E6rre.
 
@@ -388,18 +385,6 @@ en firewall-indstilling der tillader forbindelser fra den lokale maskine.
 Andre mulige \u00E5rsager er ukorrekte netv\u00E6rksindstillinger. Check at TCP/IP
 er opsat korrekt, og check andre netv\u00E6rksparametre.
 Hvis problemet forts\u00E6tter, s\u00E5 bed om hj\u00E6lp (se http://www.bluej.org/help/ask-help.html).
-
-project-is-readonly
-Projektet er skrivebeskyttet. Du kan ikke lave objekter eller
-kalde metoder.
-Enten er projektets adgangsrettigheder sat til 
-'skrivebeskyttet' for dig, eller ogs\u00E5 er hele filsystemet ikke skrivbart
-(er det en CD?).
-For at bruge dette projekt fuldt ud, skal du sikre dig at det er p\u00E5 et skrivbart
-fil-system (Som regel din harddisk), og at du har skrive- 
-tilladelse i projekt-mappen og hver fil inden i den.
-Dette kan ofte opn\u00E5s ved at v\u00E6lge "gem som" fra
-Projekt-menuen efter du har lukket denne dialog.
 
 could-not-write-shell-file
 K\u00F8rsel fejlede fordi projekt-mappen ikke er skrivbar.

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011,2012  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -51,7 +51,7 @@ import java.net.URL;
  * and/or drawn by using various drawing methods.
  * 
  * @author Poul Henriksen
- * @version 2.2
+ * @version 2.4
  */
 public class GreenfootImage
 {
@@ -160,8 +160,8 @@ public class GreenfootImage
      * 
      * @param string the string to be drawn
      * @param size the requested height in pixels of each line of text (the actual height may be different by a pixel or so)
-     * @param foreground the color of the text
-     * @param background the color of the image behind the text
+     * @param foreground the color of the text.  Since Greenfoot 2.2.0, passing null will use black.
+     * @param background the color of the image behind the text.  Since Greenfoot 2.2.0, passing null with leave the background transparent.
      * @since 2.0.1
      */
     public GreenfootImage(String string, int size, Color foreground, Color background)
@@ -193,9 +193,9 @@ public class GreenfootImage
         image = GraphicsUtilities.createCompatibleTranslucentImage(maxX, y);
         g = (Graphics2D)image.getGraphics();
         g.setFont(font);
-        g.setColor(background);
+        g.setColor(background == null ? new Color(0, 0, 0, 0) : background);
         g.fillRect(0, 0, image.getWidth(), image.getHeight());
-        g.setColor(foreground);
+        g.setColor(foreground == null ? Color.BLACK : foreground);
         y = 0;
         for (int i = 0; i < lines.length;i++) {
             g.drawString(lines[i], ((maxX - (int)bounds[i].getWidth()) / 2) - (int)bounds[i].getX(), y - (int)bounds[i].getY());
@@ -203,8 +203,16 @@ public class GreenfootImage
         }
         g.dispose();
     }
-
-  
+    
+    //Package-visible:
+    GreenfootImage(byte[] imageData)
+    {
+        try {
+            image = GraphicsUtilities.loadCompatibleTranslucentImage(imageData);
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("Could not load image from: " + imageFileName);
+        }
+    }  
 
     private GreenfootImage() {        
     } 
@@ -402,7 +410,7 @@ public class GreenfootImage
     }
 
     /**
-     * Mirrors the image vertically (flip around the y-axis).
+     * Mirrors the image vertically (the top of the image becomes the bottom, and vice versa).
      * 
      */
     public void mirrorVertically()
@@ -414,7 +422,7 @@ public class GreenfootImage
     }
 
     /**
-     * Mirrors the image horizontally (flip around the x-axis).
+     * Mirrors the image horizontally (the left of the image becomes the right, and vice versa).
      * 
      */
     public void mirrorHorizontally()

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -44,6 +44,7 @@ import bluej.Config;
 public class DialogManager
 {
     private static final String DLG_FILE_NAME = "dialogues";
+    private static final String GREENFOOT_DLG_FILE_NAME = "greenfoot/dialogues";
 
     /**
      * Show an information dialog with message and "OK" button. The
@@ -72,8 +73,33 @@ public class DialogManager
                                            String text)
     {
         String message = getMessage(msgID);
-        if (message != null)
+        if (message != null) {
             JOptionPane.showMessageDialog(parent, message + "\n" + text);
+        }
+    }
+    
+    /**
+     * Show an information dialog with message (including and "OK" button. The
+     * message itself is identified by a message ID (a short string)
+     * which is looked up in the language specific dialogue text file
+     * (eg. "dialogues.english"). A text (given in a parameter) is appended
+     * to the message.
+     */
+    public static void showMessageWithText(Component parent, String msgID, String[] subs)
+    {
+        String message = getMessage(msgID);
+        message = Utility.mergeStrings(message, subs);
+        
+        // Replace single ':' with a blank line:
+        message = message.replace("\n:\n", "\n\n");
+        message = message.replace("\r\n:\r\n", "\r\n\r\n");
+        
+        if (message != null) {
+            JOptionPane.showMessageDialog(parent, message,
+                    Config.getApplicationName() + ":  " +
+                    Config.getString("dialogmgr.message"),
+                    JOptionPane.INFORMATION_MESSAGE);
+        }
     }
     
     /**
@@ -305,18 +331,34 @@ public class DialogManager
      */
     public static String getMessage(String msgID)
     {
-        File filename = Config.getLanguageFile(DLG_FILE_NAME);
-        String message = BlueJFileReader.readHelpText(filename, msgID, true);
+        String message = null;
+        
+        if (Config.isGreenfoot()) {
+            File filename = Config.getLanguageFile(GREENFOOT_DLG_FILE_NAME);
+            message = BlueJFileReader.readHelpText(filename, msgID, true);
+            if (message == null) {
+                // Might not be available in the chosen language; try English:
+                filename = Config.getDefaultLanguageFile(GREENFOOT_DLG_FILE_NAME);
+                message = BlueJFileReader.readHelpText(filename, msgID, true);
+            }
+        }
+        
+        if (message == null) {
+            File filename = Config.getLanguageFile(DLG_FILE_NAME);
+            message = BlueJFileReader.readHelpText(filename, msgID, true);
+        }
+        
         // check that message has been found, some messages may be missing
         // in non-default language resource files.  If not found and not using
         // English, then use the default English message
         if (message == null && (!Config.language.equals(Config.DEFAULT_LANGUAGE))) {
-            filename = Config.getDefaultLanguageFile(DLG_FILE_NAME);
+            File filename = Config.getDefaultLanguageFile(DLG_FILE_NAME);
             message = BlueJFileReader.readHelpText(filename, msgID, true);
         }
         // if we still can't find it, there's something wrong...
         if (message == null) {
-            JOptionPane.showMessageDialog(null, "BlueJ configuration problem:\n" + "text not found for message ID\n" + msgID);
+            message = "BlueJ configuration problem:\n" + "text not found for message ID\n" + msgID;
+            Debug.message(message);
         }
         return message;
     }

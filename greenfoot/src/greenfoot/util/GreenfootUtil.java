@@ -22,6 +22,7 @@
 package greenfoot.util;
 
 import greenfoot.GreenfootImage;
+import greenfoot.UserInfo;
 import greenfoot.platforms.GreenfootUtilDelegate;
 
 import java.awt.Color;
@@ -50,6 +51,7 @@ import java.io.InputStream;
 import java.lang.reflect.Modifier;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -779,6 +781,7 @@ public class GreenfootUtil
      */
     public static GreenfootImage getGreenfootImage(String className, String imageName)
     {   
+        //try {throw new Exception();} catch (Exception e) {e.printStackTrace();}
         GreenfootImage image=null;
         if (imageName==null){
             return image;
@@ -866,5 +869,103 @@ public class GreenfootUtil
         else {
             return full.substring(0, n);
         }
+    }
+
+    /**
+     * Find out whether storage is supported in the current setting
+     */
+    public static boolean isStorageSupported()
+    {
+        return delegate.isStorageSupported();
+    }
+
+    /**
+     * null if an error, blank values if no previous storage
+     */
+    public static UserInfo getCurrentUserInfo()
+    {
+        return delegate.getCurrentUserInfo();
+    }
+
+    /**
+     * returns whether it was successful
+     */
+    public static boolean storeCurrentUserInfo(UserInfo data)
+    {
+        if (data.getUserName().equals(getUserName()))
+            return delegate.storeCurrentUserInfo(data);
+        else
+        {
+            // This message the user should see, because
+            // it indicates a programming mistake:
+            System.err.println("Attempted to store the data for another user, \"" + data.getUserName() + "\" (i.e. a user other than the current user, \"" + getUserName() + "\")");
+            return false;
+        }
+    }
+
+    /**
+     * null if problem, empty list if simply no data
+     * 
+     * Returns highest data when sorted by integer index 0
+     */
+    public static List<UserInfo> getTopUserInfo(int limit)
+    {
+        return delegate.getTopUserInfo(limit);
+    }
+
+    /**
+     * returns null if storage not supported.
+     */
+    public static GreenfootImage getUserImage(String userName)
+    {
+        if (userName == null || userName.equals("")) {
+            userName = getUserName();
+        }
+        
+        GreenfootImage r = null;
+        
+        if (userName != null) {
+            r = delegate.getUserImage(userName);
+        }
+        
+        if (r == null)
+        {
+            // This can be because there was a problem reading from the gallery,
+            // or because we're using local storage:
+            r = new GreenfootImage(50, 50);
+            r.setColor(java.awt.Color.DARK_GRAY);
+            r.fill();
+            
+            final int CHARS_PER_LINE = 6; // Heuristic: 15 pixels high, assume 8 pixels width per char, 50 / 8 ~= 6
+            
+            StringBuilder wrappedName = new StringBuilder();
+            if (userName == null)
+                userName = "";
+            for (int i = 0 ;i < userName.length(); i += CHARS_PER_LINE)
+                wrappedName.append(userName.substring(i, Math.min(userName.length(), i + CHARS_PER_LINE))).append("\n");
+                    
+            GreenfootImage textImage = new GreenfootImage(wrappedName.toString(), 15, java.awt.Color.WHITE, java.awt.Color.DARK_GRAY);
+            r.drawImage(textImage, Math.max(0, (50 - textImage.getWidth()) / 2), Math.max(0, (50 - textImage.getHeight()) / 2));
+        }
+        // Should never return null:
+        return r;
+    }
+
+    // For local storage, this is the username set via the IDE
+    // For remote storage, this is the username got from the applet params
+    // For turned off, this is null
+    public static String getUserName()
+    {
+        return delegate.getUserName();
+    }
+
+    /**
+     * Get info for users near the current player when sorted by score
+     * 
+     * @return  null if problem, empty list if simply no data.
+     */
+    public static List<UserInfo> getNearbyUserData(int maxAmount)
+    {
+        return delegate.getNearbyUserInfo(maxAmount);
     }
 }

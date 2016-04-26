@@ -15,7 +15,7 @@
      After changing the version number the target "update-version-number" should be run -->
     <property name="bluej.version.major" value="3" />
     <property name="bluej.version.minor" value="0" />
-    <property name="bluej.version.release" value="5" />
+    <property name="bluej.version.release" value="7" />
     <property name="bluej.version.suffix" value="" />
 	<!-- suffix with no spaces, eg "pre2" -->
 	<property name="bluej.version.nonspace.suffix" value="" />
@@ -97,6 +97,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 source="1.6"
                 target="1.6"
                 deprecation="yes"
+                includeantruntime="false"
         >
         </javac>
 
@@ -117,6 +118,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 destdir="${core.build}"
                 debug="on"
                 deprecation="yes"
+                includeantruntime="false"
                 excludes="de/**,
 
                     archiver/**, gnu/**, javax/**, kopi/**,
@@ -222,7 +224,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <!-- run the java code built into the jar files -->
         <java classname="bluej.Boot" fork="yes" jvm="${run_java_home}/${java_command_dir_name}/java">
             <!-- Include the following line to enable attachment of the Netbeans debugger
-                <jvmarg value="-agentlib:jdwp=transport=dt_socket,address=8888,server=y,suspend=n"/>
+            <jvmarg value="-agentlib:jdwp=transport=dt_socket,address=8888,server=y,suspend=n"/>
             -->
             <classpath>
                 <pathelement location="${boot.jar}"/>
@@ -386,10 +388,17 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <substitution expression="BLUEJ_VERSION_SUFFIX = &quot;${bluej.version.suffix}&quot;;"/>
             <fileset dir="boot/src/bluej" includes="Boot.java"/>
         </replaceregexp>
+    	
+        <!-- update BlueJ README.txt version number -->
+        <replaceregexp byline="true">
+            <regexp pattern="BlueJ version .*\b (\s+--.*)" />
+            <substitution expression="BlueJ version ${bluej.version} \1"/>
+            <fileset dir="doc" includes="README.TXT" />
+        </replaceregexp>
     </target>
     
     <target name="add-license-to-sources" description="adds the license to each source file" >	      
-	    <replaceregexp flags="s" encoding="ISO8859-1">
+	    <replaceregexp flags="s" encoding="UTF-8">
 	        <regexp pattern="(^\/\*\n This file is part of the BlueJ program.*? file that accompanied this code\.\n.\*\/\n)|^"/> 
 	        <substitution expression="${license}"/> 
 	        <fileset dir="." includes="**/*.java" >

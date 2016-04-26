@@ -113,10 +113,10 @@ Cannot create the directory. Check that
 it has a valid name and that the parent 
 directories exist and are writable.
 
-cannot-copy-package
-There was a problem copying the
-package files. The package was
-not written or may be incomplete.
+cannot-save-project
+The project could not be saved to the specified
+location. Check that you have write access, or
+choose another location.
 
 file-does-not-exist
 The specified file
@@ -243,9 +243,6 @@ a BlueJ package:
 applet-height-width
 Applet height and width
 must be specified.
-
-cannot-read-help
-Cannot read help file:
 
 not-yet-implemented
 Not Yet Implemented - sorry.
@@ -402,16 +399,12 @@ Please see <http://www.bluej.org/help/faq.html#socket-exc> for more
 information.
 
 project-is-readonly
-The project is read-only. You will not be able to create objects
-or execute methods.
-Either the access rights of the project directory are set as 
-'read only' for you, or the whole file system is not writable (is 
-it a CD?).
-To fully use this project, you must ensure that it is on a writable
-file system (usually your hard disk), and that you have write 
-permission in the project directory and each file within it.
-This can often be accomplished by choosing "save as" from the
-Project menu after closing this dialog.
+The project being opened is read-only:
+:
+    $
+:
+To use this project, you will first need to choose a new location to
+save it to.
 
 project-is-virtualized
 The project you are opening is being virtualized by Windows. This 
@@ -419,7 +412,7 @@ usually happens when the project is stored somewhere in the
 "Program Files" directory. 
 When a project is being virtualized by Windows you will get errors 
 when trying to create objects and invoke methods.
-To fully use this project, you should move the project to a different
+To use this project, you should move the project to a different
 location. This can be accomplished by choosing "save as" from 
 the Project menu after closing this dialog.
 

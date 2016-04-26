@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -305,6 +305,42 @@ public class JavaParser
     /** End of type definition body. This should be a '}' unless an error occurred */
     protected void endTypeBody(LocatableToken endCurlyToken, boolean included) { }
     
+    /** 
+     * Got the beginning of a declaration - either a type, a field/variable, or a
+     * method constructor, or an initialisation block. This will be followed by one of:
+     * 
+     * <ul>
+     * <li>gotTypeDef(...) - if a type definition
+     * <li>gotMethodDeclaration(...) - if a method declaration
+     * <li>gotConstructorDecl(...) - if a constructor declaration
+     * <li>beginInitBlock(...) - if an initialiser block
+     * <li>beginFieldDeclarations(...) - if a field declaration
+     * <li>beginVariableDecl(...) - if a variable declaration
+     * <li>endDecl(...) - if not a valid declaration
+     * </ul>
+     */
+    protected void gotDeclBegin(LocatableToken token) { beginElement(token); }
+    
+    /**
+     * End a declaration (unsuccessfully).
+     */
+    protected void endDecl(LocatableToken token) { endElement(token, false); }
+    
+    /**
+     * Called when the current element is recognised as a type definition.
+     * @param tdType  one of TYPEDEF_CLASS, _INTERFACE, _ANNOTATION or _ENUM
+     */
+    protected void gotTypeDef(LocatableToken firstToken, int tdType) { }
+
+    /** Called when we have the identifier token for a class/interface/enum definition */
+    protected void gotTypeDefName(LocatableToken nameToken) { }
+
+    /** Called when we have seen the "extends" literal token */
+    protected void gotTypeDefExtends(LocatableToken extendsToken) { }
+
+    /** Called when we have seen the "implements" literal token */
+    protected void gotTypeDefImplements(LocatableToken implementsToken) { }
+
     protected void gotTypeDefEnd(LocatableToken token, boolean included)
     {
         endElement(token, included);
@@ -461,8 +497,11 @@ public class JavaParser
      * We saw a method (or constructor) parameter. The given token specifies the parameter name. 
      * The last type parsed by parseTypeSpec(boolean) is the parameter type, after any additonal
      * array declarators (see gotArrayDeclarator()) are applied.
+     * 
+     * @param token   The token giving the parameter name
+     * @param ellipsisToken  The token, if any, with the ellipsis indicating a varargs parameter. May be null.
      */
-    protected void gotMethodParameter(LocatableToken token) { }
+    protected void gotMethodParameter(LocatableToken token, LocatableToken ellipsisToken) { }
     
     /**
      * Called when, after a parameter/field/variable name, array declarators "[]" are seen.
@@ -516,14 +555,14 @@ public class JavaParser
         || token.getType() == JavaTokenTypes.LITERAL_double;
     }
 
-    public static int TYPEDEF_CLASS = 0;
-    public static int TYPEDEF_INTERFACE = 1;
-    public static int TYPEDEF_ENUM = 2;
-    public static int TYPEDEF_ANNOTATION = 3;
+    public static final int TYPEDEF_CLASS = 0;
+    public static final int TYPEDEF_INTERFACE = 1;
+    public static final int TYPEDEF_ENUM = 2;
+    public static final int TYPEDEF_ANNOTATION = 3;
     /** looks like a type definition, but has an error */
-    public static int TYPEDEF_ERROR = 4;
+    public static final int TYPEDEF_ERROR = 4;
     /** doesn't parse as a type definition at all */
-    public static int TYPEDEF_EPIC_FAIL = 5;
+    public static final int TYPEDEF_EPIC_FAIL = 5;
 
     /**
      * Get the next token from the token stream.
@@ -561,8 +600,9 @@ public class JavaParser
         }
         else if (isModifier(token) || isTypeDeclarator(token)) {
             // optional: class/interface/enum
-            beginElement(token);
+            gotDeclBegin(token);
             tokenStream.pushBack(token);
+            parseModifiers();
             parseTypeDef(token);
             reachedCUstate(2); state = 2;
         }
@@ -683,6 +723,7 @@ public class JavaParser
      */
     public final void parseTypeDef()
     {
+        parseModifiers();
         parseTypeDef(tokenStream.LA(1));
     }
     
@@ -701,6 +742,7 @@ public class JavaParser
         }
         modifiersConsumed();
         if (tdType == TYPEDEF_EPIC_FAIL) {
+            endDecl(tokenStream.LA(1));
             return;
         }
         
@@ -729,20 +771,19 @@ public class JavaParser
     /**
      * Parse a type body. Returns the last seen token, which might be the '}' closing the
      * type body or might be something else (if there is a parse error).
+     * 
+     * @param tdType  the type of the type definition (TYPEDEF_ constant specifying class, 
+     *                interface, enum, annotation)
+     * @param token  the '{' token opening the type body
      */
     public final LocatableToken parseTypeBody(int tdType, LocatableToken token)
     {
         beginTypeBody(token);
 
-        if (tdType == TYPEDEF_ANNOTATION) {
-            parseAnnotationBody();
+        if (tdType == TYPEDEF_ENUM) {
+            parseEnumConstants();
         }
-        else { 
-            if (tdType == TYPEDEF_ENUM) {
-                parseEnumConstants();
-            }
-            parseClassBody();
-        }
+        parseClassBody();
 
         token = nextToken();
         if (token.getType() != JavaTokenTypes.RCURLY) {
@@ -944,21 +985,6 @@ public class JavaParser
     }
 
     /**
-     * Called when the current element is recognised as a type definition.
-     * @param tdType  one of TYPEDEF_CLASS, _INTERFACE, _ANNOTATION or _ENUM
-     */
-    protected void gotTypeDef(LocatableToken firstToken, int tdType) { }
-
-    /** Called when we have the identifier token for a class/interface/enum definition */
-    protected void gotTypeDefName(LocatableToken nameToken) { }
-
-    /** Called when we have seen the "extends" literal token */
-    protected void gotTypeDefExtends(LocatableToken extendsToken) { }
-
-    /** Called when we have seen the "implements" literal token */
-    protected void gotTypeDefImplements(LocatableToken implementsToken) { }
-
-    /**
      * Check whether a token represents a modifier (or an "at" symbol,
      * denoting an annotation).
      */
@@ -1029,7 +1055,12 @@ public class JavaParser
     
     public final void parseClassElement(LocatableToken token)
     {
-        beginElement(token);
+        if (token.getType() == JavaTokenTypes.SEMI) {
+            // A spurious semicolon.
+            return;
+        }
+        
+        gotDeclBegin(token);
         tokenStream.pushBack(token);
         LocatableToken hiddenToken = (LocatableToken) token.getHiddenBefore();
         
@@ -1051,17 +1082,9 @@ public class JavaParser
         else {
             // Not an inner type: should be a method/constructor or field,
             // or (possibly static) a initialisation block
-            if (token.getType() == JavaTokenTypes.SEMI) {
-                // A spurious semicolon.
-                modifiersConsumed();
-                endElement(token, true);
-            }
-            else if (token.getType() == JavaTokenTypes.LCURLY) {
+            if (token.getType() == JavaTokenTypes.LCURLY) {
                 // initialisation block
-                LocatableToken firstToken = token;
-                if (! modifiers.isEmpty()) {
-                    firstToken = modifiers.get(0);
-                }
+                LocatableToken firstToken = firstMod == null ? token : firstMod;
                 beginInitBlock(firstToken, token);
                 modifiersConsumed();
                 parseStmtBlock();
@@ -1102,6 +1125,7 @@ public class JavaParser
                 boolean isConstructor = tokenStream.LA(1).getType() == JavaTokenTypes.IDENT
                         && tokenStream.LA(2).getType() == JavaTokenTypes.LPAREN;
                 if (!isConstructor && !parseTypeSpec(true)) {
+                    endDecl(tokenStream.LA(1));
                     return;
                 }
                 LocatableToken idToken = tokenStream.nextToken(); // identifier
@@ -1109,6 +1133,7 @@ public class JavaParser
                     modifiersConsumed();
                     tokenStream.pushBack(idToken);
                     errorBefore("Expected identifier (method or field name).", idToken);
+                    endDecl(idToken);
                     return;
                 }
 
@@ -1160,11 +1185,12 @@ public class JavaParser
                     modifiersConsumed();
                     tokenStream.pushBack(token);
                     error("Expected ';' or '=' or '(' (in field or method declaration).");
-                    endElement(token, false);
+                    endDecl(token);
                 }
             }
             else {
                 error("Unexpected token \"" + token.getText() + "\" in type declaration body");
+                endDecl(tokenStream.LA(1));
             }
         }
         
@@ -1233,8 +1259,14 @@ public class JavaParser
                 endMethodBody(token, true);
                 endMethodDecl(token, true);
             }
+            return;
         }
-        else if (token.getType() != JavaTokenTypes.SEMI) {
+        else if (token.getType() == JavaTokenTypes.LITERAL_default) {
+            parseExpression();
+            token = nextToken();
+        }
+        
+        if (token.getType() != JavaTokenTypes.SEMI) {
             tokenStream.pushBack(token);
             error(BJ000);
             endMethodDecl(token, false);
@@ -1425,7 +1457,9 @@ public class JavaParser
             token = tokenStream.LA(1);
             pushBackAll(tlist);
             if (isTypeSpec && token.getType() == JavaTokenTypes.IDENT) {
-                return parseVariableDeclarations(tlist.get(0), true);
+                token = tlist.get(0);
+                gotDeclBegin(token);
+                return parseVariableDeclarations(token, true);
             }
             else {
                 parseExpression();                                              
@@ -1485,6 +1519,7 @@ public class JavaParser
         case 26: // LITERAL_transient
         case 27: // AT
             tokenStream.pushBack(token);
+            gotDeclBegin(token);
             parseModifiers();
             if (isTypeDeclarator(tokenStream.LA(1)) || tokenStream.LA(1).getType() == JavaTokenTypes.AT) {
                 parseTypeDef(token);
@@ -1497,6 +1532,7 @@ public class JavaParser
         case 29: // LITERAL_enum
         case 30: // LITERAL_interface
             tokenStream.pushBack(token);
+            gotDeclBegin(token);
             parseTypeDef(token);
             return null;
         case 31: // LITERAL_void
@@ -1526,6 +1562,7 @@ public class JavaParser
             }
             else {
                 pushBackAll(tlist);
+                gotDeclBegin(token);
                 return parseVariableDeclarations(token, true);
             }
         case 40: // LCURLY
@@ -1572,7 +1609,6 @@ public class JavaParser
         token = nextToken();
         if (token.getType() == JavaTokenTypes.LPAREN) {
             // Java 7 try-with-resource
-            parseModifiers();
             do {
                 token = tokenStream.LA(1);
                 // Specification allows either a variable declaration (with initializer) or
@@ -1583,6 +1619,7 @@ public class JavaParser
                     token = tokenStream.LA(1);
                     pushBackAll(tlist);
                     if (isTypeSpec && token.getType() == JavaTokenTypes.IDENT) {
+                        gotDeclBegin(tlist.get(0));
                         parseVariableDeclarations(tlist.get(0), false);
                     }
                     else {
@@ -2060,6 +2097,7 @@ public class JavaParser
     public LocatableToken parseVariableDeclarations()
     {
         LocatableToken first = tokenStream.LA(1);
+        gotDeclBegin(first);
         return parseVariableDeclarations(first, true);
     }
     
@@ -2268,7 +2306,6 @@ public class JavaParser
      */
     public boolean parseTypeSpec(boolean speculative, boolean processArray, List<LocatableToken> ttokens)
     {
-        //ttokens.addAll(parseModifiers());
         int ttype = parseBaseType(speculative, ttokens);
         if (ttype == TYPE_ERROR) {
             return false;
@@ -2536,6 +2573,10 @@ public class JavaParser
         || ttype == JavaTokenTypes.DOT
         || ttype == JavaTokenTypes.EQUAL
         || ttype == JavaTokenTypes.NOT_EQUAL
+        || ttype == JavaTokenTypes.LT
+        || ttype == JavaTokenTypes.LE
+        || ttype == JavaTokenTypes.GT
+        || ttype == JavaTokenTypes.GE
         || ttype == JavaTokenTypes.ASSIGN
         || ttype == JavaTokenTypes.BNOT
         || ttype == JavaTokenTypes.LNOT
@@ -2547,6 +2588,8 @@ public class JavaParser
         || ttype == JavaTokenTypes.BAND_ASSIGN
         || ttype == JavaTokenTypes.BXOR
         || ttype == JavaTokenTypes.BXOR_ASSIGN
+        || ttype == JavaTokenTypes.LOR
+        || ttype == JavaTokenTypes.LAND
         || ttype == JavaTokenTypes.SL
         || ttype == JavaTokenTypes.SL_ASSIGN
         || ttype == JavaTokenTypes.SR
@@ -2625,46 +2668,6 @@ public class JavaParser
         }
     }
         
-    /**
-     * Parse an annotation body
-     */
-    public void parseAnnotationBody()
-    {
-        LocatableToken token = nextToken();
-        while (token.getType() != JavaTokenTypes.RCURLY) {
-            LocatableToken hiddenToken = (LocatableToken) token.getHiddenBefore();
-            LocatableToken idToken = nextToken(); // identifier
-            if (idToken.getType() != JavaTokenTypes.IDENT) {
-                error("Expected identifier (method or field name).", idToken);
-                return;
-            }
-
-            token = nextToken();
-
-            if (token.getType() == JavaTokenTypes.LPAREN) {
-                // method declaration
-                gotMethodDeclaration(idToken, hiddenToken);
-                parseMethodParamsBody();
-            }
-            else {
-                error("Expected ';' or '=' or '(' (in field or method declaration).", token);
-                tokenStream.pushBack(token);
-            }
-            token = nextToken();
-            if (token.getType()==JavaTokenTypes.LITERAL_default){
-                parseExpression();
-                token = nextToken();
-                if (token.getType()!= JavaTokenTypes.SEMI){
-                    errorBefore("Expected ';' or '=' or '(' (in field or method declaration).", token);
-                    tokenStream.pushBack(token);
-                }
-                token = nextToken();
-            }
-
-        }   
-        tokenStream.pushBack(token);
-    }
-
     private static int [] expressionTokenIndexes = new int[JavaTokenTypes.INVALID+1];
     
     static {
@@ -3279,8 +3282,10 @@ public class JavaParser
             parseModifiers();
             parseTypeSpec(true);
             LocatableToken idToken = nextToken(); // identifier
+            LocatableToken varargsToken = null;
             if (idToken.getType() == JavaTokenTypes.TRIPLE_DOT) {
                 // var args
+                varargsToken = idToken;
                 idToken = nextToken();
             }
             if (idToken.getType() != JavaTokenTypes.IDENT) {
@@ -3290,7 +3295,7 @@ public class JavaParser
                 return;
             }
             parseArrayDeclarators();
-            gotMethodParameter(idToken);
+            gotMethodParameter(idToken, varargsToken);
             modifiersConsumed();
             token = nextToken();
             if (token.getType() != JavaTokenTypes.COMMA) {

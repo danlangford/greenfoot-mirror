@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,6 +22,7 @@
 package bluej.utility;
 
 import java.awt.Component;
+import java.awt.Desktop;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Insets;
@@ -51,6 +52,8 @@ import javax.swing.AbstractButton;
 import javax.swing.border.Border;
 import javax.swing.text.TabExpander;
 
+import com.apple.eawt.Application;
+
 import bluej.Config;
 
 /**
@@ -61,8 +64,7 @@ import bluej.Config;
  */
 public class Utility
 {
-    /** * @version $Id: Utility.java 9208 2011-09-15 05:23:52Z davmac $
-
+    /**
      * Used to track which events have occurred for firstTimeThisRun()
      */
     private static Set<String> occurredEvents = new HashSet<String>();
@@ -316,25 +318,31 @@ public class Utility
      */
     public static boolean openWebBrowser(URL url)
     {
-        if (Config.isMacOS()) {
-            // Mac
-            try {
-                com.apple.eio.FileManager.openURL(url.toString());
-            }
-            catch (IOException e) {
-                Debug.reportError("could not start web browser. exc: " + e);
-                return false;
-            }
-        }
-        else if (Config.isWinOS()) {
+        if (Config.isWinOS()) {
             // Windows
             return openWebBrowser(url.toString());
         }
         else {
-            // Unix and other
-            if (JavaUtils.getJavaUtils().openWebBrowser(url)) {
-                return true;
+            Exception exception = null;
+            
+            if (Desktop.isDesktopSupported()) {
+                try {
+                    Desktop.getDesktop().browse(url.toURI());
+                }
+                catch (IOException ioe) { exception = ioe; }
+                catch (URISyntaxException use) { exception = use; }
             }
+            
+            if (exception == null) {
+                return true; // success
+            }
+            
+            if (Config.isMacOS()) {
+                Debug.reportError("could not start web browser. exc: " + exception);
+                return false;
+            }
+            
+            // Unix and other
 
             String cmd = mergeStrings(Config.getPropString("browserCmd1"), url.toString());
             String cmd2 = mergeStrings(Config.getPropString("browserCmd2"), url.toString());
@@ -461,7 +469,6 @@ public class Utility
         
         return bluejDir;
     }
-
     
     
     /**
@@ -469,30 +476,33 @@ public class Utility
      * The given window will be brought to the front.
      * 
      * <p>This method can be called from the debug VM.
+     * 
+     * @param window   the window to be brought to the front. If null, the process
+     *                 is brought to the front.
      */
     public static void bringToFront(final Window window)
     {
         // If not showing at all we return now.
-        if (!window.isShowing() || !window.getFocusableWindowState()) {
+        if (window != null) {
+            if (!window.isShowing() || !window.getFocusableWindowState()) {
+                return;
+            }
+            window.toFront();
+        }
+        
+        if (Config.isMacOS()) {
+            Application.getApplication().requestForeground(false);
             return;
         }
 
         String pid = getProcessId();
         boolean isWindows = Config.isWinOS();
-        boolean isMacOS = Config.isMacOS();
 
-        if (isWindows || isMacOS) {
+        if (isWindows) {
             // Use WSH (Windows Script Host) to execute a javascript that brings
             // a window to front.
             File libdir = calculateBluejLibDir();
-            String[] command;
-            if (isWindows) {
-                command = new String[] {"cscript","\"" + libdir.getAbsolutePath() + "\\windowtofront.js\"",pid };
-            }
-            else {
-                command = new String[] {"osascript", "-e", "tell application \"System Events\"", "-e",
-                        "set frontmost of first process whose unix id is " + pid + " to true", "-e", "end tell"};
-            }
+            String[] command = new String[] {"cscript","\"" + libdir.getAbsolutePath() + "\\windowtofront.js\"",pid };
             
             final StringBuffer commandAsStr = new StringBuffer();
             for (int i = 0; i < command.length; i++) {
@@ -515,23 +525,6 @@ public class Utility
             }
             catch (InterruptedException ie) {}
         }
-        if (Config.isLinux()) {
-            // http://ubuntuforums.org/archive/index.php/t-197207.html
-            // However, usually X doesn't care about process stacking:
-            window.toFront();
-        }        
-
-        // alternative technique: using 'open command. works only for BlueJ.app,
-        // not for remote VM
-        // // first, find the path of BlueJ.app
-        // String path = getClass().getResource("PkgMgrFrame.class").getPath();
-        // int index = path.indexOf("BlueJ.app");
-        // if(index != -1) {
-        // path = path.substring(0, index+9);
-        // // once we found it, call 'open' on it to bring it to front.
-        // String[] openCmd = { "open", path };
-        // Runtime.getRuntime().exec(openCmd);
-        // }
     }
 
     private static class ExternalProcessLogger extends Thread

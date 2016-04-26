@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -38,7 +39,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.Stack;
 
 import bluej.Config;
 import bluej.compiler.CompileObserver;
@@ -52,9 +52,11 @@ import bluej.debugger.SourceLocation;
 import bluej.debugmgr.CallHistory;
 import bluej.debugmgr.Invoker;
 import bluej.editor.Editor;
+import bluej.extensions.BDependency;
 import bluej.extensions.BPackage;
 import bluej.extensions.ExtensionBridge;
 import bluej.extensions.event.CompileEvent;
+import bluej.extensions.event.DependencyEvent;
 import bluej.extmgr.ExtensionsManager;
 import bluej.graph.Edge;
 import bluej.graph.Graph;
@@ -510,6 +512,54 @@ public final class Package extends Graph
     }
 
     /**
+     * Returns the {@link Dependency} with the specified <code>origin</code>,
+     * <code>target</code> and <code>type</code> or <code>null</code> if there
+     * is no such dependency.
+     * 
+     * @param origin
+     *            The origin of the dependency.
+     * @param target
+     *            The target of the dependency.
+     * @param type
+     *            The type of the dependency (there may be more than one
+     *            dependencies with the same origin and target but different
+     *            types).
+     * @return The {@link Dependency} with the specified <code>origin</code>,
+     *         <code>target</code> and <code>type</code> or <code>null</code> if
+     *         there is no such dependency.
+     */
+    public Dependency getDependency(DependentTarget origin, DependentTarget target, BDependency.Type type)
+    {
+        List<Dependency> dependencies = new ArrayList<Dependency>();
+
+        switch (type) {
+            case USES :
+                dependencies = usesArrows;
+                break;
+            case IMPLEMENTS :
+            case EXTENDS :
+                dependencies = extendsArrows;
+                break;
+            case UNKNOWN :
+                // If the type of the dependency is UNKNOWN, the requested
+                // dependency does not exist anymore. In this case the method
+                // returns null.
+                return null;
+        }
+
+        for (Dependency dependency : dependencies) {
+            DependentTarget from = dependency.getFrom();
+            DependentTarget to = dependency.getTo();
+
+            if (from.equals(origin) && to.equals(target)) {
+                return dependency;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Search a directory for Java source and class files and add their names to
      * a set which is returned. Will delete any __SHELL files which are found in
      * the directory and will ignore any single .class files which do not
@@ -635,13 +685,15 @@ public final class Package extends Graph
         }
 
         addImmovableTargets();
+        List<Target> targetsToPlace = new ArrayList<Target>();
+        
         // make our Package targets reflect what is actually on disk
         // note that we consider this on-disk version the master
         // version so if we have a class target called Foo but we
         // discover a directory call Foo, a PackageTarget will be
         // inserted to replace the ClassTarget
         File subDirs[] = getPath().listFiles(new SubPackageFilter());
-
+        
         for (int i = 0; i < subDirs.length; i++) {
             // first check if the directory name would be a valid package name
             if (!JavaNames.isIdentifier(subDirs[i].getName()))
@@ -651,7 +703,7 @@ public final class Package extends Graph
 
             if (target == null || !(target instanceof PackageTarget)) {
                 target = new PackageTarget(this, subDirs[i].getName());
-                findSpaceForVertex(target);
+                targetsToPlace.add(target);
             }
 
             addTarget(target);
@@ -670,9 +722,15 @@ public final class Package extends Graph
             Target target = propTargets.get(targetName);
             if (target == null || !(target instanceof ClassTarget)) {
                 target = new ClassTarget(this, targetName);
-                findSpaceForVertex(target);
+                targetsToPlace.add(target);
             }
             addTarget(target);
+        }
+        
+        // Find an empty spot for any targets which didn't already have
+        // a position
+        for (Target t : targetsToPlace) {
+            findSpaceForVertex(t);
         }
         
         // Start with all classes in the normal (compiled) state.
@@ -702,7 +760,8 @@ public final class Package extends Graph
 
         // Update class states. We do this before updating roles (or anything else
         // which analyses the source) because the analysis does symbol resolution, and
-        // that depends on having the correct compiled state. 
+        // that depends on having the correct compiled state.
+        LinkedList<ClassTarget> invalidated = new LinkedList<ClassTarget>();
         targetIt = targets.iterator();
         for ( ; targetIt.hasNext();) {
             Target target = targetIt.next();
@@ -711,6 +770,21 @@ public final class Package extends Graph
                 ClassTarget ct = (ClassTarget) target;
                 if (ct.isCompiled() && !ct.upToDate()) {
                     ct.setState(ClassTarget.S_INVALID);
+                    invalidated.add(ct);
+                }
+            }
+        }
+        
+        while (! invalidated.isEmpty()) {
+            ClassTarget ct = invalidated.removeFirst();
+            for (Dependency dependent : ct.dependentsAsList()) {
+                DependentTarget dt = dependent.getFrom();
+                if (dt instanceof ClassTarget) {
+                    ClassTarget dep = (ClassTarget) dt;
+                    if (dep.isCompiled()) {
+                        dep.setState(ClassTarget.S_INVALID);
+                        invalidated.add(dep);
+                    }
                 }
             }
         }
@@ -1128,39 +1202,32 @@ public final class Package extends Graph
             return;
         }
 
-        // build the list of targets that need to be compiled
         Set<ClassTarget> toCompile = new HashSet<ClassTarget>();
-        for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
-            Target target = it.next();
 
-            if (target instanceof ClassTarget) {
-                ClassTarget ct = (ClassTarget) target;
-                if (ct.isInvalidState())
-                    toCompile.add(ct);
+        try {
+            // build the list of targets that need to be compiled
+            for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
+                Target target = it.next();
+
+                if (target instanceof ClassTarget) {
+                    ClassTarget ct = (ClassTarget) target;
+                    if (ct.isInvalidState() && ! ct.isQueued()) {
+                        ct.ensureSaved();
+                        toCompile.add(ct);
+                        ct.setQueued(true);
+                    }
+                }
             }
-        }
-        
-        compile(toCompile, new PackageCompileObserver());
-    }
 
-    /**
-     * Compile a set of classes.
-     */
-    private void compile(Set<? extends ClassTarget> toCompile, CompileObserver observer)
-    {
-        if (! toCompile.isEmpty()) {
             project.removeClassLoader();
             project.newRemoteClassLoaderLeavingBreakpoints();
-
-            // Clear-down the compiler Warning dialog box singleton
-            bluej.compiler.CompilerWarningDialog.getDialog().reset();
-
-            for (Iterator<? extends ClassTarget> i = toCompile.iterator(); i.hasNext(); ) {
-                ClassTarget target = (ClassTarget) i.next();
-                boolean success = searchCompile(target, 1, new Stack<ClassTarget>(),
-                        new PackageCompileObserver());
-                if (! success)
-                    break;
+            doCompile(toCompile, new PackageCompileObserver());
+        }
+        catch (IOException ioe) {
+            // Abort compile
+            Debug.log("Error saving class before compile: " + ioe.getLocalizedMessage());
+            for (ClassTarget ct : toCompile) {
+                ct.setQueued(false);
             }
         }
     }
@@ -1214,12 +1281,11 @@ public final class Package extends Graph
                 } else {
                     observer = new PackageCompileObserver();
                 }
-                searchCompile(ct, 1, new Stack<ClassTarget>(), observer);
+                searchCompile(ct, observer);
             }
 
             if (assocTarget != null) {
-                searchCompile(assocTarget, 1, new Stack<ClassTarget>(),
-                        new QuietPackageCompileObserver());
+                searchCompile(assocTarget, new QuietPackageCompileObserver());
             }
         }
     }
@@ -1234,7 +1300,7 @@ public final class Package extends Graph
         }
 
         ct.setInvalidState(); // to force compile
-        searchCompile(ct, 1, new Stack<ClassTarget>(), new QuietPackageCompileObserver());
+        searchCompile(ct, new QuietPackageCompileObserver());
     }
 
     /**
@@ -1302,88 +1368,70 @@ public final class Package extends Graph
     }
     
     /**
-     * Use Tarjan's algorithm to construct compiler Jobs. (Cyclic dependencies are
-     * submitted together as one job; otherwise we attempt to submit every file as
-     * a separate job, compiling dependencies before their dependents).
+     * Compile a class together with its dependencies, as necessary.
      */
-    private boolean searchCompile(ClassTarget t, int dfcount,
-            Stack<ClassTarget> stack, CompileObserver observer)
+    private void searchCompile(ClassTarget t, CompileObserver observer)
     {
         if (! t.isInvalidState() || t.isQueued()) {
-            return true;
+            return;
         }
 
+        Set<ClassTarget> toCompile = new HashSet<ClassTarget>();
+        
         try {
-            // Dependencies may be out-of-date if file is modified.
+            List<ClassTarget> queue = new LinkedList<ClassTarget>();
+            toCompile.add(t);
             t.ensureSaved();
-            if (t.getPackage() != this) {
-                return true;
+            queue.add(t);
+            t.setQueued(true);
+
+            while (! queue.isEmpty()) {
+                ClassTarget head = queue.remove(0);
+
+                Iterator<? extends Dependency> dependencies = head.dependencies();
+
+                while (dependencies.hasNext()) {
+                    Dependency d = (Dependency) dependencies.next();
+                    if (!(d.getTo() instanceof ClassTarget)) {
+                        continue;
+                    }
+
+                    ClassTarget to = (ClassTarget) d.getTo();
+                    if (to.isInvalidState() && ! to.isQueued() && toCompile.add(to)) {
+                        to.ensureSaved();
+                        to.setQueued(true);
+                        queue.add(to);
+                    }
+                }
             }
+
+            doCompile(toCompile, observer);
         }
         catch (IOException ioe) {
-            showMessageWithText("file-save-error-before-compile", ioe.getLocalizedMessage());
-            return false;
-        }
-
-        t.setQueued(true);
-        t.dfn = dfcount;
-        t.link = dfcount;
-
-        stack.push(t);
-        
-        Iterator<? extends Dependency> dependencies = t.dependencies();
-
-        while (dependencies.hasNext()) {
-            Dependency d = (Dependency) dependencies.next();
-            if (!(d.getTo() instanceof ClassTarget))
-                continue;
-
-            ClassTarget to = (ClassTarget) d.getTo();
-        
-            if (to.isQueued()) {
-                if ((to.dfn < t.dfn) && (stack.search(to) != -1))
-                    t.link = Math.min(t.link, to.dfn);
+            // Failed to save; abort the compile
+            Debug.log("Failed to save source before compile; " + ioe.getLocalizedMessage());
+            for (ClassTarget ct : toCompile) {
+                ct.setQueued(false);
             }
-            else if (to.isInvalidState()) {
-                boolean success = searchCompile(to, dfcount + 1, stack, observer);
-                if (! success) {
-                    t.setQueued(false);
-                    return false;
-                }
-                t.link = Math.min(t.link, to.link);
-            } 
         }
-
-        if (t.link == t.dfn) {
-            List<ClassTarget> compileTargets = new ArrayList<ClassTarget>();
-            ClassTarget x;
-
-            do {
-                x = (ClassTarget) stack.pop();
-                compileTargets.add(x);
-            } while (x != t);
-
-            doCompile(compileTargets, observer);
-        }
-        return true;
     }
 
     /**
      * Compile every Target in 'targetList'. Every compilation goes through this method.
      * All targets in the list should have been saved beforehand.
      */
-    private void doCompile(List<ClassTarget> targetList, CompileObserver observer)
+    private void doCompile(Collection<ClassTarget> targetList, CompileObserver observer)
     {
-
         observer = new EventqueueCompileObserver(observer);
-        if (targetList.size() == 0)
+        if (targetList.isEmpty()) {
             return;
+        }
 
         File[] srcFiles = new File[targetList.size()];
         
-        for (int i = 0; i < targetList.size(); i++) {
-            ClassTarget ct = targetList.get(i);
-            srcFiles[i] = ct.getSourceFile();
+        int i = 0;
+        for (ClassTarget ct : targetList) {
+            srcFiles[i++] = ct.getSourceFile();
         }
         
         JobQueue.getJobQueue().addJob(srcFiles, observer, project.getClassLoader(), project.getProjectDir(),
@@ -1544,6 +1592,10 @@ public final class Package extends Graph
 
         from.addDependencyOut(d, recalc);
         to.addDependencyIn(d, recalc);
+
+        // Inform all listeners about the added dependency
+        DependencyEvent event = new DependencyEvent(d, this, DependencyEvent.Type.DEPENDENCY_ADDED);
+        ExtensionsManager.getInstance().delegateEvent(event);
     }
 
     /**
@@ -1776,6 +1828,10 @@ public final class Package extends Graph
         to.removeDependencyIn(d, recalc);
 
         removedSelectableElement(d);
+
+        // Inform all listeners about the removed dependency
+        DependencyEvent event = new DependencyEvent(d, this, DependencyEvent.Type.DEPENDENCY_REMOVED);
+        ExtensionsManager.getInstance().delegateEvent(event);
     }
 
     /**
@@ -2434,7 +2490,7 @@ public final class Package extends Graph
             }
         }
 
-        private void sendEventToExtensions(String filename, int lineNo, String message, int eventType)
+        private void sendEventToExtensions(String filename, int [] errorPosition, String message, int eventType)
         {
             File [] sources;
             if (filename != null) {
@@ -2445,7 +2501,7 @@ public final class Package extends Graph
                 sources = new File[0];
             }
             CompileEvent aCompileEvent = new CompileEvent(eventType, sources);
-            aCompileEvent.setErrorLineNumber(lineNo);
+            aCompileEvent.setErrorPosition(errorPosition);
             aCompileEvent.setErrorMessage(message);
             ExtensionsManager.getInstance().delegateEvent(aCompileEvent);
         }
@@ -2454,6 +2510,7 @@ public final class Package extends Graph
          * A compilation has been started. Mark the affected classes as being
          * currently compiled.
          */
+        @Override
         public void startCompile(File[] sources)
         {
             // Send a compilation starting event to extensions.
@@ -2467,34 +2524,39 @@ public final class Package extends Graph
             markAsCompiling(sources);
         }
 
+        @Override
         public void compilerMessage(Diagnostic diagnostic)
         {
+            int [] errorPosition = new int[4];
+            errorPosition[0] = (int) diagnostic.getStartLine();
+            errorPosition[1] = (int) diagnostic.getStartColumn();
+            errorPosition[2] = (int) diagnostic.getEndLine();
+            errorPosition[3] = (int) diagnostic.getEndColumn();
             if (diagnostic.getType() == Diagnostic.ERROR) {
-                errorMessage(diagnostic.getFileName(), (int) diagnostic.getStartLine(),
-                        diagnostic.getMessage());
+                errorMessage(diagnostic.getFileName(), errorPosition, diagnostic.getMessage());
             }
             else {
-                warningMessage(diagnostic.getFileName(), (int) diagnostic.getStartLine(),
-                        diagnostic.getMessage());
+                warningMessage(diagnostic.getFileName(), errorPosition, diagnostic.getMessage());
             }
         }
         
-        private void errorMessage(String filename, int lineNo, String message)
+        private void errorMessage(String filename, int [] errorPosition, String message)
         {
             // Send a compilation Error event to extensions.
-            sendEventToExtensions(filename, lineNo, message, CompileEvent.COMPILE_ERROR_EVENT);
+            sendEventToExtensions(filename, errorPosition, message, CompileEvent.COMPILE_ERROR_EVENT);
         }
 
-        private void warningMessage(String filename, int lineNo, String message)
+        private void warningMessage(String filename, int [] errorPosition, String message)
         {
             // Send a compilation Error event to extensions.
-            sendEventToExtensions(filename, lineNo, message, CompileEvent.COMPILE_WARNING_EVENT);
+            sendEventToExtensions(filename, errorPosition, message, CompileEvent.COMPILE_WARNING_EVENT);
         }
 
         /**
          * Compilation has ended. Mark the affected classes as being normal
          * again.
          */
+        @Override
         public void endCompile(File[] sources, boolean successful)
         {
             for (int i = 0; i < sources.length; i++) {

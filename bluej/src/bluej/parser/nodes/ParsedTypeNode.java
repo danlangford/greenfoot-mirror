@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,7 +30,6 @@ import bluej.debugger.gentype.GenTypeClass;
 import bluej.debugger.gentype.Reflective;
 import bluej.editor.moe.MoeSyntaxDocument;
 import bluej.parser.CodeSuggestions;
-import bluej.parser.EditorParser;
 import bluej.parser.JavaParser;
 import bluej.parser.entity.JavaEntity;
 import bluej.parser.entity.PackageOrClass;
@@ -212,6 +211,9 @@ public class ParsedTypeNode extends IncrementalParsingNode
         stateMarkers[1] = position + size;
     }
     
+    /**
+     * Get the inner node for the type, if one exists. May return null.
+     */
     public TypeInnerNode getInner()
     {
         return inner;
@@ -338,13 +340,6 @@ public class ParsedTypeNode extends IncrementalParsingNode
     }
     
     @Override
-    protected boolean lastPartialCompleted(EditorParser parser,
-            LocatableToken token, int state)
-    {
-        return state == 3;
-    }
-    
-    @Override
     protected boolean isDelimitingNode(NodeAndPosition<ParsedNode> nap)
     {
         return nap.getNode().isInner();
@@ -373,6 +368,9 @@ public class ParsedTypeNode extends IncrementalParsingNode
     @Override
     public CodeSuggestions getExpressionType(int pos, int nodePos, JavaEntity defaultType, Document document)
     {
+        valueEntityCache.clear();
+        pocEntityCache.clear();
+        
         // The default type if the expression is not known should be this type
         ValueEntity myType = new ValueEntity(new GenTypeClass(new ParsedReflective(this)));
         NodeAndPosition<ParsedNode> child = getNodeTree().findNode(pos, nodePos);

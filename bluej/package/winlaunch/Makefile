@@ -14,7 +14,7 @@ GREENFOOTDEF=-DGREENFOOT
 EXECNAME=gflaunch.exe
 REQUIREDJAVA=\"1.6\"
 
-JDKDIR=/c/Program Files/Java/jdk1.6.0_26
+JDKDIR=/c/Program Files/Java/jdk1.6.0_27
 
 OBJECTS = resources.o bjlaunch.o javatest.o javaprops.o bjdialog.o
 

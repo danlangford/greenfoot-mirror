@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 2011,2012  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -187,7 +187,7 @@ public class MoePlainView extends View
             throw new RuntimeException(ble);
         }
         
-        TabExpander tx = new MoeTabExpander(tabSize, leftMargin + aBounds.x);
+        TabExpander tx = new MoeTabExpander(tabSize, leftMargin);
         int offset = Utilities.getTabbedTextOffset(s, metrics, leftMargin, (int)x - aBounds.x, tx, lineStart);
         
         biasReturn[0] = Bias.Forward;

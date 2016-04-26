@@ -14,8 +14,8 @@
 
     <!-- Greenfoot Version Number -->
     <property name="greenfoot.version.major" value="2"/>
-    <property name="greenfoot.version.minor" value="1"/>
-    <property name="greenfoot.version.micro" value="2"/>
+    <property name="greenfoot.version.minor" value="2"/>
+    <property name="greenfoot.version.micro" value="0"/>
     
     <!-- Change when API has changed in a way that is likely to break some scenarios. 
     A warning will be shown to the user - update the greenfoot-labels file to
@@ -26,12 +26,12 @@
     unlikely to break scenarios (documentation changes, addition of method).
     Changing this number will stripe the user's classes and require a recompile.
     Do not change this number if the changes cannot break older scenarios. -->
-    <property name="greenfoot.apiversion.nonbreaking" value="2"/>
+    <property name="greenfoot.apiversion.nonbreaking" value="4"/>
     
     <!-- Change when API has only changed internally and not in any way visible to the user. 
     It should not be possible for this change to break existing scenarios. 
     Changing this number will NOT stripe the user's classes nor require a recompile. -->
-    <property name="greenfoot.apiversion.internal" value="1"/>
+    <property name="greenfoot.apiversion.internal" value="0"/>
         
     <property name="greenfoot.apiversion" value="${greenfoot.apiversion.breaking}.${greenfoot.apiversion.nonbreaking}.${greenfoot.apiversion.internal}"/>
 
@@ -62,6 +62,7 @@
         <pathelement location="${bluej.projectdir}/lib/commons-httpclient-3.1.jar"/>
         <pathelement location="${bluej.projectdir}/lib/commons-logging-api-1.1.1.jar"/> 
         <pathelement location="${jlayer.jar.path}"/>
+        <pathelement location="${bluej.projectdir}/lib/opencsv-2.3.jar"/>
     </path>
     <!-- The sourcepath to the bluej classes-->
     <path id="bluej.src.path">
@@ -108,6 +109,7 @@
           <include name="greenfoot/GreenfootSound.java" />
           <include name="greenfoot/Greenfoot.java" />
           <include name="greenfoot/MouseInfo.java" />
+          <include name="greenfoot/UserInfo.java" />    	
 	</fileset>
 
     <!-- scenarios to be included in standard distribution -->
@@ -191,6 +193,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 classpathref="bluej.class.path" 
                 debug="true">
             <compilerarg line="-target 1.6" />
+            <compilerarg line="-source 1.6" /> <!-- Otherwise Java 7 (and above) complains -->
         </javac>
         <!-- Compile the RMI-classes -->
         <rmic base="${build}" includes="**/*Impl.class" excludes="bluej/**">
@@ -246,7 +249,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <compile-scenario scenario="wombats2" />
     </target>
 
-    <target name="ready-to-run" depends="update-images, compile, copy-imagelib, copy-projects, build-standalone-jar, create-api-doc, copy-apidocs, copy-labels" description="Builds everything so it is ready to run" >
+    <target name="ready-to-run" depends="update-images, compile, copy-imagelib, copy-projects, copy-common-classes, build-standalone-jar, create-api-doc, copy-apidocs, copy-labels" description="Builds everything so it is ready to run" >
         <!-- Put everything in ${build} into the the jar file-->
         <jar jarfile="${bluej.extensions.lib}/greenfoot.jar" basedir="${build}">
             <manifest>
@@ -285,6 +288,45 @@ LICENSE.txt file that accompanied this code.${line.separator}
             </fileset>
         </copy>
     </target>
+
+    <target name="copy-common-classes" depends="compile-scenarios"  description="Copies the common classes to bluej" >
+    	<antcall target="copy-common-class">
+    	  <param name="common.class" value="SmoothMover"/>
+    	</antcall>
+    	<antcall target="copy-common-class">
+    	  <param name="common.class" value="GifImage"/>
+    	</antcall>
+    	<antcall target="copy-common-class">
+    	  <param name="common.class" value="ScoreBoard"/>
+    	</antcall>
+    	<antcall target="copy-common-class">
+    	  <param name="common.class" value="SimpleTimer"/>
+    	</antcall>
+    	<antcall target="copy-common-class">
+    	  <param name="common.class" value="Counter"/>
+    	</antcall>
+        <antcall target="copy-common-class">
+          <param name="common.class" value="Animal"/>
+        </antcall>
+    </target>
+	
+	<target name="copy-common-class" depends="compile-scenarios">
+		<javadoc destdir="common" sourcefiles="common/${common.class}.java" Version="yes" notree="yes" noindex="yes" nohelp="yes" nonavbar="yes" classpath="${build}"/> 
+		
+		<copy todir="${bluej.lib.greenfoot}" preservelastmodified="true">
+		  <fileset dir=".">
+	        <patternset>
+	          <include name="common/${common.class}.java" />
+	          <!-- <include name="common/${common.class}.class" /> -->
+	          <include name="common/${common.class}.html" />
+	          <include name="common/${common.class}.png" />
+	          <include name="common/${common.class}.jpg" />
+	          <include name="common/${common.class}.jpeg" />
+	          <include name="common/inherit.gif" />
+	        </patternset>
+	      </fileset>
+	   </copy>
+	</target>
 
     <target name="copy-tutorial" description="Copies the projects tutorial and tutorial project to BlueJ" >
         <copy todir="${bluej.projectdir}/package/tutorial">
@@ -352,9 +394,13 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <copy file="resources/images/export-publish.png" todir="images"/>
         <copy file="resources/images/export-publish-small.png" todir="images"/>
         <copy file="resources/images/export-webpage.png" todir="images"/>
+    	<!-- Menu button used in image library dialog (gear with drop-arrow) -->
+    	<copy file="resources/images/menu-button.png" todir="images"/>
     </target>
 
     <target name="dist" depends="ready-to-run, clean-scenarios, copy-scenarios, copy-license, copy-tutorial, zip-source" description="Generate the distribution. Also runs the bluej.dist-greenfoot" >
+    	<copy file="doc/Greenfoot-README.txt" todir="${bluej.projectdir}/doc"/>
+    	
         <!-- Run the BlueJ dist-->
         <ant dir="${bluej.projectdir}" target="dist-greenfoot" />
 
@@ -643,7 +689,8 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 <include name="doc/HOWTO.*" />    
                 <include name="doc/THIRDPARTYLICENSE.txt" />
                 <include name="doc/LICENSE.txt" />  
-                <include name="doc/GREENFOOT_LICENSES.txt" />  
+                <include name="doc/GREENFOOT_LICENSES.txt" />
+            	<include name="doc/README.TXT" />
                 <patternset refid="distribution.scenarios"/>
                 <exclude name="scenarios/**/*.class" />    
                 <exclude name="scenarios/**/greenfoot/" />   
@@ -663,7 +710,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 <include name="build.xml" />  
                 <exclude name="**/.DS_Store"/>
             </zipfileset>
-            <zipfileset src="${bluej.projectdir}/package/BlueJ-source-${bluej.version.nodots}.zip" prefix="bluej"/>                       
+            <zipfileset src="${bluej.projectdir}/package/BlueJ-source-${bluej.version.nodots}.zip" prefix="bluej" />                       
         </zip>
     </target>
     
@@ -720,7 +767,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <replaceregexp byline="true">
             <regexp pattern="@version .*"/>
             <substitution expression="@version ${greenfoot.apiversion.public}"/>
-            <fileset dir="${src}/greenfoot" includes="Greenfoot.java,GreenfootImage.java,GreenfootSound.java,Actor.java,World.java,MouseInfo.java"/>
+            <fileset dir="${src}/greenfoot" includes="Greenfoot.java,GreenfootImage.java,GreenfootSound.java,Actor.java,World.java,MouseInfo.java,UserInfo.java"/>
         </replaceregexp>
         <replaceregexp byline="true">
             <regexp pattern="GREENFOOT_VERSION = .*"/>
