@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,7 +22,7 @@
 package bluej.pkgmgr.target.role;
 
 import java.awt.Color;
-import java.util.Properties;
+import java.awt.Paint;
 import bluej.Config;
 
 /**
@@ -30,13 +30,12 @@ import bluej.Config;
  * built from Java source code.
  *
  * @author Cecilia Vargas
- * @version $Id: AppletClassRole.java 4746 2006-12-07 02:26:53Z davmac $
  */
 public class MIDletClassRole extends ClassRole
 {
     public static final String MIDLET_ROLE_NAME = "MIDletTarget";
     
-    private static final Color bckgrndColor = Config.getItemColour("colour.class.bg.midlet");
+    private static final Color bckgrndColor = Config.getOptionalItemColour("colour.class.bg.midlet");
 
     
     public MIDletClassRole()  { }
@@ -51,8 +50,12 @@ public class MIDletClassRole extends ClassRole
         return "MIDlet";
     }
     
-    public Color getBackgroundColour()
+    public Paint getBackgroundPaint(int width, int height)
     {
-        return bckgrndColor;
+        if (bckgrndColor != null) {
+            return bckgrndColor;
+        } else {
+            return super.getBackgroundPaint(width, height);
+        }
     }
  }

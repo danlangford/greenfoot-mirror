@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -34,17 +34,17 @@ import bluej.extensions.BProject;
 /**
  * This class has a pool of RMI-wrappers that have been created. This is used to
  * avoid getting more than one RMI-wrapper for each object. Doing this, makes it
- * possible to use == to test if two objects are the same.
+ * possible to use reference equality ('==' operator) to test if two objects are the same.
  * 
- * TODO remember to "release" objects when they are no longer needed
+ * <p>Remember to "release" objects when they are no longer needed.
+ * 
+ * <p>This class is thread-safe.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: WrapperPool.java 6720 2009-09-18 13:49:11Z davmac $
  */
 public class WrapperPool
 {
-
-    static private WrapperPool instance;
+    static private WrapperPool instance = new WrapperPool();
 
     private WeakHashMap<Object,Object> pool = new WeakHashMap<Object,Object>();
 
@@ -53,11 +53,8 @@ public class WrapperPool
 
     }
 
-    public synchronized static WrapperPool instance()
+    public static WrapperPool instance()
     {
-        if (instance == null) {
-            instance = new WrapperPool();
-        }
         return instance;
     }
 
@@ -101,8 +98,7 @@ public class WrapperPool
     }
 
     /**
-     * @param constructor
-     * @return
+     * Get a remote wrapper for a BConstructor.
      */
     public synchronized RConstructor getWrapper(BConstructor wrapped)
         throws RemoteException
@@ -119,8 +115,7 @@ public class WrapperPool
     }
 
     /**
-     * @param object
-     * @return
+     * Get a remote wrapper for a BObject.
      */
     public synchronized RObject getWrapper(BObject wrapped)
         throws RemoteException
@@ -137,8 +132,7 @@ public class WrapperPool
     }
 
     /**
-     * @param wrapped
-     * @return
+     * Get a remote wrapper for a BField.
      */
     public synchronized RField getWrapper(BField wrapped)
         throws RemoteException
@@ -152,6 +146,14 @@ public class WrapperPool
             pool.put(wrapped, wrapper);
         }
         return wrapper;
+    }
+
+    /**
+     * Removes a wrapper for a particular object (key) from the pool
+     */
+    public synchronized void remove(Object wrapped)
+    {
+        pool.remove(wrapped);        
     }
 
 }

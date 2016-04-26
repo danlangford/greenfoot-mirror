@@ -31,9 +31,8 @@ import java.util.Map;
  * Most operations on this type fail with an UnsupportedOperationException.
  * 
  * @author Davin McCall
- * @version $Id: TextType.java 6215 2009-03-30 13:28:25Z polle $
  */
-public class TextType extends GenTypeParameterizable
+public class TextType extends JavaType
 {
     private String text;
     
@@ -90,7 +89,7 @@ public class TextType extends GenTypeParameterizable
     /* (non-Javadoc)
      * @see bluej.debugger.gentype.GenType#mapTparsToTypes(java.util.Map)
      */
-    public JavaType mapTparsToTypes(Map tparams)
+    public JavaType mapTparsToTypes(Map<String, ? extends GenTypeParameter> tparams)
     {
         throw new UnsupportedOperationException();
     }
@@ -122,22 +121,17 @@ public class TextType extends GenTypeParameterizable
     
     // methods from GenTypeParameterizable
     
-    public void getParamsFromTemplate(Map map, GenTypeParameterizable template)
+    public void getParamsFromTemplate(Map<String,GenTypeParameter> map, GenTypeParameter template)
     {
         throw new UnsupportedOperationException();
     }
 
-    public boolean contains(GenTypeParameterizable other)
-    {
-        throw new UnsupportedOperationException();
-    }
-    
     public GenTypeSolid getLowerBound()
     {
         throw new UnsupportedOperationException();
     }
     
-    public boolean equals(GenTypeParameterizable other)
+    public boolean equals(JavaType other)
     {
         if (other == null) {
             return false;
@@ -165,6 +159,24 @@ public class TextType extends GenTypeParameterizable
     }
     
     public GenTypeSolid getUpperBound()
+    {
+        throw new UnsupportedOperationException();
+    }
+    
+    @Override
+    public JavaType getCapture()
+    {
+        throw new UnsupportedOperationException();
+    }
+    
+    @Override
+    public GenTypeArray getArray()
+    {
+        throw new UnsupportedOperationException();
+    }
+    
+    @Override
+    public boolean isWildcard()
     {
         throw new UnsupportedOperationException();
     }

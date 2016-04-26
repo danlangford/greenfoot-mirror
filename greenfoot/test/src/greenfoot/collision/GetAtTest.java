@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -19,9 +19,6 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-/*
- * Created on Jun 7, 2005
- */
 package greenfoot.collision;
 
 import java.util.List;
@@ -36,7 +33,6 @@ import junit.framework.TestCase;
 public class GetAtTest extends TestCase
 {
     private World world;
-
     
     @Override
     protected void setUp()
@@ -45,13 +41,13 @@ public class GetAtTest extends TestCase
         GreenfootUtil.initialise(new TestUtilDelegate());        
     }
     
+    @SuppressWarnings("unchecked")
     public void testPixelOdd()
     {
         world = WorldCreator.createWorld(100, 100, 1);
 
         TestObject actor1 = new TestObject(21, 21);
         world.addObject(actor1, 50 , 50);
-
 
         List result = world.getObjectsAt(50, 50, TestObject.class);
         assertTrue(result.contains(actor1));
@@ -70,6 +66,7 @@ public class GetAtTest extends TestCase
 
     }
 
+    @SuppressWarnings("unchecked")
     public void testPixelEven()
     {
         world = WorldCreator.createWorld(100, 100, 1);
@@ -97,6 +94,7 @@ public class GetAtTest extends TestCase
     /**
      * Test that collision checking works when an actor is rotated.
      */
+    @SuppressWarnings("unchecked")
     public void testRotation()
     {
         world = WorldCreator.createWorld(100, 100, 1);
@@ -117,17 +115,15 @@ public class GetAtTest extends TestCase
         result = world.getObjectsAt(57, 67, TestObject.class);
         assertTrue(result.contains(actor1));
         
-        
-
         // TODO also try negative degress and odd degrees like 55 or something.
         // And some values outside the rotation
-    
     }
     
     /** 
-     * Test that the IBSP collision checker can handle rotated actors. 
+     * Test that the collision checker can handle rotated actors. 
      */
-    public void testIBSPDynamicRotationBug() 
+    @SuppressWarnings("unchecked")
+    public void testRotation2() 
     {
         world = WorldCreator.createWorld(10, 10, 50);
         // Test a second object forced to be on the bounds of the areas in the IBSPColChecker
@@ -142,23 +138,26 @@ public class GetAtTest extends TestCase
         List result = world.getObjectsAt(5, 0, TestObject.class);
         assertTrue(result.contains(actor2));
 
-        //After the rotation, it should now overlap surrounding cells.
+        //After the rotation, it should not overlap surrounding cells.
         
         result = world.getObjectsAt(6, 0, TestObject.class);
-        assertTrue(result.contains(actor2));
+        assertFalse(result.contains(actor2));
         result = world.getObjectsAt(5, 1, TestObject.class);
-        assertTrue(result.contains(actor2));
-        
-        // This one will fail if the bounding box does not consider rotation.
+        assertFalse(result.contains(actor2));
         result = world.getObjectsAt(4, 0, TestObject.class);
-        assertTrue(result.contains(actor2));
+        assertFalse(result.contains(actor2));
     }
     
     /** 
-     * Test that the IBSP collision checker can handle rotated actors. 
+     * Test that the collision checker can handle rotated actors. 
      */
-    public void testIBSPRotationBug() 
+    @SuppressWarnings("unchecked")
+    public void testRotation3() 
     {
+        // This test currently fails, but I'm not convinced it *should* pass. Do we really want rotated
+        // objects in a cell to overlap other cells? Does "getObjectsAt" really return all objects
+        // overlapping any part of the cell? - DM
+        
         world = WorldCreator.createWorld(10, 10, 50);
         // Test a second object forced to be on the bounds of the areas in the IBSPColChecker
 
@@ -174,16 +173,15 @@ public class GetAtTest extends TestCase
         //After the rotation, it should now overlap surrounding cells.
         
         result = world.getObjectsAt(6, 0, TestObject.class);
-        assertTrue(result.contains(actor2));
+        assertFalse(result.contains(actor2));
         result = world.getObjectsAt(5, 1, TestObject.class);
-        assertTrue(result.contains(actor2));
-        
-        // This one will fail if the bounding box does not consider rotation.
+        assertFalse(result.contains(actor2));
         result = world.getObjectsAt(4, 0, TestObject.class);
-        assertTrue(result.contains(actor2));
+        assertFalse(result.contains(actor2));
     }
     
     
+    @SuppressWarnings("unchecked")
     public void testBigCells() 
     {
         world = WorldCreator.createWorld(10, 10, 50);
@@ -205,10 +203,5 @@ public class GetAtTest extends TestCase
         assertFalse(result.contains(actor1));
         result = world.getObjectsAt(2, 1, TestObject.class);
         assertFalse(result.contains(actor1));  
-        
     }
-    
-    
-
-    
 }

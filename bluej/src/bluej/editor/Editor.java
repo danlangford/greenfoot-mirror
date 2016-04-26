@@ -19,13 +19,6 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-// Copyright (c) 2000, 2005 BlueJ Group, Deakin University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html 
-// Any queries should be directed to Michael Kolling mik@bluej.org
 package bluej.editor;
 
 import java.awt.Rectangle;
@@ -33,12 +26,15 @@ import java.awt.print.PrinterJob;
 import java.io.IOException;
 
 import javax.swing.text.BadLocationException;
+import javax.swing.text.Document;
+
+import bluej.parser.SourceLocation;
+import bluej.parser.nodes.ParsedCUNode;
 
 
 /**
  * Interface between an editor and the rest of BlueJ
  * 
- * @version $Id: Editor.java 6215 2009-03-30 13:28:25Z polle $
  * @author Michael Cahill
  * @author Michael Kolling
  */
@@ -99,12 +95,11 @@ public interface Editor
     void setSelection(int firstlineNumber, int firstColumn,
                       int secondLineNumber, int SecondColumn);
 
-
     /**
      * Show the editor window. This includes whatever is necessary of the
      * following: make visible, de-iconify, bring to front of window stack.
      * 
-     * @param vis DOCUMENT ME!
+     * @param vis  true to make the editor visible, or false to hide it.
      */
     void setVisible(boolean vis);
 
@@ -241,14 +236,22 @@ public interface Editor
      * @return The bounds
      */
     Rectangle getBounds();
+    
+    /**
+     * Get the source document that this editor is currently editing. Certain
+     * operations (such as reload) might change the document; that is, the
+     * returned document may become invalid at some later point in time.
+     * 
+     * @return  the document being edited.
+     */
+    Document getSourceDocument(); 
 
-
-   /**
+    /**
      * Returns the current caret location within the edited text.
      *
      * @return    the LineColumn object.
      */
-    public LineColumn getCaretLocation();
+    public SourceLocation getCaretLocation();
     
     /**
      * Sets the current Caret location within the edited text.
@@ -256,7 +259,7 @@ public interface Editor
      * @param  location                   The location in the text to set the Caret to.
      * @throws  IllegalArgumentException  if the specified TextLocation represents a position which does not exist in the text.
      */
-    public void setCaretLocation(LineColumn location);
+    public void setCaretLocation(SourceLocation location);
 
 
     /**
@@ -264,14 +267,14 @@ public interface Editor
      *
      * @return    the current beginning of the selection or null if no text is selected.
      */
-    public LineColumn getSelectionBegin();
+    public SourceLocation getSelectionBegin();
     
     /**
      * Returns the location where the current selection ends.
      *
      * @return    the current end of the selection or null if no text is selected.
      */
-    public LineColumn getSelectionEnd();
+    public SourceLocation getSelectionEnd();
 
     /**
      * Returns the text which lies between the two LineColumn.
@@ -279,9 +282,9 @@ public interface Editor
      * @param  begin                      The beginning of the text to get
      * @param  end                        The end of the text to get
      * @return                            The text value
-     * @throws  IllegalArgumentException  if either of the specified TextLocations represent a position which does not exist in the text.
+     * @throws  IllegalArgumentException  if either of the specified SourceLocations represent a position which does not exist in the text.
      */
-    public String getText( LineColumn begin, LineColumn end );    
+    public String getText( SourceLocation begin, SourceLocation end );    
 
     /**
      * Request to the editor to replace the text between beginning and end with the given newText
@@ -294,7 +297,7 @@ public interface Editor
      * represent a position which does not exist in the text.
      * @throws  BadLocationException  if internally the text points outside a location in the text.
      */
-    public void setText( LineColumn begin, LineColumn end, String newText )
+    public void setText(SourceLocation begin, SourceLocation end, String newText)
         throws BadLocationException;
     
     /**
@@ -305,14 +308,14 @@ public interface Editor
      * @throws  IllegalArgumentException  if either of the specified TextLocations
      * represent a position which does not exist in the text.
      */
-    public void setSelection(LineColumn begin, LineColumn end);
+    public void setSelection(SourceLocation begin, SourceLocation end);
     
     /**
      * Returns the LineColumn object from the given offset in the text.
      *
      * @return    the LineColumn object or null if the offset points outside the text.
      */
-    public LineColumn getLineColumnFromOffset(int offset);
+    public SourceLocation getLineColumnFromOffset(int offset);
     
     /**
      * Translates a LineColumn into an offset into the text held by the editor.
@@ -322,7 +325,7 @@ public interface Editor
      * @throws  IllegalArgumentException  if the specified LineColumn
      * represent a position which does not exist in the text.
      */
-    public int getOffsetFromLineColumn( LineColumn location );
+    public int getOffsetFromLineColumn(SourceLocation location);
     
     /**
      * Returns a property of the current editor.
@@ -350,7 +353,7 @@ public interface Editor
     public int getLineLength(int line);
     
     /**
-     * Return the number of lines in the documant.
+     * Return the number of lines in the document.
      */
     public int numberOfLines();
     
@@ -365,5 +368,12 @@ public interface Editor
      */
     public int getTextLength ();    
     
+    /**
+     * Get a node representing the the parsed structure of the source
+     * document as a tree.
+     * 
+     * @return A ParsedNode instance, or null if not supported.
+     */
+    public ParsedCUNode getParsedNode();
     
-} // end interface Editor
+}

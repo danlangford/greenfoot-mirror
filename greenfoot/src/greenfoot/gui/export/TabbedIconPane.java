@@ -28,7 +28,7 @@ package greenfoot.gui.export;
  * Currently hardcoded for one set of icons. Could be generalised if needed.
  *
  * @author Michael Kolling
- * @version $Id: TabbedIconPane.java 6216 2009-03-30 13:41:07Z polle $
+ * @version $Id: TabbedIconPane.java 8233 2010-09-02 10:13:46Z nccb $
  */
 
 import bluej.Config;
@@ -43,7 +43,6 @@ import javax.swing.ButtonGroup;
 import javax.swing.ImageIcon;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
-import javax.swing.JSeparator;
 import javax.swing.SwingConstants;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
@@ -70,7 +69,7 @@ public class TabbedIconPane extends JPanel
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         this.setBackground(backgroundColor);
         add(makeButtonRow(initialSelect));
-        add(new JSeparator());
+        //add(new JSeparator());
     }
     
     /**

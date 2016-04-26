@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -32,7 +32,6 @@ import bluej.Config;
  * by running the job's "compile" method.
  *
  * @author  Michael Cahill
- * @version $Id: Job.java 6215 2009-03-30 13:28:25Z polle $
  */
 class Job
 {
@@ -66,8 +65,6 @@ class Job
     public void compile()
     {
         try {
-            boolean successful = true;
-			
             if(observer != null)
                 observer.startCompile(sources);
 
@@ -76,11 +73,11 @@ class Job
 
             compiler.setProjectClassLoader(bpClassLoader);   // The correct class loader must always be set
 
-            successful = compiler.compile(sources, observer, internal);
-	        //Debug.message("compile success: " + successful);
+            boolean successful = compiler.compile(sources, observer, internal);
 
-            if(observer != null)
+            if(observer != null) {
                 observer.endCompile(sources, successful);
+            }
         } catch(Exception e) {
             System.err.println(Config.getString("compileException") + ": " + e);
             e.printStackTrace();

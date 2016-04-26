@@ -32,7 +32,6 @@ import java.awt.image.BufferedImage;
  * Label used for the SplashWindow for BlueJ.
  * 
  * @author Poul Henriksen
- * @version $Id$
  */
 class BlueJLabel extends SplashLabel
 {
@@ -53,6 +52,6 @@ class BlueJLabel extends SplashLabel
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g2d.addRenderingHints(hints);
         }
-        g.drawString("Version " + Boot.BLUEJ_VERSION, 36, image.getHeight()-28);
+        g.drawString("Version " + Boot.BLUEJ_VERSION, 225, 48 /*image.getHeight()-28*/ );
   }
 }

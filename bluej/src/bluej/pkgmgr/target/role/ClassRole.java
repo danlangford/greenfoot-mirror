@@ -22,6 +22,8 @@
 package bluej.pkgmgr.target.role;
 
 import java.awt.Color;
+import java.awt.GradientPaint;
+import java.awt.Paint;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -55,13 +57,13 @@ import bluej.views.ViewFilter;
  * class types
  * 
  * @author Bruce Quig
- * @version $Id: ClassRole.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: ClassRole.java 7779 2010-06-16 14:44:28Z davmac $
  */
 public abstract class ClassRole
 {
     public final static String CLASS_ROLE_NAME = null;
 
-    private final Color defaultbg = Config.getItemColour("colour.class.bg.default");
+    private final Color defaultbg = Config.getOptionalItemColour("colour.class.bg.default");
     protected final Color envOpColour = Config.getItemColour("colour.menu.environOp");
 
     public String getRoleName()
@@ -101,10 +103,18 @@ public abstract class ClassRole
     /**
      * Return the default background colour for targets that don't want to
      * define their own colour.
+     * @param width Width of total area to paint
+     * @param height Height of total area to paint
      */
-    public Color getBackgroundColour()
+    public Paint getBackgroundPaint(int width, int height)
     {
-        return defaultbg;
+        if (defaultbg != null) {
+            return defaultbg;
+        } else {
+            return new GradientPaint(
+                0, 0, new Color(246,221,192),
+                0, height, new Color(245,204,155)); 
+        }
     }
 
     public String getStereotypeLabel()
@@ -127,7 +137,7 @@ public abstract class ClassRole
      */
     public boolean generateSkeleton(String template, Package pkg, String name, String sourceFile)
     {
-        Hashtable translations = new Hashtable();
+        Hashtable<String,String> translations = new Hashtable<String,String>();
         translations.put("CLASSNAME", name);
 
         if (pkg.isUnnamedPackage())
@@ -143,7 +153,9 @@ public abstract class ClassRole
                 pkg.showError("duplicate-name");
                 return false;
             }
-            BlueJFileReader.translateFile(Config.getClassTemplateFile(template), new File(sourceFile), translations, Charset.forName("UTF-8"));
+            BlueJFileReader.translateFile(Config.getClassTemplateFile(template),
+                    new File(sourceFile), translations,
+                    Charset.forName("UTF-8"), Charset.defaultCharset());
             return true;
         }
         catch (IOException e) {
@@ -196,7 +208,7 @@ public abstract class ClassRole
      * 
      * @return true if any menu items have been added
      */
-    public boolean createRoleMenu(JPopupMenu menu, ClassTarget ct, Class cl, int state)
+    public boolean createRoleMenu(JPopupMenu menu, ClassTarget ct, Class<?> cl, int state)
     {
         return false;
     }
@@ -227,7 +239,7 @@ public abstract class ClassRole
      * @param cl
      *            Class object associated with this class target
      */
-    public boolean createClassConstructorMenu(JPopupMenu menu, ClassTarget ct, Class cl)
+    public boolean createClassConstructorMenu(JPopupMenu menu, ClassTarget ct, Class<?> cl)
     {
         ViewFilter filter;
         View view = View.getView(cl);
@@ -243,7 +255,7 @@ public abstract class ClassRole
         return false;
     }
 
-    public boolean createClassStaticMenu(JPopupMenu menu, ClassTarget ct, Class cl)
+    public boolean createClassStaticMenu(JPopupMenu menu, ClassTarget ct, Class<?> cl)
     {
         ViewFilter filter;
         View view = View.getView(cl);
@@ -303,10 +315,10 @@ public abstract class ClassRole
      * @param ct  The class target
      * @return  A list of File objects
      */
-    public List getAllFiles(ClassTarget ct)
+    public List<File> getAllFiles(ClassTarget ct)
     {
         // Source, .class, .ctxt, and doc (.html)
-        List rlist = new ArrayList();
+        List<File> rlist = new ArrayList<File>();
         
         rlist.add(ct.getClassFile());
         rlist.add(ct.getSourceFile());

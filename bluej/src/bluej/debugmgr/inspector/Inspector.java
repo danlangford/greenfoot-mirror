@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -25,14 +25,29 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Frame;
+import java.awt.GraphicsConfiguration;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
-import java.awt.event.*;
+import java.awt.Point;
+import java.awt.Window;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionAdapter;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.lang.reflect.Method;
 
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.border.Border;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 
@@ -40,10 +55,13 @@ import bluej.BlueJTheme;
 import bluej.Config;
 import bluej.debugger.DebuggerObject;
 import bluej.pkgmgr.Package;
+import bluej.pkgmgr.PackageEditor;
 import bluej.testmgr.record.GetInvokerRecord;
 import bluej.testmgr.record.InvokerRecord;
 import bluej.testmgr.record.ObjectInspectInvokerRecord;
+import bluej.utility.Debug;
 import bluej.utility.DialogManager;
+import java.awt.Image;
 
 /**
  * 
@@ -54,7 +72,6 @@ import bluej.utility.DialogManager;
  * @author Michael Kolling
  * @author Poul Henriksen
  * @author Bruce Quig
- * @version $Id: Inspector.java 6215 2009-03-30 13:28:25Z polle $
  */
 public abstract class Inspector extends JFrame
     implements ListSelectionListener
@@ -66,11 +83,11 @@ public abstract class Inspector extends JFrame
     protected final static String inspectLabel = Config.getString("debugger.inspector.inspect");
     protected final static String getLabel = Config.getString("debugger.inspector.get");
     protected final static String close = Config.getString("close");
-
-    private final static Color valueFieldColor = Config.getItemColour("colour.inspector.value.bg");
+ 
     // === instance variables ===
 
     protected FieldList fieldList = null;
+    private Color fieldListBackgroundColor;
 
     protected JButton inspectButton;
     protected JButton getButton;
@@ -88,6 +105,7 @@ public abstract class Inspector extends JFrame
     protected Package pkg;
     protected InspectorManager inspectorManager;
     protected InvokerRecord ir;
+    protected Point initialClick;
 
     //The width of the list of fields
     private static final int MIN_LIST_WIDTH = 150;
@@ -102,18 +120,17 @@ public abstract class Inspector extends JFrame
      * @param ir
      *            the InvokerRecord for this inspector (or null)
      */
-    protected Inspector(InspectorManager inspectorManager, Package pkg, InvokerRecord ir)
+    protected Inspector(InspectorManager inspectorManager, Package pkg, InvokerRecord ir, Color valueFieldColor)
     {
-        super();
-
-        // Later, we cast the content pane to a JPanel in order to set its border.
-        // Now, we need to make sure it really is a JPanel...
-        setContentPane(new JPanel());
+        super(AWTUtilitiesWrapper.getBestGC());
         
         if(inspectorManager == null) {
             throw new NullPointerException("An inspector must have an InspectorManager.");
         }
-        setIconImage(BlueJTheme.getIconImage());
+        Image icon = BlueJTheme.getIconImage();
+        if (icon != null) {
+            setIconImage(icon);
+        }
 
         if (pkg == null && ir != null) {
             // Get button cannot be enabled when pkg==null
@@ -126,22 +143,25 @@ public abstract class Inspector extends JFrame
         // We want to be able to veto a close
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
+            @Override
             public void windowClosing(WindowEvent E)
             {
                 doClose(true);
             }
         });
 
+        fieldListBackgroundColor = valueFieldColor;
         initFieldList();
     }
 
     /**
      * Initializes the list of fields. This creates the component that shows the
      * fields.
+     * @param valueFieldColor 
      */
     private void initFieldList()
     {
-        fieldList = new FieldList(MAX_LIST_WIDTH, valueFieldColor);
+        fieldList = new FieldList(MAX_LIST_WIDTH, fieldListBackgroundColor);
         fieldList.setBackground(this.getBackground());
         fieldList.setOpaque(true);
         fieldList.setSelectionBackground(Config.getSelectionColour());
@@ -150,6 +170,7 @@ public abstract class Inspector extends JFrame
         // objects. assumption is made that valueChanged will have selected
         // object on first click
         MouseListener mouseListener = new MouseAdapter() {
+            @Override
             public void mouseClicked(MouseEvent e)
             {
                 // monitor for double clicks
@@ -185,6 +206,7 @@ public abstract class Inspector extends JFrame
         return ir != null;
     }
 
+    @Override
     public void setVisible(boolean visible)
     {
         super.setVisible(visible);
@@ -219,11 +241,6 @@ public abstract class Inspector extends JFrame
      * Show the inspector for the class of an object.
      */
     abstract protected void showClass();
-
-    /**
-     * We are about to inspect an object - prepare.
-     */
-    abstract protected void prepareInspection();
 
     /**
      * Remove this inspector.
@@ -281,8 +298,10 @@ public abstract class Inspector extends JFrame
         final Object[] listData = getListData();
         double height = fieldList.getPreferredSize().getHeight();
         int rows = listData.length;
+        int scrollBarWidth = 0;
         if (rows > getPreferredRows()) {
             height = fieldList.getRowHeight() * getPreferredRows();
+            scrollBarWidth = 32; // add some space for a scrollbar
         }
         
         int width = (int) fieldList.getPreferredSize().getWidth();
@@ -294,7 +313,7 @@ public abstract class Inspector extends JFrame
         }
         
         
-        fieldList.setPreferredScrollableViewportSize(new Dimension(width, (int) height));
+        fieldList.setPreferredScrollableViewportSize(new Dimension(width+scrollBarWidth, (int) height));
         pack();
         repaint();
     }
@@ -363,13 +382,10 @@ public abstract class Inspector extends JFrame
      */
     protected void doInspect()
     {
-        prepareInspection();
-
         if (selectedField != null) {
             boolean isPublic = getButton.isEnabled();
             
-            //POLLE what about classInspector record?
-            InvokerRecord newIr = new ObjectInspectInvokerRecord(selectedFieldName, selectedField.isArray(), ir);
+            InvokerRecord newIr = new ObjectInspectInvokerRecord(selectedFieldName, ir);
             inspectorManager.getInspectorInstance(selectedField, selectedFieldName, pkg, isPublic ? newIr : null, this);
         }
     }
@@ -382,7 +398,9 @@ public abstract class Inspector extends JFrame
     {
         if (selectedField != null) {
             GetInvokerRecord getIr = new GetInvokerRecord(selectedFieldType, selectedFieldName, ir);
-            pkg.getEditor().raisePutOnBenchEvent(this, selectedField, selectedField.getGenType(), getIr);
+            PackageEditor pkgEd = pkg.getEditor();
+            pkgEd.recordInteraction(getIr);
+            pkgEd.raisePutOnBenchEvent(this, selectedField, selectedField.getGenType(), getIr);
         }
     }
 
@@ -427,11 +445,6 @@ public abstract class Inspector extends JFrame
         return true;
     }
 
-    public void setBorder(Border border)
-    {
-        ((JPanel) getContentPane()).setBorder(border);
-    }
-
     protected JButton createCloseButton()
     {
         JButton button = new JButton(close);
@@ -458,8 +471,8 @@ public abstract class Inspector extends JFrame
         // Create panel with "inspect" and "get" buttons
         JPanel buttonPanel = new JPanel();
         buttonPanel.setOpaque(false);
+        buttonPanel.setDoubleBuffered(false);
         buttonPanel.setLayout(new GridLayout(0, 1));
-        buttonPanel.setOpaque(false);
         inspectButton = new JButton(inspectLabel);
         inspectButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e)
@@ -482,6 +495,7 @@ public abstract class Inspector extends JFrame
 
         JPanel buttonFramePanel = new JPanel();
         buttonFramePanel.setOpaque(false);
+        buttonFramePanel.setDoubleBuffered(false);
         buttonFramePanel.setLayout(new BorderLayout(0, 0));
         buttonFramePanel.add(buttonPanel, BorderLayout.NORTH);
         return buttonFramePanel;
@@ -493,10 +507,181 @@ public abstract class Inspector extends JFrame
     protected JScrollPane createFieldListScrollPane()
     {
         JScrollPane scrollPane = new JScrollPane(fieldList);
-        scrollPane.setBorder(BlueJTheme.generalBorder);
-        scrollPane.setOpaque(false);
-        scrollPane.getViewport().setOpaque(false);
-        
+        scrollPane.setBorder(BorderFactory.createLineBorder(fieldListBackgroundColor, 10));
+        scrollPane.getViewport().setBackground(fieldListBackgroundColor);
         return scrollPane;
     }
+    
+    // Allow movement of the window by dragging
+    // Adapted from: http://www.stupidjavatricks.com/?p=4
+    protected void installListenersForMoveDrag()
+    {
+        addMouseListener( new MouseAdapter()
+        {
+            @Override
+            public void mousePressed( MouseEvent e )
+            {
+                initialClick = e.getPoint();
+                //Component target = getComponentAt( initialClick );
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e)
+            {
+                initialClick = null;
+            }
+        });
+     
+        // Move window when mouse is dragged
+        addMouseMotionListener( new MouseMotionAdapter()
+        {
+            @Override
+            public void mouseDragged( MouseEvent e )
+            {
+                if (initialClick == null) {
+                    initialClick = e.getPoint();
+                    return;
+                }
+
+                // get location of Window
+                int thisX = getLocation().x;
+                int thisY = getLocation().y;
+                
+                // Determine how much the mouse moved since the initial click
+                int xMoved = ( thisX + e.getX() ) - ( thisX + initialClick.x );
+                int yMoved = ( thisY + e.getY() ) - ( thisY + initialClick.y );
+     
+                // Move window to this position
+                int X = thisX + xMoved;
+                int Y = thisY + yMoved;
+                setLocation( X, Y );
+            }
+        });
+    }
+    
+    /**
+    * Taken from the source code at: http://java.sun.com/developer/technicalArticles/GUI/translucent_shaped_windows/
+    *
+    * @author Anthony Petrov
+    */
+   private static class AWTUtilitiesWrapper {
+
+       private static Class<?> awtUtilitiesClass;
+       private static Class<?> translucencyClass;
+       // private static Method mIsTranslucencySupported,  mSetWindowShape,  mSetWindowOpacity;
+       private static Method mIsTranslucencyCapable, mSetWindowOpaque;
+       //public static Object PERPIXEL_TRANSPARENT,  TRANSLUCENT,  PERPIXEL_TRANSLUCENT;
+
+       static void init() {
+           try {
+               awtUtilitiesClass = Class.forName("com.sun.awt.AWTUtilities");
+               translucencyClass = Class.forName("com.sun.awt.AWTUtilities$Translucency");
+               if (translucencyClass.isEnum()) {
+                   Object[] kinds = translucencyClass.getEnumConstants();
+                   if (kinds != null) {
+                       //PERPIXEL_TRANSPARENT = kinds[0];
+                       //TRANSLUCENT = kinds[1];
+                       //PERPIXEL_TRANSLUCENT = kinds[2];
+                   }
+               }
+               // mIsTranslucencySupported = awtUtilitiesClass.getMethod("isTranslucencySupported", translucencyClass);
+               mIsTranslucencyCapable = awtUtilitiesClass.getMethod("isTranslucencyCapable", GraphicsConfiguration.class);
+               // mSetWindowShape = awtUtilitiesClass.getMethod("setWindowShape", Window.class, Shape.class);
+               // mSetWindowOpacity = awtUtilitiesClass.getMethod("setWindowOpacity", Window.class, float.class);
+               mSetWindowOpaque = awtUtilitiesClass.getMethod("setWindowOpaque", Window.class, boolean.class);
+           } catch (Exception ex) {
+               Debug.reportError("Couldn't support AWTUtilities", ex);
+           }
+       }
+
+       static {
+           init();
+       }
+       
+       private static boolean isSupported(Method method, Object kind) {
+           if (awtUtilitiesClass == null ||
+                   method == null)
+           {
+               return false;
+           }
+           try {
+               Object ret = method.invoke(null, kind);
+               if (ret instanceof Boolean) {
+                   return ((Boolean)ret).booleanValue();
+               }
+           } catch (Exception ex) {
+               Debug.reportError("Couldn't support AWTUtilities", ex);
+           }
+           return false;
+       }
+       
+       /*
+       public static boolean isTranslucencySupported(Object kind) {
+           if (translucencyClass == null) {
+               return false;
+           }
+           return isSupported(mIsTranslucencySupported, kind);
+       }
+       */
+       
+       public static boolean isTranslucencyCapable(GraphicsConfiguration gc) {
+           return isSupported(mIsTranslucencyCapable, gc);
+       }
+       
+       private static void set(Method method, Window window, Object value) {
+           if (awtUtilitiesClass == null ||
+                   method == null)
+           {
+               return;
+           }
+           try {
+               method.invoke(null, window, value);
+           } catch (Exception ex) {
+               Debug.reportError("Couldn't support AWTUtilities: ", ex);
+           }
+       }
+       
+       /*
+       public static void setWindowShape(Window window, Shape shape) {
+           set(mSetWindowShape, window, shape);
+       }
+
+       public static void setWindowOpacity(Window window, float opacity) {
+           set(mSetWindowOpacity, window, Float.valueOf(opacity));
+       }
+       */
+       
+       public static void setWindowOpaque(Window window, boolean opaque) {
+           set(mSetWindowOpaque, window, Boolean.valueOf(opaque));
+       }
+       
+       public static GraphicsConfiguration getBestGC() {
+           GraphicsConfiguration translucencyCapableGC = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration();
+           if (!AWTUtilitiesWrapper.isTranslucencyCapable(translucencyCapableGC)) {
+               translucencyCapableGC = null;
+
+               GraphicsEnvironment env =
+                       GraphicsEnvironment.getLocalGraphicsEnvironment();
+               GraphicsDevice[] devices = env.getScreenDevices();
+
+               for (int i = 0; i < devices.length && translucencyCapableGC == null; i++) {
+                   GraphicsConfiguration[] configs = devices[i].getConfigurations();
+                   for (int j = 0; j < configs.length && translucencyCapableGC == null; j++) {
+                       if (AWTUtilitiesWrapper.isTranslucencyCapable(configs[j])) {
+                           translucencyCapableGC = configs[j];
+                       }
+                   }
+               }
+           }
+           if (translucencyCapableGC == null) {
+               Debug.message("No translucency capable GC");
+           }
+           return translucencyCapableGC;
+       }
+   }
+   
+   protected void setWindowOpaque(boolean b)
+   {
+       AWTUtilitiesWrapper.setWindowOpaque(this, b);
+   }
 }

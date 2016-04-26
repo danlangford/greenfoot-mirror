@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,7 +22,6 @@
 package bluej.testmgr.record;
 
 import bluej.debugger.DebuggerObject;
-import bluej.debugger.gentype.GenTypeArray;
 import bluej.debugger.gentype.JavaType;
 import bluej.debugmgr.objectbench.ObjectBench;
 import bluej.debugmgr.objectbench.ObjectWrapper;
@@ -36,36 +35,32 @@ import bluej.utility.JavaNames;
  * This record is for method calls that return a result.
  *
  * @author  Andrew Patterson
- * @version $Id: MethodInvokerRecord.java 6312 2009-05-07 04:44:13Z davmac $
  */
 public class MethodInvokerRecord extends VoidMethodInvokerRecord
 {
     private JavaType returnType;
-	private String benchType;
-	protected String benchName;
+    private String benchType;
+    protected String benchName;
 	
-	/** How many times has this record been used. */
+    /** How many times has this record been used. */
     private int usageCount;
     
     /** Has the method call been initialised? */
     private boolean methodCallInited = false;
     
-    private PkgMgrFrame pkgMgrFrame;
-	
     /**
      * Records a method call that returns a result to the user.
      * 
      * @param returnType  the Class of the return type of the method
      * @param command     the method statement to execute
      */
-    public MethodInvokerRecord(JavaType returnType, String command, String [] argumentValues, PkgMgrFrame pkgMgrFrame)
+    public MethodInvokerRecord(JavaType returnType, String command, String [] argumentValues)
     {
     	super(command, argumentValues);
     	
         this.returnType = returnType;
         this.benchType = returnType.toString(false);
         this.benchName = null;
-        this.pkgMgrFrame = pkgMgrFrame;
     }
 
     /**
@@ -76,80 +71,79 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
      * @param name
      * @param type
      */
-	public void setBenchName(String name, String type)
-	{
-		benchName = name;
-		benchType = type;
-	}
-	
-	/**
-	 * Construct a declaration for any objects constructed
-	 * by this invoker record.
-	 * 
-	 * @return a String representing the object declaration
-	 *         src or null if there is none.
-	 */    
+    public void setBenchName(String name, String type)
+    {
+        benchName = name;
+        benchType = type;
+    }
+
+    /**
+     * Construct a declaration for any objects constructed
+     * by this invoker record.
+     * 
+     * @return a String representing the object declaration
+     *         src or null if there is none.
+     */    
     public String toFixtureDeclaration()
     {
-		// if it hasn't been assigned a name there is nothing to do for
-		// fixture declaration
-		if (benchName == null)
-			return null;
+        // if it hasn't been assigned a name there is nothing to do for
+        // fixture declaration
+        if (benchName == null)
+            return null;
 
-		// declare the variable		
-		StringBuffer sb = new StringBuffer();
-		sb.append(fieldDeclarationStart);
-		sb.append(benchDeclaration());
-		sb.append(benchName);
-		sb.append(statementEnd);
-
-		return sb.toString();
-    }
-    
-	/**
-	 * Construct a portion of an initialisation method for
-	 * this invoker record.
-	 *  
-	 * @return a String reprenting the object initialisation
-	 *         src or null if there is none. 
-	 */    
-    public String toFixtureSetup()
-    {
-		if (benchName == null) {
-			return secondIndent + command + statementEnd;
-		}
-		
-		StringBuffer sb = new StringBuffer();
-		sb.append(secondIndent);
-		sb.append(benchAssignmentTypecast());
+        // declare the variable		
+        StringBuffer sb = new StringBuffer();
+        sb.append(fieldDeclarationStart);
+        sb.append(benchDeclaration());
+        sb.append(benchName);
         sb.append(statementEnd);
-		
-		return sb.toString();
+
+        return sb.toString();
     }
     
     /**
-     * Construct a portion of a test method for this invoker record.
-     * 
-     * @return a String representing the test method src
+     * Construct a portion of an initialisation method for
+     * this invoker record.
+     *  
+     * @return a String reprenting the object initialisation
+     *         src or null if there is none. 
+     */    
+    public String toFixtureSetup()
+    {
+        if (benchName == null) {
+            return secondIndent + command + statementEnd;
+        }
+
+        StringBuffer sb = new StringBuffer();
+        sb.append(secondIndent);
+        sb.append(benchAssignmentTypecast());
+        sb.append(statementEnd);
+
+        return sb.toString();
+    }
+
+    /*
+     * @see bluej.testmgr.record.VoidMethodInvokerRecord#toTestMethod(bluej.pkgmgr.PkgMgrFrame)
      */
-    public String toTestMethod()
+    @Override
+    public String toTestMethod(PkgMgrFrame pmf)
     {
         StringBuffer sb = new StringBuffer();
-        sb.append(toTestMethodInit());
-    	
+        sb.append(toTestMethodInit(pmf));
+
         String resultRef = toExpression();
 
         // with no uses of the result, just invoke the method.
         if (getUsageCount() == 0) {
-        	sb.append(secondIndent + resultRef + statementEnd);
+            sb.append(secondIndent + resultRef + statementEnd);
         }
         else {
-        	// here are all the assertions
-        	for (int i = 0; i < getAssertionCount(); i++) {
-        		sb.append(secondIndent);
-        		sb.append(insertCommandIntoAssertionStatement(getAssertion(i), resultRef));
-        		sb.append(statementEnd);
-        	}
+            // here are all the assertions
+            for (int i = 0; i < getAssertionCount(); i++) {
+                sb.append(secondIndent);
+                sb.append(insertCommandIntoAssertionStatement(getAssertion(i), resultRef));
+                sb.append(statementEnd);
+            }
         }
 
         return sb.toString();
@@ -160,7 +154,7 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
      * up local variables if the result of the method is used more than once or
      * placed on the bench by using "Get".
      */
-    private String toTestMethodInit()
+    private String toTestMethodInit(PkgMgrFrame pkgMgrFrame)
     {
         // If we have already prepared the method call, we return the name that
         // references it.
@@ -175,10 +169,9 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
                 // method result more than once, we need to put it on the bench to
                 // give it a unique name.
                 DebuggerObject result = getResultObject();
-                assert (result != null);
                 ObjectBench bench = pkgMgrFrame.getObjectBench();
                 ObjectWrapper wrapper = ObjectWrapper.getWrapper(pkgMgrFrame, bench, result, result.getGenType(),
-                        "result");
+                "result");
                 bench.addObject(wrapper); // might change name
                 benchName = wrapper.getName();            
             }
@@ -191,8 +184,7 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
             // We used "Get" on the result, so increase usage count.
             incUsageCount();
         }
-        
-        assert (benchName != null);
+
         methodCallInited = true;
         // assign result to a local variable with the given benchName.
         return secondIndent + benchDeclaration() + benchAssignmentTypecast() + statementEnd;
@@ -216,49 +208,39 @@ public class MethodInvokerRecord extends VoidMethodInvokerRecord
         }
         return benchName;
     }
-	
-    @Override
-    public String getExpressionGlue()
-    {
-        if(returnType instanceof GenTypeArray) {
-            return "";
-        } else {
-            return ".";
-        }
-    }
 
     /**
      * @return A string representing the type name of an object
      */
-	private String benchDeclaration()
-	{
-		return JavaNames.typeName(benchType) + " ";
-	}
-	
+    private String benchDeclaration()
+    {
+        return JavaNames.typeName(benchType) + " ";
+    }
+
     /**
      * @return A string representing the assignment statement
      *         with an optional typecast to get the type correct
      */
-	protected String benchAssignmentTypecast()
-	{
-		StringBuffer sb = new StringBuffer();
-		
-		sb.append(benchName);
-		sb.append(" = ");
+    protected String benchAssignmentTypecast()
+    {
+        StringBuffer sb = new StringBuffer();
 
-		// check if a typecast is required
-		if (!benchType.equals(returnType.toString(false))) {
-			sb.append("(");
-			sb.append(benchType);
-			sb.append(")");
-		}
+        sb.append(benchName);
+        sb.append(" = ");
 
-		sb.append(command);
+        // check if a typecast is required
+        if (!benchType.equals(returnType.toString(false))) {
+            sb.append("(");
+            sb.append(benchType);
+            sb.append(")");
+        }
 
-		return sb.toString();
-	}
+        sb.append(command);
 
-	@Override
+        return sb.toString();
+    }
+
+    @Override
     public void addAssertion(String assertion)
     {
         super.addAssertion(assertion);

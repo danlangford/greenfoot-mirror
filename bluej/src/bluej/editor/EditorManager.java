@@ -19,19 +19,13 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-//Copyright (c) 2000, 2005 BlueJ Group, Deakin University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html 
-// Any queries should be directed to Michael Kolling mik@bluej.org
-
 package bluej.editor;
 
 import java.awt.Rectangle;
-import java.util.List;
+
 import bluej.editor.moe.MoeEditorManager;
+import bluej.parser.entity.EntityResolver;
+import bluej.pkgmgr.JavadocResolver;
 
 /**
  * Interface between the editor manager and the rest of BlueJ.
@@ -39,7 +33,7 @@ import bluej.editor.moe.MoeEditorManager;
  * @author  Michael Cahill
  * @author  Michael Kolling
  * @author  Bruce Quig
- * @version $Id: EditorManager.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: EditorManager.java 7070 2010-02-01 06:20:09Z davmac $
  */
 public abstract class EditorManager
 {
@@ -56,27 +50,31 @@ public abstract class EditorManager
         return theEditorManager;
     }
 
-
     /**
      * Open an editor to display a class. The filename may be "null"
      * to open an empty editor (e.g. for displaying a view). The editor
-     * is initially hidden. A call to "Editor::show" is needed to make
-     * is visible after opening it.
+     * is initially hidden; a call to "Editor.show()" is needed to make
+     * it visible after opening it.
      *
-     * @param filename      name of the source file to open (may be null)
-     * @param docFilename	name of the documentation based on filename
-     * @param windowTitle   title of window (usually class name)
-     * @param watcher       an object interested in editing events
-     * @param compiled      true, if the class has been compiled
-     * @param breakpoints   vector of Integers: line numbers where bpts are
-     * @return		    the new editor, or null if there was a problem
+     * @param filename     name of the source file to open (may be null)
+     * @param docFilename  name of the corresponding javadoc file 
+     * @param windowTitle  title of window (usually class name)
+     * @param watcher      an watcher to be notified of edit events
+     * @param compiled     true, if the class has been compiled
+     * @param bounds       the bounds of the window to appear on screen
+     * @param projectResolver   A resolver for external symbols
+     * @param javadocResolver   A resolver for javadoc on external methods
+     * 
+     * @return          the new editor, or null if there was a problem
      */
     public abstract Editor openClass(String filename, 
         String docFilename, 
         String windowTitle, 
         EditorWatcher watcher, 
         boolean compiled, 
-        Rectangle bounds );
+        Rectangle bounds,
+        EntityResolver projectResolver,
+        JavadocResolver javadocResolver);
 
 
     /**

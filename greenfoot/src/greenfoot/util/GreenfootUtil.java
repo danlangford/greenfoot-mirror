@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,12 +21,11 @@
  */
 package greenfoot.util;
 
+import greenfoot.GreenfootImage;
 import greenfoot.platforms.GreenfootUtilDelegate;
 
 import java.awt.Color;
-import java.awt.Component;
 import java.awt.Cursor;
-import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Frame;
@@ -47,28 +46,30 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Modifier;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.AccessControlException;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
+import javax.imageio.ImageIO;
 import javax.swing.Action;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 
+import bluej.Boot;
 import bluej.Config;
 import bluej.utility.Utility;
-import javax.imageio.ImageIO;
-
-
 
 /**
  * General utility methods for Greenfoot.
  * 
  * @author Davin McCall
- * @version $Id: GreenfootUtil.java 6423 2009-07-09 13:35:24Z mjrb4 $
+ * @version $Id: GreenfootUtil.java 8226 2010-09-02 03:35:59Z davmac $
  */
 public class GreenfootUtil
 {
@@ -80,14 +81,19 @@ public class GreenfootUtil
 
     private static final Color urlColor = new Color(0, 90, 200);
     
-    public static void initialise(GreenfootUtilDelegate newDelegate) {
+    private static boolean haveCheckedForMp3 = false;
+    private static boolean mp3available = false;
+    
+    public static void initialise(GreenfootUtilDelegate newDelegate)
+    {
         delegate = newDelegate;
     }
     
     /**
      * Extracts the name of a class from the qualified class name.
      */
-    public static String extractClassName(String qualifiedName) {
+    public static String extractClassName(String qualifiedName)
+    {
         int index = qualifiedName.lastIndexOf('.');
         String name = qualifiedName;
         if (index >= 0) {
@@ -99,7 +105,8 @@ public class GreenfootUtil
     /**
      * Extracts the package of a class from the qualified class name.
      */
-    public static String extractPackageName(String qualifiedName) {
+    public static String extractPackageName(String qualifiedName)
+    {
         int index = qualifiedName.lastIndexOf('.');
         String name = "";
         if (index >= 0) {
@@ -240,8 +247,22 @@ public class GreenfootUtil
             int xoffs = (w - neww) / 2;
             int yoffs = (h - newh) / 2;
             // graphics.drawImage(inputImage, xoffs, yoffs, neww, newh, null);
-            waiter.drawWait(graphics, xoffs, yoffs, neww, newh);
+            
+            // This can throw an exception if the image is too big:
+            try {
+                waiter.drawWait(graphics, xoffs, yoffs, neww, newh);
+            }
+            catch (java.lang.OutOfMemoryError oome) {
+                // draw a white background overlaid with a red cross
+                graphics.setColor(Color.white);
+                graphics.fillRect(1, 1, w - 2, h - 2);
+                graphics.setColor(Color.red);
+                graphics.drawRect(0, 0, w - 1, h - 1);
+                graphics.drawLine(0, 0, w, h);
+                graphics.drawLine(0, h, w, 0);
+            }
         }
+        graphics.dispose();
         return rImage;
     }
     
@@ -438,27 +459,6 @@ public class GreenfootUtil
     }
 
     /**
-     * Opens a file browser and lets the user select a greenfoot scenario.
-     * @param parent For placing the file browser
-     * @return The selected scenario or null if nothing was selected
-     */
-    public static File getScenarioFromFileBrowser(Component parent) {
-        return delegate.getScenarioFromFileBrowser(parent);
-    }
-
-
-    /**
-     *  Get a file name from the user, using a file selection dialogue.
-     *  If cancelled or an invalid name was specified, return null.
-     */
-    public static String getNewProjectName(Component parent)
-    {
-        return delegate.getNewProjectName(parent);
-    }
-    
-
-    
-    /**
      * Tries to find the filename using the classloader. It first searches in
      * 'projectdir/dir/', then in the 'projectdir' and last as an absolute
      * filename or URL.
@@ -593,11 +593,11 @@ public class GreenfootUtil
     }
 
     /**
-     * 
      * Creates the skeleton for a new class
-     * 
      */
-    public static void createSkeleton(String className, String superClassName, File file, String templateFileName) throws IOException   {
+    public static void createSkeleton(String className, String superClassName, File file,
+            String templateFileName) throws IOException
+    {
         delegate.createSkeleton(className, superClassName, file, templateFileName);
     }
 
@@ -609,19 +609,26 @@ public class GreenfootUtil
         return delegate.getGreenfootLogoPath();
     }
     
-    public static boolean canBeInstantiated(Class<?> cls) {
+    /**
+     * Check whether a class can be instantiated: it is not abstract
+     * or an interface.
+     */
+    public static boolean canBeInstantiated(Class<?> cls)
+    {
         // ACC_INTERFACE 0x0200 Is an interface, not a class.
         // ACC_ABSTRACT 0x0400 Declared abstract; may not be
         // instantiated.
-        if(cls == null)
+        if (cls == null) {
             return false;
-        int modifiers = cls.getModifiers();
-        return ( (0x0600 & modifiers) == 0x0000);
+        }
+        if (cls.isEnum() || cls.isInterface()) {
+            return false;
+        }
+        return ! Modifier.isAbstract(cls.getModifiers());
     }
     
     /**
      * Creates a new image which is a copy of the original with a drop shadow added.
-     * 
      */
     public static BufferedImage createDragShadow(BufferedImage image)
     {
@@ -689,20 +696,6 @@ public class GreenfootUtil
         frame.setTitle(newTitle);
     }    
     
-
-    /**
-     * Replaces all occurrences of BlueJ with Greenfoot in the title of the dialog.
-     * <p>
-     * Should be called from event thread.
-     */
-    public static void makeGreenfootTitle(Dialog dialog)
-    {
-        String title = dialog.getTitle();
-        String newTitle = title.replaceAll("BlueJ", "Greenfoot");
-        dialog.setTitle(newTitle);
-    }    
-    
-    
     /**
      * Tries to locate the top level greenfoot dir. This method takes the
      * different platforms into account. Specifically the Mac has a different
@@ -747,4 +740,128 @@ public class GreenfootUtil
             }
         }
     }
+    
+    /**
+     * Returns a set of the third party libraries used by Greenfoot.
+     * 
+     */
+    public static Set<File> get3rdPartyLibs()
+    {
+        File bluejLibDir = Config.getBlueJLibDir();      
+        String[] thirdPartyLibs = Boot.GREENFOOT_EXPORT_JARS;
+        Set<File> jars = new TreeSet<File>();
+        for (String lib : thirdPartyLibs) {
+            jars.add(new File(bluejLibDir, lib));
+        }
+        return jars;
+    }
+
+    /**
+     * Check whether MP3 support is available.
+     */
+    public static boolean isMp3LibAvailable()
+    {
+        if (! haveCheckedForMp3) {
+            URL url = delegate.getResource("javazoom/jl/decoder/BitstreamException.class");
+            mp3available = url != null;
+            haveCheckedForMp3 = true;
+        }
+        return mp3available;
+    }
+
+    /**
+     * First tries to create the file with the given name and type. If it
+     * already exists, it will try creating the file with "01" appended to the
+     * filename, if that exists it will try "02" and so on.
+     * 
+     * @param dir Directory where the file should be created.
+     * @param name Base name of the file
+     * @param type Type of the file (extension) (without the dot)
+     * @throws IOException If an IO error is generate when trying to create the
+     *             file.
+     */
+    public static File createNumberedFile(File dir, String name, String type)
+        throws IOException
+    {
+        File f = new File(dir, name + "." + type);
+        int number = 1;
+        while (!f.createNewFile()) {
+            String numberString = null;
+            if (number < 10) {
+                numberString = "0" + number;
+            }
+            else {
+                numberString = "" + number;
+            }
+            f = new File(dir, name + numberString + "." + type);
+            number++;
+        }
+        return f;
+    }
+    
+    /**
+     * Retrieves the GreenfootImage either from the cache or a new image if not previously created
+     * Adds the image to the cached image list or the null image list (if none was found)
+     * @param className name of the class
+     * @param imageName filename of the image
+     */
+    public static GreenfootImage getGreenfootImage(String className, String imageName)
+    {   
+        GreenfootImage image=null;
+        if (imageName==null){
+            return image;
+        }
+        if (isInvalidImageFilename(imageName)){
+            return image;
+        }
+        // If it is the Actor class the image is always the same:
+        if (className.equals("Actor")) {
+            return new GreenfootImage(getGreenfootLogoPath());
+        }
+        try {
+            image = new GreenfootImage(imageName);
+        }
+        catch (IllegalArgumentException iae) {
+            // This occurs if the image file doesn't exist anymore
+        }
+        return image;
+    }
+
+    /**
+     * Remove the cached version of an image for a particular class. This should be
+     * called when the image for the class is changed. Thread-safe.
+     */
+    public static void removeCachedImage(String className)
+    {
+        delegate.removeCachedImage(className);
+    }
+   
+    /**
+     * Adds a filename with the associated image into the cache
+     * @param name filename (should be the image filename)
+     * @param image GreenfootImage
+     */
+    public static boolean addCachedImage(String name, GreenfootImage image)
+    {
+        return delegate.addCachedImage(name, image);
+    }
+    
+    /**
+     * Gets the cached image of the requested name
+     * @param name of the image
+     * @return GreenfootImage
+     */
+    public static GreenfootImage getCachedImage(String name)
+    {
+        return delegate.getCachedImage(name);
+    }
+    
+    /**
+     * Returns whether the cached image is null
+     */
+    public static boolean isInvalidImageFilename(String fileName)
+    {
+        return delegate.isNullCachedImage(fileName);
+    }
+
 }

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,14 +21,17 @@
  */
 package bluej.utility;
 
+import java.awt.Component;
+import java.awt.Point;
+import java.awt.Window;
+import java.io.File;
+
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+
 import bluej.Config;
-
-import java.awt.*;
-import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
-
-import javax.swing.*;
 
 /**
  * The dialog manager is a utility class to simplyfy communication with 
@@ -37,7 +40,6 @@ import javax.swing.*;
  * internationalised, using BlueJ's langauage library system.
  *
  * @author Michael Kolling
- * @version $Id: DialogManager.java 6353 2009-05-27 04:26:36Z marionz $
  */
 public class DialogManager
 {
@@ -52,12 +54,12 @@ public class DialogManager
     public static void showMessage(Component parent, String msgID)
     {
         String message = getMessage(msgID);
-        if(message != null)
+        if (message != null)
             JOptionPane.showMessageDialog(parent, message,
+                                          Config.getApplicationName() + ":  " +
                                           Config.getString("dialogmgr.message"),
                                           JOptionPane.INFORMATION_MESSAGE);
     }
-
 
     /**
      * Show an information dialog with message and "OK" button. The
@@ -70,8 +72,41 @@ public class DialogManager
                                            String text)
     {
         String message = getMessage(msgID);
-        if(message != null)
+        if (message != null)
             JOptionPane.showMessageDialog(parent, message + "\n" + text);
+    }
+    
+    /**
+     * Show an information dialog with message and "OK" button. The
+     * message itself is identified by a message ID (a short string)
+     * which is looked up in the language specific dialogue text file
+     * (eg. "dialogues.english"). A text (given in a parameter) is appended
+     * as a prefix to the message. Use showMessageWithText in order to
+     * append to the suffix of the message
+     */
+    public static void showMessageWithPrefixText(Component parent, String msgID,
+                                           String text)
+    {
+        String message = getMessage(msgID);
+        if (message != null)
+            JOptionPane.showMessageDialog(parent, text+ "\n"+message);
+    }
+    
+    /**
+     * Show an information dialog with message and "OK" button. The
+     * message itself is identified by a message ID (a short string)
+     * which is looked up in the language specific dialogue text file
+     * (eg. "dialogues.english"). A text (given in a parameter) is appended
+     * as a prefix to the message. Some text (given as a parameter -
+     * innerText) is inserted within the message itself. 
+     */
+    public static void showMessageWithPrefixText(Component parent, String msgID,
+                                           String text, String innerText)
+    {
+        String message = getMessage(msgID);
+        String messageDialog=Utility.mergeStrings(message, innerText);
+        if (message != null)
+            JOptionPane.showMessageDialog(parent, text+ "\n"+messageDialog);
     }
 
 
@@ -93,7 +128,7 @@ public class DialogManager
     public static void showError(Component parent, String msgID)
     {
         String message = getMessage(msgID);
-        if(message != null) {
+        if (message != null) {
             showErrorText(parent, message);
         }
     }
@@ -107,23 +142,23 @@ public class DialogManager
     public static void showErrorText(Component parent, String message)
     {
         JOptionPane.showMessageDialog(parent, message,
+                Config.getApplicationName() + ":  " +
                 Config.getString("dialogmgr.error"),
                 JOptionPane.ERROR_MESSAGE);
     }
     
 
     /**
-     * Show an error dialog with message and "OK" button.
+     * Show an error dialog with a message, some additional text, and "OK" button.
      */
     public static void showErrorWithText(Component parent, String msgID,
                                          String text)
     {
         String message = getMessage(msgID);
-        if(message != null)
-            JOptionPane.showMessageDialog(parent, message + "\n" + text,
-                                          "Error", JOptionPane.ERROR_MESSAGE);
+        if (message != null) {
+            showErrorText(parent, message + "\n" + text);
+        }
     }
-
 
     /**
      * Brings up a two or three button question dialog. The text for the
@@ -134,7 +169,7 @@ public class DialogManager
     public static int askQuestion(Component parent, String msgID)
     {
         String message = getMessage(msgID);
-        if(message != null) {
+        if (message != null) {
             int button3Index = message.lastIndexOf("\n");
             int button2Index = message.lastIndexOf("\n", button3Index-1);
             int button1Index = message.lastIndexOf("\n", button2Index-1);
@@ -151,6 +186,7 @@ public class DialogManager
             }
 
             return JOptionPane.showOptionDialog(parent, message,
+                                                Config.getApplicationName() + ":  " +
                                                 Config.getString("dialogmgr.question"),
                                                 JOptionPane.DEFAULT_OPTION,
                                                 JOptionPane.WARNING_MESSAGE,
@@ -171,7 +207,7 @@ public class DialogManager
     public static int askQuestion(Component parent, String msgID, String [] subs)
     {
         String message = getMessage(msgID);
-        if(message != null) {
+        if (message != null) {
             int button3Index = message.lastIndexOf("\n");
             int button2Index = message.lastIndexOf("\n", button3Index-1);
             int button1Index = message.lastIndexOf("\n", button2Index-1);
@@ -189,6 +225,7 @@ public class DialogManager
             }
 
             return JOptionPane.showOptionDialog(parent, message,
+                                                Config.getApplicationName() + ":  " +
                                                 Config.getString("dialogmgr.question"),
                                                 JOptionPane.DEFAULT_OPTION,
                                                 JOptionPane.WARNING_MESSAGE,
@@ -211,13 +248,13 @@ public class DialogManager
     {
         String response = "";
         String message = getMessage(msgID);
-        if(message != null) {
+        if (message != null) {
             int defaultTextIndex = message.lastIndexOf("\n");
             int titleIndex = message.lastIndexOf("\n", defaultTextIndex-1);
             String defaultText = message.substring(defaultTextIndex+1);
             String title = message.substring(titleIndex+1, defaultTextIndex);
             message = message.substring(0, titleIndex);
-            if("null".equals(defaultText)) {
+            if ("null".equals(defaultText)) {
                 defaultText = null;
             }
             response = (String)JOptionPane.showInputDialog(parent,
@@ -332,26 +369,38 @@ public class DialogManager
     public static int askQuestion(Component parent, String msgID, int numOptions)
     {
         String message = getMessage(msgID);
-        String buttonName;
-        int btnIndex=message.length()+1;
-        int prevBtnIndex=message.length(); 
-        String[] options=new String[numOptions];
         if(message != null) {
-        	for (int i=0; i < numOptions; i++){
-        		btnIndex=message.lastIndexOf("\n", btnIndex-1);
-        		buttonName=message.substring(btnIndex+1, prevBtnIndex);
-        		options[numOptions-i-1]=buttonName; //just to ensure they go in, in the correct order
-        		prevBtnIndex=btnIndex;
-        	}
+            String buttonName;
+            int btnIndex=message.length()+1;
+            int prevBtnIndex=message.length(); 
+            String[] options=new String[numOptions];
+            for (int i=0; i < numOptions; i++) {
+                btnIndex=message.lastIndexOf("\n", btnIndex-1);
+                buttonName=message.substring(btnIndex+1, prevBtnIndex);
+                options[numOptions-i-1]=buttonName; //just to ensure they go in, in the correct order
+                prevBtnIndex=btnIndex;
+            }
             message = message.substring(0, btnIndex);
-          
 
             return JOptionPane.showOptionDialog(parent, message,
-                                                Config.getString("dialogmgr.question"),
-                                                JOptionPane.DEFAULT_OPTION,
-                                                JOptionPane.WARNING_MESSAGE,
-                                                null, options, options[0]);
+                    Config.getApplicationName() + ":  " +
+                    Config.getString("dialogmgr.question"),
+                    JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                    null, options, options[0]);
         }
         return 0;
     }
+
+    public static void addOKCancelButtons(JPanel panel, JButton okButton, JButton cancelButton) 
+    {
+        if (Config.isMacOS()) {
+            panel.add(cancelButton);
+            panel.add(okButton);
+        } else {
+            panel.add(okButton);
+            panel.add(cancelButton);
+        }
+    }
+
 }

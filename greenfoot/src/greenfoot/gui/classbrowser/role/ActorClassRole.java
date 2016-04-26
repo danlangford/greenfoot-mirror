@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -40,7 +40,6 @@ import bluej.Config;
  * A role for Actor classes 
  * 
  * @author Poul Henriksen
- * @version $Id: ActorClassRole.java 6216 2009-03-30 13:41:07Z polle $
  */
 public class ActorClassRole extends ImageClassRole
 {
@@ -50,9 +49,9 @@ public class ActorClassRole extends ImageClassRole
 
     private static final String newline = System.getProperty("line.separator");
     public static final String imports = "import greenfoot.*;  // (World, Actor, GreenfootImage, and Greenfoot)" + newline;
-
-	private List<Action> constructorItems = new ArrayList<Action>();
-	private boolean enableConstrutors = false;
+    
+    private List<Action> constructorItems = new ArrayList<Action>();
+    private boolean enableConstructors = false;
 	
     public ActorClassRole(GProject project)
     {
@@ -63,13 +62,13 @@ public class ActorClassRole extends ImageClassRole
      * Need to overide this method in order to delay the invocation of the
      * constructor until the object is placed into the world.
      */
-    public List<Action> createConstructorActions(Class realClass, GProject project)
+    public List<Action> createConstructorActions(Class<?> realClass, GProject project)
     {
         List<Action> realActions = super.createConstructorActions(realClass, project);
         constructorItems = new ArrayList<Action>();
         for (Action realAction : realActions) {
             Action tempAction = createDragProxyAction(realAction);
-        	tempAction.setEnabled(enableConstrutors);
+            tempAction.setEnabled(enableConstructors);
             constructorItems.add(tempAction);
         }
  
@@ -96,26 +95,26 @@ public class ActorClassRole extends ImageClassRole
     }
 
     @Override
-	public void worldCreated(WorldEvent e) {
-		enableConstrutors = true;
-		SwingUtilities.invokeLater(new Thread() {
-			public void run() {
-				for (Action action : constructorItems) {
-					action.setEnabled(true);
-				}
-			}
-		});
-	}
+    public void worldCreated(WorldEvent e) {
+        enableConstructors = true;
+        SwingUtilities.invokeLater(new Thread() {
+            public void run() {
+                for (Action action : constructorItems) {
+                    action.setEnabled(true);
+                }
+            }
+        });
+    }
 
-	@Override
-	public void worldRemoved(WorldEvent e) {
-		enableConstrutors = false;
-		SwingUtilities.invokeLater(new Thread() {
-			public void run() {
-				for (Action action : constructorItems) {
-					action.setEnabled(false);
-				}
-			}
-		});
-	}   
+    @Override
+    public void worldRemoved(WorldEvent e) {
+        enableConstructors = false;
+        SwingUtilities.invokeLater(new Thread() {
+            public void run() {
+                for (Action action : constructorItems) {
+                    action.setEnabled(false);
+                }
+            }
+        });
+    }   
 }

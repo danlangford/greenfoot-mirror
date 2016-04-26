@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,10 +29,12 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -66,6 +68,7 @@ import bluej.utility.DBoxLayout;
 import bluej.utility.DialogManager;
 import bluej.utility.EscapeDialog;
 import bluej.utility.SwingWorker;
+import bluej.utility.Utility;
 
 
 /**
@@ -121,8 +124,17 @@ public class CommitCommentsFrame extends EscapeDialog
             repository = project.getRepository();
             
             if (repository != null) {
-                project.saveAllEditors();
-                project.saveAllGraphLayout();
+                try {
+                    project.saveAllEditors();
+                    project.saveAll();
+                }
+                catch (IOException ioe) {
+                    String msg = DialogManager.getMessage("team-error-saving-project");
+                    if (msg != null) {
+                        msg = Utility.mergeStrings(msg, ioe.getLocalizedMessage());
+                        DialogManager.showErrorText(this, msg);
+                    }
+                }
                 startProgress();
                 commitWorker = new CommitWorker();
                 commitWorker.start();
@@ -397,7 +409,7 @@ public class CommitCommentsFrame extends EscapeDialog
             command = repository.getStatus(this, filter, false);
         }
         
-        /* (non-Javadoc)
+        /*
          * @see bluej.groupwork.StatusListener#gotStatus(bluej.groupwork.TeamStatusInfo)
          */
         public void gotStatus(TeamStatusInfo info)
@@ -405,7 +417,7 @@ public class CommitCommentsFrame extends EscapeDialog
             response.add(info);
         }
         
-        /* (non-Javadoc)
+        /*
          * @see bluej.groupwork.StatusListener#statusComplete(bluej.groupwork.CommitHandle)
          */
         public void statusComplete(StatusHandle statusHandle)
@@ -435,7 +447,7 @@ public class CommitCommentsFrame extends EscapeDialog
                 }
                 else if (response != null) {
                     Set<File> filesToCommit = new HashSet<File>();
-                    Set<File> filesToAdd = new HashSet<File>();
+                    Set<File> filesToAdd = new LinkedHashSet<File>();
                     Set<File> filesToDelete = new HashSet<File>();
                     Set<File> mergeConflicts = new HashSet<File>();
                     Set<File> deleteConflicts = new HashSet<File>();

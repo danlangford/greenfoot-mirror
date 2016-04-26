@@ -32,7 +32,6 @@ import java.awt.image.BufferedImage;
  * Label used for the SplashWindow for greenfoot.
  * 
  * @author Poul Henriksen
- * @version $Id$
  */
 public class GreenfootLabel extends SplashLabel
 {
@@ -45,7 +44,7 @@ public class GreenfootLabel extends SplashLabel
     {
         BufferedImage image = getImage();
         g.drawImage(image, 0, 0, null);
-        g.setColor(new Color(50, 92, 16));
+        g.setColor(new Color(164, 198, 102));
         g.setFont(new Font("SansSerif", Font.PLAIN, 14));
         if (g instanceof Graphics2D) {
             Graphics2D g2d = (Graphics2D)g;
@@ -53,6 +52,6 @@ public class GreenfootLabel extends SplashLabel
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g2d.addRenderingHints(hints);
         }
-        g.drawString("Version " + Boot.GREENFOOT_VERSION, 60, image.getHeight() - 145);
+        g.drawString("Version " + Boot.GREENFOOT_VERSION, 50, 192);
     }
 }

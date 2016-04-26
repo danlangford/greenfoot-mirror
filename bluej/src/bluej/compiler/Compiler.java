@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -33,12 +33,9 @@ import bluej.Config;
  * Compiler class - an abstract interface to a source -> bytecode compiler. This
  * can be implemented by different compiler implementations.
  * 
- * Currently known implementations: JavacCompiler, JikesCompiler.
- * 
  * @author Michael Cahill
  * @author Michael Kolling
  * @author Poul Henriksen
- * @version $Id: Compiler.java 6215 2009-03-30 13:28:25Z polle $
  */
 abstract class Compiler
 {
@@ -95,9 +92,9 @@ abstract class Compiler
      * 
      * @return A list of compile options.
      */
-    protected List getCompileOptions()
+    protected List<String> getCompileOptions()
     {
-        List args = new ArrayList();
+        List<String> args = new ArrayList<String>();
 
         if (getDestDir() != null) {
             args.add("-d");
@@ -135,7 +132,7 @@ abstract class Compiler
         return args;
     }
 
-    private void addUserSpecifiedOptions(List args, String options)
+    protected void addUserSpecifiedOptions(List<String> args, String options)
     {
         String compilerOptions = Config.getPropString(options, null);
         if (compilerOptions != null) {

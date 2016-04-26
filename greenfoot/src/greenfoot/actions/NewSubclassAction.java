@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,28 +23,26 @@ package greenfoot.actions;
 
 import greenfoot.core.GClass;
 import greenfoot.core.GPackage;
-import greenfoot.gui.ImageLibFrame;
 import greenfoot.gui.NewClassDialog;
 import greenfoot.gui.classbrowser.ClassBrowser;
 import greenfoot.gui.classbrowser.ClassView;
 import greenfoot.gui.classbrowser.role.ImageClassRole;
+import greenfoot.gui.images.ImageLibFrame;
 
 import java.awt.event.ActionEvent;
-import java.rmi.RemoteException;
 
 import javax.swing.AbstractAction;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 
 import bluej.Config;
-import bluej.extensions.ProjectNotOpenException;
+import bluej.utility.DialogManager;
 
 
 /**
  * Action that creates a new class as a subclass of an existing class
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: NewSubclassAction.java 6216 2009-03-30 13:41:07Z polle $
  */
 public class NewSubclassAction extends AbstractAction
 {
@@ -85,6 +83,8 @@ public class NewSubclassAction extends AbstractAction
         JFrame f = (JFrame) SwingUtilities.getWindowAncestor(classBrowser);
         
         ImageLibFrame dialog = new ImageLibFrame(f, superclass.getGClass());
+        DialogManager.centreDialog(dialog);
+        dialog.setVisible(true);
         if (! (dialog.getResult() == ImageLibFrame.OK)) {
             return;
         }
@@ -92,30 +92,21 @@ public class NewSubclassAction extends AbstractAction
         String className = dialog.getClassName();
         GClass gClass = superclass.createSubclass(className);
        
-        ClassView classView = new ClassView(classBrowser, gClass);
-        
-        SelectImageAction.setClassImage(classView,
-                (ImageClassRole) classView.getRole(),
-                dialog.getSelectedImageFile());
+        if (gClass != null) {
+            ClassView classView = new ClassView(classBrowser, gClass);
 
-        classBrowser.addClass(classView);
+            SelectImageAction.setClassImage(classView,
+                    (ImageClassRole) classView.getRole(),
+                    dialog.getSelectedImageFile());
+
+            classBrowser.addClass(classView);
+        }
     }
     
     public void createNonActorClass()
     {
         JFrame f = (JFrame) SwingUtilities.getWindowAncestor(classBrowser);
-        GPackage pkg = null;
-        try {
-            pkg = classBrowser.getProject().getDefaultPackage();
-        }
-        catch (ProjectNotOpenException e) {
-            e.printStackTrace();
-            return;
-        }
-        catch (RemoteException e) {
-            e.printStackTrace();
-            return;
-        }
+        GPackage pkg = classBrowser.getProject().getDefaultPackage();
         NewClassDialog dialog = new NewClassDialog(f, pkg);
         dialog.setVisible(true);
         if (!dialog.okPressed()) {
@@ -125,8 +116,10 @@ public class NewSubclassAction extends AbstractAction
         String className = dialog.getClassName();
         GClass gClass = superclass.createSubclass(className);   
         
-        ClassView classView = new ClassView(classBrowser, gClass);
-        classBrowser.addClass(classView);        
+        if (gClass != null) {
+            ClassView classView = new ClassView(classBrowser, gClass);
+            classBrowser.addClass(classView);
+        }
     }
 
 }

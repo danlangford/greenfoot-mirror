@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,12 +29,9 @@ import java.io.IOException;
 import java.io.Writer;
 import java.rmi.RemoteException;
 
-import javax.swing.ImageIcon;
-
 import rmiextension.BlueJRMIClient;
 import rmiextension.wrappers.RBlueJ;
 import rmiextension.wrappers.RPrintStream;
-import bluej.BlueJTheme;
 import bluej.Config;
 import bluej.utility.Debug;
 
@@ -42,19 +39,34 @@ import bluej.utility.Debug;
  * An object of GreenfootLauncherDebugVM is the first object that is created in the
  * Debug-VM. The launcher object is created from the BlueJ-VM in the Debug-VM.
  * When a new object of the launcher is created, the constructor looks up the
- * BlueJService in the RMI registry and starts the initialisation of greenfoot.
+ * BlueJService in the RMI registry and starts the initialisation of Greenfoot.
  * 
- * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version 22-05-2003
- * @version $Id$
+ * @author Poul Henriksen
  */
 public class GreenfootLauncherDebugVM
 {
-    public GreenfootLauncherDebugVM(String prjDir, String pkgName, String rmiServiceName)
+    private static GreenfootLauncherDebugVM instance;
+    
+    @SuppressWarnings("unused")
+    private Object transportField;
+    
+    /**
+     * Constructor for the Greenfoot Launcher. This connects to the RMI service on the
+     * primary VM, and starts the Greenfoot UI.
+     * 
+     * @param prjDir         The project directory
+     * @param rmiServiceName  The name of the RMI service to connect to
+     */
+    public GreenfootLauncherDebugVM(String prjDir, String rmiServiceName)
     {
+        instance = this;
         BlueJRMIClient client = new BlueJRMIClient(prjDir, rmiServiceName);
         
         RBlueJ blueJ = client.getBlueJ();
+        if (blueJ == null) {
+            System.exit(1);
+        }
+        
         try {            
             File libdir = blueJ.getSystemLibDir();
             Config.initializeVMside(libdir, blueJ.getInitialCommandLineProperties(), true, client);
@@ -80,14 +92,27 @@ public class GreenfootLauncherDebugVM
             });
             
             GreenfootUtil.initialise(new GreenfootUtilDelegateIDE());
-            
-            ImageIcon icon = new ImageIcon(GreenfootUtil.getGreenfootLogoPath());
-            BlueJTheme.setIconImage(icon.getImage());
-
             GreenfootMain.initialize(blueJ, client.getPackage());
         }
         catch (RemoteException re) {
             re.printStackTrace();
         }
+    }
+    
+    /**
+     * Get the GreenfootLauncherDebugVM instance.
+     */
+    public static GreenfootLauncherDebugVM getInstance()
+    {
+        return instance;
+    }
+    
+    /**
+     * Set the transport field to some object. It is then possible to obtain a remote
+     * reference to the object, via RProject.getRemoteObject().
+     */
+    public void setTransportField(Object transportField)
+    {
+        this.transportField = transportField;
     }
 }

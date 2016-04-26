@@ -31,7 +31,7 @@ import java.awt.*;
  * A dependency between two targets in a package
  *
  * @author  Michael Kolling
- * @version $Id: UsesDependency.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: UsesDependency.java 7807 2010-06-28 05:41:28Z davmac $
  */
 public class UsesDependency extends Dependency
 {

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,30 +21,27 @@
  */
 package greenfoot.actions;
 
-import greenfoot.gui.MessageDialog;
 import greenfoot.gui.classbrowser.ClassView;
 
 import java.awt.event.ActionEvent;
 
 import javax.swing.AbstractAction;
-import javax.swing.JButton;
 import javax.swing.JFrame;
 
 import bluej.BlueJTheme;
 import bluej.Config;
+import javax.swing.JOptionPane;
 
 
 /**
  * Removes a class.
  * 
  * @author Poul Henriksen
- * @version $Id:$
  */
 public class RemoveClassAction extends AbstractAction
 {
     private ClassView cls;
     private JFrame frame;
-    
 
     private static String confirmRemoveTitle = Config.getString("remove.confirm.title");
     private static String confirmRemoveText1 = Config.getString("remove.confirm.text1");
@@ -66,10 +63,16 @@ public class RemoveClassAction extends AbstractAction
     
     public static boolean confirmRemoveClass(ClassView cls, JFrame frame)
     {
-        JButton okButton = BlueJTheme.getOkButton();
-        JButton cancelButton = BlueJTheme.getCancelButton();
-        MessageDialog confirmRemove = new MessageDialog(frame, confirmRemoveText1 + " " + cls.getClassName()
-                + ". " + confirmRemoveText2, confirmRemoveTitle, 100, new JButton[]{okButton, cancelButton});
-        return confirmRemove.displayModal() == okButton;
+        String[] options = new String[] { Config.getString("remove.class"), BlueJTheme.getCancelLabel() };
+        int remove = 0;
+        int response = JOptionPane.showOptionDialog(frame,
+                confirmRemoveText1 + " " + cls.getClassName() + ". " + confirmRemoveText2,
+                confirmRemoveTitle,
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                options,
+                options[0]);
+        return response == remove;
     }
 }

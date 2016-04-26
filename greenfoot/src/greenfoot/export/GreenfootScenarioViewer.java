@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,6 +22,7 @@
 package greenfoot.export;
 
 import greenfoot.World;
+import greenfoot.WorldVisitor;
 import greenfoot.core.ProjectProperties;
 import greenfoot.core.Simulation;
 import greenfoot.core.WorldHandler;
@@ -37,26 +38,18 @@ import greenfoot.platforms.standalone.SimulationDelegateStandAlone;
 import greenfoot.platforms.standalone.WorldHandlerDelegateStandAlone;
 import greenfoot.sound.SoundFactory;
 import greenfoot.util.GreenfootUtil;
-import greenfoot.util.StandalonePropStringManager;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.EventQueue;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.util.Properties;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import javax.swing.BorderFactory;
 import javax.swing.JApplet;
-import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JRootPane;
 import javax.swing.RootPaneContainer;
@@ -64,15 +57,13 @@ import javax.swing.RootPaneContainer;
 import bluej.Config;
 
 /**
- * This class can view and run a greenfoot scenario. It is not possible to
+ * This class can view and run a Greenfoot scenario. It is not possible to
  * interact with the objects in any way.
  * 
  * @author Poul Henriksen
- * 
  */
 public class GreenfootScenarioViewer extends JApplet
 {
-
     private static final int EMPTY_BORDER_SIZE = 5;
 
     private static String scenarioName;
@@ -84,42 +75,6 @@ public class GreenfootScenarioViewer extends JApplet
     private RootPaneContainer rootPaneContainer;
 
     private Constructor<?> worldConstructor;
-
-    private static String[] args;
-
-    /**
-     * Start the scenario.
-     * <p>
-     * 
-     * BlueJ and the scenario MUST be on the classpath.
-     * 
-     * @param args One argument can be passed to this method. The first one
-     *            should be the World to be instantiated. If no arguments are
-     *            supplied it will read from the properties file. And if that
-     *            can't be found either it will use AntWorld.
-     * 
-     */
-    public static void main(String[] args)
-    {
-        System.setProperty("apple.laf.useScreenMenuBar", "true");
-        if(args.length != 3 && args.length != 0) {
-            System.err.println("Wrong number of arguments");
-        }
-            
-            
-        GreenfootScenarioViewer.args = args; 
-        EventQueue.invokeLater(new Runnable() {
-            public void run()
-            {
-                JFrame frame = new JFrame(scenarioName);
-                new GreenfootScenarioViewer(frame);
-                frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-                frame.setTitle(scenarioName);
-                frame.pack();
-                frame.setVisible(true);
-            }
-        });
-    }
 
     public GreenfootScenarioViewer()
     {
@@ -136,14 +91,16 @@ public class GreenfootScenarioViewer extends JApplet
      * Returns the size of the borders around the controls.
      * 
      */
-    public static Dimension getControlsBorderSize() {
+    public static Dimension getControlsBorderSize()
+    {
         return new Dimension((EMPTY_BORDER_SIZE ) * 2, (EMPTY_BORDER_SIZE ) * 2);
     } 
     /**
      * Returns the size of the borders around the world panel.
      * 
      */
-    public static Dimension getWorldBorderSize() {
+    public static Dimension getWorldBorderSize()
+    {
         return new Dimension((EMPTY_BORDER_SIZE + 1) * 2, EMPTY_BORDER_SIZE + 1 * 2);
     }
     
@@ -161,12 +118,8 @@ public class GreenfootScenarioViewer extends JApplet
         centerPanel.setBorder( BorderFactory.createEmptyBorder(EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE)); 
         controls.setBorder(BorderFactory.createCompoundBorder( BorderFactory.createEmptyBorder(0,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE), BorderFactory.createEtchedBorder()));
         
-       
-              
         rootPaneContainer.getContentPane().add(centerPanel, BorderLayout.CENTER);
         rootPaneContainer.getContentPane().add(controls, BorderLayout.SOUTH);
-        
-
     }
 
     /**
@@ -176,7 +129,7 @@ public class GreenfootScenarioViewer extends JApplet
      */
     public void init()
     {
-        
+        GreenfootScenarioMain.initProperties();
         
         // this is a workaround for a security conflict with some browsers
         // including some versions of Netscape & Internet Explorer which do
@@ -185,40 +138,10 @@ public class GreenfootScenarioViewer extends JApplet
         JRootPane rootPane = this.getRootPane();
         rootPane.putClientProperty("defeatSystemEventQueueCheck", Boolean.TRUE);
         
-        String worldClassName = null; 
-        boolean lockScenario = false;
-        Properties p = new Properties();
-        try {
-            ClassLoader loader = GreenfootScenarioViewer.class.getClassLoader();
-            InputStream is = loader.getResourceAsStream("standalone.properties");
-            
-            if(is == null && args.length == 3) {
-                // This might happen if we are running from ant
-                // In that case we should have some command line arguments
-                p.put("project.name", args[0]);
-                p.put("main.class", args[1]);
-                p.put("scenario.lock", "true");  
-                File f = new File(args[2]);
-                is = new FileInputStream(f);    
-            } 
-            
-            p.load(is);
-            worldClassName = p.getProperty("main.class");
-            scenarioName = p.getProperty("project.name");
-            lockScenario = Boolean.parseBoolean(p.getProperty("scenario.lock"));
-            // set bluej Config to use the standalone prop values
-            Config.initializeStandalone(new StandalonePropStringManager(p));
-            is.close();
-            
-        }
-        catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        try {
+        String worldClassName = Config.getPropString("main.class"); 
+        boolean lockScenario = Config.getPropBoolean("scenario.lock");
 
+        try {
             GreenfootUtil.initialise(new GreenfootUtilDelegateStandAlone());
             properties = new ProjectProperties();
 
@@ -279,13 +202,12 @@ public class GreenfootScenarioViewer extends JApplet
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
-    
 
         buildGUI();
-
     }
 
 
+    
     /**
      * Called by the browser or applet viewer to inform this JApplet that it
      * should start its execution. It is called after the init method and each
@@ -301,7 +223,8 @@ public class GreenfootScenarioViewer extends JApplet
                 // make it work in some browsers (Ubuntu's Firefox 1.5
                 // and 2.0)
                 canvas.requestFocus();
-            }});        
+            }
+        });        
     }
 
     /**
@@ -322,8 +245,8 @@ public class GreenfootScenarioViewer extends JApplet
      */
     public void destroy()
     {
-		sim.abort();
-	}
+        sim.abort();
+    }
 
     /**
      * Returns information about this applet. An applet should override this
@@ -389,6 +312,21 @@ public class GreenfootScenarioViewer extends JApplet
             e.getCause().printStackTrace();
         }
     }
-
-
+    
+    /**
+     * Get access to the world. Being a public method in the applet class allows
+     * this method to be called via JavaScript.
+     */
+    public World getWorld()
+    {
+        return WorldHandler.getInstance().getWorld();
+    }
+    
+    /**
+     * Get access to the world lock, for the given world.
+     */
+    public ReentrantReadWriteLock getWorldLock(World world)
+    {
+        return WorldVisitor.getLock(world);
+    }
 }

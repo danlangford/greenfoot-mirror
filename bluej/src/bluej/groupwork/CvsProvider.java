@@ -28,6 +28,7 @@ import org.netbeans.lib.cvsclient.CVSRoot;
 import bluej.Config;
 import bluej.groupwork.cvsnb.BlueJAdminHandler;
 import bluej.groupwork.cvsnb.CvsRepository;
+import bluej.utility.Debug;
 
 /**
  * Provider for CVS.
@@ -50,11 +51,17 @@ public class CvsProvider
     
     public TeamworkCommandResult checkConnection(TeamSettings settings)
     {
-        String cvsRoot = makeCvsRoot(settings);
-        return CvsRepository.validateConnection(cvsRoot);
+        try {
+            String cvsRoot = makeCvsRoot(settings);
+            return CvsRepository.validateConnection(cvsRoot);
+        }
+        catch (UnsupportedSettingException e) {
+            return new TeamworkCommandUnsupportedSetting(e.getLocalizedMessage());
+        }
     }
     
     public static String makeCvsRoot(TeamSettings settings)
+      throws UnsupportedSettingException
     {
         String protocol = settings.getProtocol();
         String userName = settings.getUserName();
@@ -62,6 +69,15 @@ public class CvsProvider
         String server = settings.getServer();
         String prefix = settings.getPrefix();
         String group = settings.getGroup();
+        
+        // Password can be null if we are doing a task that doesn't require
+        // connection to the server.
+        if (password != null && password.contains("@")) {
+        	throw new UnsupportedSettingException(Config.getString("team.error.password.at"));
+        }
+        if (userName.contains(":")) {
+        	throw new UnsupportedSettingException(Config.getString("team.error.username.colon"));
+        }
         
         String cvsRoot = ":" + protocol + ":" + userName + ":" + password + "@" +
             server + ":" + prefix;
@@ -98,9 +114,16 @@ public class CvsProvider
     
     public Repository getRepository(File projectDir, TeamSettings settings)
     {
-        String cvsRoot = makeCvsRoot(settings);
-        BlueJAdminHandler adminHandler = new BlueJAdminHandler(projectDir);
-        return new CvsRepository(projectDir, cvsRoot, adminHandler);
+    	try {
+    		String cvsRoot = makeCvsRoot(settings);
+    		BlueJAdminHandler adminHandler = new BlueJAdminHandler(projectDir);
+    		return new CvsRepository(projectDir, cvsRoot, adminHandler);
+    	}
+    	catch (UnsupportedSettingException e) {
+    		Debug.reportError("CvsProvider.getRepository", e);
+    		return null;
+    	}
+    	
     }
     
 }

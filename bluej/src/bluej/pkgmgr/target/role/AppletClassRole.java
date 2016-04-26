@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,6 +22,7 @@
 package bluej.pkgmgr.target.role;
 
 import java.awt.Color;
+import java.awt.Paint;
 import java.awt.event.ActionEvent;
 import java.io.File;
 import java.io.IOException;
@@ -45,7 +46,6 @@ import bluej.pkgmgr.target.ClassTarget;
 import bluej.pkgmgr.target.Target;
 import bluej.utility.BlueJFileReader;
 import bluej.utility.Debug;
-import bluej.utility.DialogManager;
 import bluej.utility.FileUtility;
 import bluej.utility.Utility;
 
@@ -54,7 +54,6 @@ import bluej.utility.Utility;
  * built from Java source code.
  *
  * @author Bruce Quig
- * @version $Id: AppletClassRole.java 6705 2009-09-17 05:05:21Z davmac $
  */
 public class AppletClassRole extends StdClassRole
 {
@@ -62,7 +61,7 @@ public class AppletClassRole extends StdClassRole
     
     private RunAppletDialog dialog;
 
-    private static final Color appletbg = Config.getItemColour("colour.class.bg.applet");
+    private static final Color appletbg = Config.getOptionalItemColour("colour.class.bg.applet");
     static final String runAppletStr = Config.getString("pkgmgr.classmenu.runApplet");
     static final String htmlComment = Config.getString("pkgmgr.runApplet.htmlComment");
 
@@ -99,9 +98,13 @@ public class AppletClassRole extends StdClassRole
     /**
      * Return the intended background colour for this type of target.
      */
-    public Color getBackgroundColour()
+    public Paint getBackgroundPaint(int width, int height)
     {
-        return appletbg;
+        if (appletbg != null) {
+            return appletbg;
+        } else {
+            return super.getBackgroundPaint(width, height);
+        }
     }
 
     /**
@@ -164,7 +167,7 @@ public class AppletClassRole extends StdClassRole
      * @param   state   whether the target is COMPILED etc.
      * @return  true if we added any menu tiems, false otherwise
      */
-    public boolean createRoleMenu(JPopupMenu menu, ClassTarget ct, Class cl, int state)
+    public boolean createRoleMenu(JPopupMenu menu, ClassTarget ct, Class<?> cl, int state)
     {
         // add run applet option
         addMenuItem(menu, new AppletAction(ct.getPackage().getEditor(),ct),
@@ -224,8 +227,9 @@ public class AppletClassRole extends StdClassRole
             if(execOption == RunAppletDialog.GENERATE_PAGE_ONLY) {
                 // generate HTML page for Applet using selected path and file name
                 File generatedFile = chooseWebPage(parent);
-                if(generatedFile != null)
+                if(generatedFile != null) {
                     createWebPage(generatedFile, name, pkg.getPath().getPath(), libs);
+                }
             }
             else {
                 String fname = name + HTML_EXTENSION;
@@ -298,13 +302,15 @@ public class AppletClassRole extends StdClassRole
         String fullFileName = FileUtility.getFileName(frame,
                                 Config.getString("pkgmgr.chooseWebPage.title"),
                                 Config.getString("pkgmgr.chooseWebPage.buttonLabel"), 
-                                false, null, false);
+                                null, false);
 
-        if (fullFileName == null)
-            DialogManager.showError(frame, "error-no-name");
+        if (fullFileName == null) {
+            return null;
+        }
         
-        if(! fullFileName.endsWith(HTML_EXTENSION))
+        if(! fullFileName.endsWith(HTML_EXTENSION)) {
             fullFileName += HTML_EXTENSION;
+        }
 
         return new File(fullFileName);
     }
@@ -388,7 +394,8 @@ public class AppletClassRole extends StdClassRole
         File tmplFile = Config.getTemplateFile("html");
 
         try {
-            BlueJFileReader.translateFile(tmplFile, outputFile, translations, Charset.forName("UTF-8"));
+            Charset utf8 = Charset.forName("UTF-8");
+            BlueJFileReader.translateFile(tmplFile, outputFile, translations, utf8, utf8);
         } catch(IOException e) {
             Debug.reportError("Exception during file translation from " +
                               tmplFile + " to " + outputFile);

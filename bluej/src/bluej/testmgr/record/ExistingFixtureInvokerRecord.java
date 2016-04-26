@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,7 +21,11 @@
  */
 package bluej.testmgr.record;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.ListIterator;
+
+import bluej.pkgmgr.PkgMgrFrame;
 
 /**
  * From an existing unit test we create an invoker record
@@ -29,7 +33,6 @@ import java.util.*;
  * and setup code.
  * 
  * @author  Andrew Patterson
- * @version $Id: ExistingFixtureInvokerRecord.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class ExistingFixtureInvokerRecord extends InvokerRecord
 {
@@ -58,12 +61,12 @@ public class ExistingFixtureInvokerRecord extends InvokerRecord
     }
     
     /**
-	 * Construct a declaration for any objects constructed
-	 * by this invoker record.
-	 * 
-	 * @return a String representing the object declaration
-	 *         src or null if there is none.
-	 */    
+     * Construct a declaration for any objects constructed
+     * by this invoker record.
+     * 
+     * @return a String representing the object declaration
+     *         src or null if there is none.
+     */    
     public String toFixtureDeclaration()
     {
         StringBuffer sb = new StringBuffer();
@@ -81,13 +84,13 @@ public class ExistingFixtureInvokerRecord extends InvokerRecord
         return sb.toString();
     }
     
-	/**
-	 * Construct a portion of an initialisation method for
-	 * this invoker record.
-	 *  
-	 * @return a String reprenting the object initialisation
-	 *         src or null if there is none. 
-	 */    
+    /**
+     * Construct a portion of an initialisation method for
+     * this invoker record.
+     *  
+     * @return a String reprenting the object initialisation
+     *         src or null if there is none. 
+     */    
     public String toFixtureSetup()
     {
         StringBuffer sb = new StringBuffer();
@@ -98,25 +101,19 @@ public class ExistingFixtureInvokerRecord extends InvokerRecord
         return sb.toString();
     }
 
-	/**
-	 * Construct a portion of a test method for this
-	 * invoker record.
-	 * 
-	 * @return a String representing the test method src
-	 */
-	public String toTestMethod()
-	{
-	    return null;
-	}
-	
-    @Override
-    public String toExpression()
+    /**
+     * Construct a portion of a test method for this
+     * invoker record.
+     * 
+     * @return a String representing the test method src
+     */
+    public String toTestMethod(PkgMgrFrame pmf)
     {
-        throw new RuntimeException("Method not implemented for this type.");
+        return null;
     }
 
     @Override
-    public String getExpressionGlue()
+    public String toExpression()
     {
         throw new RuntimeException("Method not implemented for this type.");
     }

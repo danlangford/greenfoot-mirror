@@ -31,7 +31,7 @@ import bluej.utility.Debug;
  * Reasonably generic interface between the BlueJ IDE and the Java compiler.
  * 
  * @author Michael Cahill
- * @version $Id: JobQueue.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: JobQueue.java 7783 2010-06-21 04:55:28Z davmac $
  */
 public class JobQueue
 {
@@ -55,12 +55,23 @@ public class JobQueue
     private JobQueue()
     {
         // determine which compiler we should be using
-
         String compilertype = Config.getPropString("bluej.compiler.type");
 
+        //even though it is specified to use internal, the preferred compiler for a
+        //system running Java 6 or greater is the JavaCompiler API
         if (compilertype.equals("internal")) {
-
-            compiler = new JavacCompilerInternal();
+            if (Config.isJava16()){
+                try
+                {
+                    Class<?> c = Class.forName("bluej.compiler.CompilerAPICompiler");
+                    compiler =(Compiler)c.newInstance();
+                }
+                catch (Throwable e) {
+                    Debug.message("Could not instantiate the compiler API compiler implementation; defaulting to old compiler");
+                    compiler = new JavacCompilerInternal();
+                }
+            }else
+                compiler = new JavacCompilerInternal();
 
         }
         else if (compilertype.equals("javac")) {

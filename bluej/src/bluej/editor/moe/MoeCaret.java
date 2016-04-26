@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -19,14 +19,6 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-// Copyright (c) 2000, 2005 BlueJ Group, Deakin University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html 
-// Any queries should be directed to Michael Kolling mik@bluej.org
-
 package bluej.editor.moe;
 
 import bluej.utility.Debug;
@@ -38,15 +30,14 @@ import javax.swing.text.*;
 
 
 /**
- * A customised caret for Moe. It gets most of its bahaviour from
+ * A customised caret for Moe. It gets most of its behaviour from
  * Swing's "DefaultCaret" and adds some functionality.
  *
  * @author  Michael Kolling
  */
-
 public class MoeCaret extends DefaultCaret  
 {
-    private static final Color bracketHighlightColour = new Color(196, 196, 196);
+    private static final Color bracketHighlightColour = new Color(230, 200, 200);
     
     private static final LayeredHighlighter.LayerPainter bracketPainter = 
         new BracketMatchPainter(bracketHighlightColour);
@@ -80,12 +71,14 @@ public class MoeCaret extends DefaultCaret
         Position.Bias[] biasRet = new Position.Bias[1];
         int pos = getComponent().getUI().viewToModel(getComponent(), pt, biasRet);
 
-        if (e.getX() > BlueJSyntaxView.TAG_WIDTH) {
-            if(biasRet[0] == null)
-                biasRet[0] = Position.Bias.Forward;
+        if (e.getX() > MoeSyntaxView.TAG_WIDTH) {
+            // This would be the correct thing to do, but PlainView hasn't implemented
+            // correct bias calculation and *always* returns Position.Bias.Forward.
+            //if (biasRet[0] == Position.Bias.Forward) {
+            //    pos++;
+            //}
             if (pos >= 0) {
                 setDot(pos); 
-//                setMagicCaretPosition(null);
             }
         }
         else {
@@ -103,7 +96,7 @@ public class MoeCaret extends DefaultCaret
      */
     protected void moveCaret(MouseEvent e) 
     {
-        if (e.getX() > BlueJSyntaxView.TAG_WIDTH) {
+        if (e.getX() > MoeSyntaxView.TAG_WIDTH) {
             super.moveCaret(e);
         }
     }
@@ -127,7 +120,7 @@ public class MoeCaret extends DefaultCaret
     }
 
     /**
-     * Fire a state canged event.
+     * Fire a state changed event.
      */
     protected void fireStateChanged()
     {
@@ -141,8 +134,6 @@ public class MoeCaret extends DefaultCaret
     public void focusLost(FocusEvent e)
     {
         super.focusLost(e);
-        if (persistentHighlight)
-            setSelectionVisible(true);
     }
     
     /**
@@ -157,8 +148,7 @@ public class MoeCaret extends DefaultCaret
     }
      
     /**
-     * paint matching bracket if caret is directly after a bracket  
-     *
+     * Paint matching bracket if caret is directly after a bracket.  
      */
     public void paintMatchingBracket()
     {
@@ -185,6 +175,14 @@ public class MoeCaret extends DefaultCaret
             getComponent().getHighlighter().removeHighlight(matchingBracketHighlight);
             matchingBracketHighlight = null;        
         }  
+    }
+    
+    @Override
+    public void setSelectionVisible(boolean vis)
+    {
+        if (vis || ! persistentHighlight) {
+            super.setSelectionVisible(vis);
+        }
     }
     
 }

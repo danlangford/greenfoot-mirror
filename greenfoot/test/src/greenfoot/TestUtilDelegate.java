@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -18,9 +18,6 @@
  
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
- */
-/*
- * Created on Nov 16, 2008
  */
 package greenfoot;
 
@@ -66,12 +63,37 @@ public class TestUtilDelegate implements GreenfootUtilDelegate
 
     public String getNewProjectName(Component parent)
     {
-        // TODO Auto-generated method stub
         return null;
     }
 
     public File getScenarioFromFileBrowser(Component parent)
     {
+        return null;
+    }
+
+    @Override
+    public boolean addCachedImage(String name, GreenfootImage image)
+    {
+        return false;
+        
+    }
+
+    @Override
+    public GreenfootImage getCachedImage(String name)
+    {
         // TODO Auto-generated method stub
         return null;
-    }}
+    }
+
+    @Override
+    public void removeCachedImage(String className)
+    {
+    
+    }
+    
+    @Override
+    public boolean isNullCachedImage(String fileName)
+    {
+        return false;
+    }
+}

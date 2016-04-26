@@ -37,13 +37,15 @@ import bluej.debugger.DebuggerTestResult;
 import bluej.debugger.SourceLocation;
 import bluej.pkgmgr.Package;
 import bluej.pkgmgr.Project;
+import bluej.utility.GradientFillPanel;
 import bluej.utility.JavaNames;
+import java.awt.Image;
 
 /**
  * A Swing based user interface to run tests.
  *
  * @author  Andrew Patterson
- * @version $Id: TestDisplayFrame.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: TestDisplayFrame.java 7712 2010-05-24 14:09:58Z mik $
  */
 public class TestDisplayFrame
 {
@@ -121,22 +123,27 @@ public class TestDisplayFrame
      */
     protected void createUI()
     {
-		frame = new JFrame(Config.getString("testdisplay.title"));
+        frame = new JFrame(Config.getString("testdisplay.title"));
+        frame.setContentPane(new GradientFillPanel(frame.getContentPane().getLayout()));
 
-		frame.setIconImage(BlueJTheme.getIconImage());
-		frame.setLocation(Config.getLocation("bluej.testdisplay"));
+        Image icon = BlueJTheme.getIconImage();
+        if (icon != null) {
+            frame.setIconImage(icon);
+        }
+        frame.setLocation(Config.getLocation("bluej.testdisplay"));
 
-		// save position when window is moved
-		frame.addComponentListener(new ComponentAdapter() {
-				public void componentMoved(ComponentEvent event)
-				{
-					Config.putLocation("bluej.testdisplay", frame.getLocation());
-				}
-			});
-		
+        // save position when window is moved
+        frame.addComponentListener(new ComponentAdapter() {
+            public void componentMoved(ComponentEvent event)
+            {
+                Config.putLocation("bluej.testdisplay", frame.getLocation());
+            }
+        });
+
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         splitPane.setBorder(BlueJTheme.generalBorder);
         splitPane.setResizeWeight(0.5);
+        splitPane.setOpaque(false);
         
         JScrollPane resultScrollPane = new JScrollPane();
         {
@@ -151,6 +158,7 @@ public class TestDisplayFrame
         splitPane.setTopComponent(resultScrollPane);
         
         bottomPanel = new JPanel();
+        bottomPanel.setOpaque(false);
 		{
             bottomPanel.setLayout(new GridBagLayout());
             GridBagConstraints constraints = new GridBagConstraints();
@@ -166,6 +174,7 @@ public class TestDisplayFrame
             bottomPanel.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth), constraints);
             
             counterPanel = new CounterPanel();
+            counterPanel.setOpaque(false);
 	        bottomPanel.add(counterPanel, constraints);
             bottomPanel.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth), constraints);
         
@@ -198,6 +207,7 @@ public class TestDisplayFrame
             
 	        // Panel for "show source" and "close" buttons
             JPanel buttonPanel = new JPanel();
+            buttonPanel.setOpaque(false);
             buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.X_AXIS));
             buttonPanel.add(showSourceButton);
             buttonPanel.add(Box.createHorizontalGlue());
@@ -418,9 +428,9 @@ public class TestDisplayFrame
 
 class MyCellRenderer extends JLabel implements ListCellRenderer
 {
-	final static Icon errorIcon = Config.getImageAsIcon("image.testmgr.error");
-	final static Icon failureIcon = Config.getImageAsIcon("image.testmgr.failure");
-	final static Icon okIcon = Config.getImageAsIcon("image.testmgr.ok");
+	final static Icon errorIcon = Config.getFixedImageAsIcon("error.gif");
+	final static Icon failureIcon = Config.getFixedImageAsIcon("failure.gif");
+	final static Icon okIcon = Config.getFixedImageAsIcon("ok.gif");
 
 	// This is the only method defined by ListCellRenderer.
 	// We just reconfigure the JLabel each time we're called.

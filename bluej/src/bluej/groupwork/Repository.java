@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -54,7 +54,9 @@ public interface Repository
      * Commits the files and directories in the project.
      *
      * @param newFiles Files to be committed which are not presently in the repository
-     *                 (text files only)
+     *                 (text files only). If the version control system versions directories,
+     *                 this must be an ordered set where directories precede the files they
+     *                 contain.
      * @param binaryNewFiles Files to be committed which are not presently in the
      *                       repository and which are to be treated as binary
      * @param deletedFiles Files which have been deleted locally but which exist
@@ -63,8 +65,8 @@ public interface Repository
      *               and deletedFiles, as well as any other files to be committed)
      * @param commitComment  The comment for this commit
      */
-    public TeamworkCommand commitAll(Set newFiles, Set binaryNewFiles,
-            Set deletedFiles, Set files, String commitComment);
+    public TeamworkCommand commitAll(Set<File> newFiles, Set<File> binaryNewFiles,
+            Set<File> deletedFiles, Set<File> files, String commitComment);
     
     /**
      * Put the project in the repository. This should create an empty project in
@@ -77,7 +79,9 @@ public interface Repository
      * Get status of all the given files.
      * Returns a List of TeamStatusInfo.
      *
-     * @param listener  A listener to be notified of the status of each requested file
+     * @param listener  A listener to be notified of the status of each requested file.
+     *                For version management systems which version directories, the status
+     *                of directories will be reported before files they contain.
      * @param filter  A file filter to determine which files and directories to include
      *                in the returned statuses
      * @param includeRemote  Whether to include remote files (files which do not exist
@@ -90,7 +94,7 @@ public interface Repository
      * Get a list of modules in the repository. The module names (String) are added
      * to the supplied list before the command terminates.
      */
-    public TeamworkCommand getModules(List modules);
+    public TeamworkCommand getModules(List<String> modules);
     
     /**
      * Get the history of the repository - all commits, including file, date,
@@ -127,5 +131,5 @@ public interface Repository
      * <p>Calling this method Does not result in communication with the repository
      * server.
      */
-    public void getAllLocallyDeletedFiles(Set files);
+    public void getAllLocallyDeletedFiles(Set<File> files);
 }

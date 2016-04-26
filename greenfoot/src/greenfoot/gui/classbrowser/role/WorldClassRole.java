@@ -31,7 +31,7 @@ import bluej.Config;
 
 /**
  * @author Poul Henriksen
- * @version $Id: WorldClassRole.java 6216 2009-03-30 13:41:07Z polle $
+ * @version $Id: WorldClassRole.java 8267 2010-09-08 11:54:19Z plcs $
  */
 public class WorldClassRole extends ImageClassRole
 {
@@ -60,5 +60,4 @@ public class WorldClassRole extends ImageClassRole
             menu.add(createMenuItem(new ShowApiDocAction(Config.getString("show.apidoc"), "greenfoot/World.html")));
         }
     }
-
 }

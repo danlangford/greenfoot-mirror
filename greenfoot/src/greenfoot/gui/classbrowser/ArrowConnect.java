@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -24,14 +24,11 @@ package greenfoot.gui.classbrowser;
 import java.awt.Dimension;
 import java.awt.Graphics;
 
-import javax.swing.JComponent;
-
 /**
  * Graphics for the line part of an arrow. With a connector to the right.
  *  | |__ | |
  * 
  * @author Poul Henriksen
- * @version $Id: ArrowConnect.java 6216 2009-03-30 13:41:07Z polle $
  */
 public class ArrowConnect extends ArrowElement
 {

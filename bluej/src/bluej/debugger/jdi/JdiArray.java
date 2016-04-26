@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 2000-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,9 +23,14 @@ package bluej.debugger.jdi;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import bluej.debugger.DebuggerObject;
-import bluej.debugger.gentype.*;
+import bluej.debugger.gentype.GenTypeArray;
+import bluej.debugger.gentype.GenTypeArrayClass;
+import bluej.debugger.gentype.GenTypeClass;
+import bluej.debugger.gentype.JavaType;
+import bluej.debugger.gentype.Reflective;
 import bluej.utility.JavaNames;
 
 import com.sun.jdi.ArrayReference;
@@ -37,7 +42,6 @@ import com.sun.jdi.Value;
  *
  * @author     Michael Kolling
  * @created    December 26, 2000
- * @version    $Id: JdiArray.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class JdiArray extends JdiObject
 {    
@@ -86,14 +90,9 @@ public class JdiArray extends JdiObject
             // that is a wildcard, but this type is inferred in some cases so
             // it must be handled here.
             
-            GenTypeParameterizable component;
+            JavaType component;
             
-            if(genericType instanceof GenTypeWildcard) {
-                GenTypeSolid [] upperBounds = ((GenTypeWildcard)genericType).getUpperBounds();
-                if (upperBounds.length != 0)
-                    genericType = ((GenTypeWildcard)genericType).getUpperBounds()[0];
-            }
-            else if (genericType instanceof GenTypeClass) {
+            if (genericType instanceof GenTypeClass) {
                 // the sig looks like "Lpackage/package/class;". Strip the 'L'
                 // and the ';'
                 String compName = ctypestr.substring(1, ctypestr.length() - 1);
@@ -103,7 +102,7 @@ public class JdiArray extends JdiObject
                 component = ((GenTypeClass) genericType).mapToDerived(compReflective);
 
                 while (level > 1) {
-                    component = new GenTypeArray(component, new JdiArrayReflective(component, obj.referenceType()));
+                    component = new GenTypeArray(component);
                     level--;
                 }
                 componentType = component;
@@ -123,15 +122,17 @@ public class JdiArray extends JdiObject
     
     public String getGenClassName()
     {
-        if(componentType == null)
+        if(componentType == null) {
             return getClassName();
+        }
         return componentType.toString() + "[]";
     }
     
     public String getStrippedGenClassName()
     {
-        if(componentType == null)
+        if(componentType == null) {
             return JavaNames.stripPrefix(getClassName());
+        }
         return componentType.toString(true) + "[]";
     }
 
@@ -144,16 +145,17 @@ public class JdiArray extends JdiObject
     {
         if(componentType != null) {
             Reflective r = new JdiArrayReflective(componentType, obj.referenceType());
-            return new GenTypeArray(componentType, r);
+            return new GenTypeArrayClass(r, componentType);
         }
-        else
+        else {
             return super.getGenType();
+        }
     }
     
     /**
-     *  Return true if this object is an array.
+     * Return true if this object is an array.
      *
-     *@return    The Array value
+     * @return    The Array value
      */
     public boolean isArray()
     {
@@ -175,17 +177,40 @@ public class JdiArray extends JdiObject
         return 0;
     }
 
-    /**
-     *  Return the number of object fields.
-     *
-     *@return    The InstanceFieldCount value
+    /*
+     * @see bluej.debugger.jdi.JdiObject#getInstanceFieldCount()
      */
     public int getInstanceFieldCount()
     {
         return ((ArrayReference) obj).length();
     }
 
-
+    @Override
+    public List<String> getInstanceFields(boolean includeModifiers,
+            Map<String, List<String>> restrictedClasses)
+    {
+        ArrayReference array = (ArrayReference) obj;
+        int len = array.length();
+        List<String> r = new ArrayList<String>(len);
+        for (int i = 0; i < len; i++) {
+            String field = getInstanceFieldName(i) + " = "
+                    + JdiUtils.getJdiUtils().getValueString(array.getValue(i));
+            r.add(field);
+        }
+        return r;
+    }
+    
+    @Override
+    public String getInstanceField(int slot, boolean includeModifiers)
+    {
+        ArrayReference array = (ArrayReference) obj;
+        String field = getInstanceFieldName(slot) + " = "
+            + JdiUtils.getJdiUtils().getValueString(array.getValue(slot));
+        return field;
+    }
+    
+    
+    
     /**
      *  Return the name of the static field at 'slot'.
      *
@@ -275,7 +300,7 @@ public class JdiArray extends JdiObject
      *@param  includeModifiers  Description of Parameter
      *@return                   The InstanceFields value
      */
-    public List<String> getInstanceFields(boolean includeModifiers)
+    public List<String> getInstanceFields(boolean includeModifiers, List<String> ignoreFieldsFrom)
     {
         List<Value> values;
 
@@ -293,74 +318,6 @@ public class JdiArray extends JdiObject
         }
         return fields;
     }
-
-    /**
-     * Is an object of this class assignable to the given fully qualified type?
-     *
-     * @param   type    Description of Parameter
-     * @return          The AssignableTo value
-     */
-/*    public boolean isAssignableTo(String type)
-    {
-        if (obj == null)
-        {
-            return false;
-        }
-        if (obj.referenceType() == null)
-        {
-            return false;
-        }
-        if (obj.referenceType().name() != null
-                 && type.equals(obj.referenceType().name()))
-        {
-            return true;
-        }
-        Type ct = obj.referenceType();
-        String t = type;
-        if (t.equals("java.lang.Object"))
-        {
-            return true;
-        }
-        while ((ct instanceof ArrayType) && t.endsWith("[]"))
-        {
-            try
-            {
-                ct = ((ArrayType) ct).componentType();
-            }
-            catch (com.sun.jdi.ClassNotLoadedException cnle)
-            {
-                return false;
-            }
-            t = t.substring(0, t.length() - 2);
-        }
-        if (t.equals(ct.name()))
-        {
-            return true;
-        }
-        if (ct instanceof ClassType)
-        {
-            ClassType clst = ((ClassType) ct);
-            InterfaceType[] intt = ((InterfaceType[]) clst.allInterfaces().toArray(new InterfaceType[0]));
-            for (int i = 0; i < intt.length; i++)
-            {
-                if (t.equals(intt[i].name()))
-                {
-                    return true;
-                }
-            }
-            clst = clst.superclass();
-            while (clst != null)
-            {
-                if (t.equals(clst.name()))
-                {
-                    return true;
-                }
-                clst = clst.superclass();
-            }
-        }
-        return false;
-    } */
-
 
     /**
      *  Return true if the static field 'slot' is public.

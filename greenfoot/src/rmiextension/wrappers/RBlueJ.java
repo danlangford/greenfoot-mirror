@@ -34,7 +34,6 @@ import rmiextension.wrappers.event.RInvocationListener;
  * Interface for accessing BlueJ-functionality
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: RBlueJ.java 6720 2009-09-18 13:49:11Z davmac $
  */
 public interface RBlueJ
     extends java.rmi.Remote
@@ -95,18 +94,20 @@ public interface RBlueJ
 
     /**
      * Create and open a new Project
+     * 
      * @param directory  The directory to create the project in
-     * @return   A reference to the newly created project
+     * @return   A reference to the newly created project, or null
+     *           if the project could not be created.
      */
     public RProject newProject(File directory)
         throws RemoteException;
 
     /**
      * Open an existing project
-     * @param directory  The directory containing the project to open
+     * @param projectDirFile  The directory containing the project to open
      * @return  A reference to the project
      */
-    public RProject openProject(String directory)
+    public RProject openProject(File projectDirFile)
         throws RemoteException;
 
     /**
@@ -152,4 +153,6 @@ public interface RBlueJ
     public Properties getInitialCommandLineProperties()
         throws RemoteException;
 
+    public void showPreferences()
+        throws RemoteException;
 }

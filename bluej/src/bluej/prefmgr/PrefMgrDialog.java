@@ -1,49 +1,59 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
- 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
  as published by the Free Software Foundation; either version 2 
  of the License, or (at your option) any later version. 
- 
+
  This program is distributed in the hope that it will be useful, 
  but WITHOUT ANY WARRANTY; without even the implied warranty of 
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
  GNU General Public License for more details. 
- 
+
  You should have received a copy of the GNU General Public License 
  along with this program; if not, write to the Free Software 
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. 
- 
+
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
 package bluej.prefmgr;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.*;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.Image;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.ListIterator;
 
-import java.util.*;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+import javax.swing.JTabbedPane;
 
-import bluej.*;
+import bluej.BlueJTheme;
 import bluej.Config;
-
 import bluej.classmgr.ClassMgrPrefPanel;
 import bluej.editor.moe.EditorPrefPanel;
-import bluej.extmgr.ExtensionsManager;
+import bluej.editor.moe.KeyBindingsPanel;
 import bluej.extmgr.ExtensionPrefManager;
+import bluej.extmgr.ExtensionsManager;
+import bluej.utility.DialogManager;
 
 /**
  * A JDialog subclass to allow the user to interactively edit
  * preferences.
  *
- * A singleton.
+ * <p>A singleton.
  *
  * @author  Andrew Patterson
  * @author  Michael Kolling
- * @version $Id: PrefMgrDialog.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class PrefMgrDialog extends JFrame
 {
@@ -51,6 +61,8 @@ public class PrefMgrDialog extends JFrame
     
     /** Indicates whether the dialog has been prepared for display. */
     private boolean prepared = false;
+    
+    private KeyBindingsPanel kbPanel;
 
     /**
      * Show the preferences dialog.  The first argument should
@@ -64,22 +76,23 @@ public class PrefMgrDialog extends JFrame
         getInstance().prepareDialog();
         dialog.setVisible(true);
     }
-    
-    /**
+
+  /**
      * Show the preferences dialog.  The first argument should
      * be null if you want the dialog to come up in the center
      * of the screen.  Otherwise, the argument should be the
      * component on top of which the dialog should appear.
      *
      * @param comp the parent component for the dialog.
-     * @param comp the parent component for the dialog.
+     * @param actiontable 
+     * @param categories 
+     * @param categoryIndex 
      */
     public static void showDialog(int paneNumber) {
         dialog.prepareDialog();
         dialog.selectTab(paneNumber);
         dialog.setVisible(true);
     }
-
     /**
      * Prepare this dialog for display.
      */
@@ -90,7 +103,7 @@ public class PrefMgrDialog extends JFrame
         }
         dialog.startEditing();
     }
-    
+
     /**
      * Returns the current instance of the dialog, can be null.
      * @return the current instance of the dialog, can be null.
@@ -100,14 +113,13 @@ public class PrefMgrDialog extends JFrame
         if (dialog == null) {
             dialog = new PrefMgrDialog();
         }
-
         return dialog;
     }
-    
-    
-    private ArrayList listeners = new ArrayList();
-    private ArrayList tabs = new ArrayList();
-    private ArrayList titles = new ArrayList();
+
+
+    private ArrayList<PrefPanelListener> listeners = new ArrayList<PrefPanelListener>();
+    private ArrayList<JPanel> tabs = new ArrayList<JPanel>();
+    private ArrayList<String> titles = new ArrayList<String>();
 
     private JTabbedPane tabbedPane = null;
 
@@ -128,7 +140,9 @@ public class PrefMgrDialog extends JFrame
     private void createPrefPanes()
     {
         EditorPrefPanel panel = new EditorPrefPanel();
-        add(panel, Config.getString("prefmgr.edit.prefpaneltitle"), panel);    
+        add(panel, Config.getString("prefmgr.edit.prefpaneltitle"), panel); 
+        kbPanel=new KeyBindingsPanel();
+        add(kbPanel.makePanel(), Config.getString("prefmgr.edit.keybindingstitle"), kbPanel);
         MiscPrefPanel panel2 = new MiscPrefPanel();
         add(panel2, Config.getString("prefmgr.misc.prefpaneltitle"), panel2);
         userConfigLibPanel = new ClassMgrPrefPanel();
@@ -137,10 +151,11 @@ public class PrefMgrDialog extends JFrame
             ExtensionPrefManager mgr = ExtensionsManager.getInstance().getPrefManager();
             add(mgr.getPanel(), Config.getString("extmgr.extensions"), mgr);
         }
+
     }
-    
+
     /**
-     * Returns the istance of the UserConfigLibPanel.
+     * Returns the instance of the UserConfigLibPanel.
      * It is possible to retrieve the current list of libraries from it.
      * @return a user config lib panel.
      */
@@ -148,7 +163,7 @@ public class PrefMgrDialog extends JFrame
     {
         return userConfigLibPanel;
     }
-    
+
     /**
      * Register a panel to be shown in the preferences dialog
      *
@@ -166,28 +181,31 @@ public class PrefMgrDialog extends JFrame
 
     private void startEditing()
     {
-        for (Iterator i = listeners.iterator(); i.hasNext(); ) {
-            PrefPanelListener ppl = (PrefPanelListener)i.next();
+        for (Iterator<PrefPanelListener> i = listeners.iterator(); i.hasNext(); ) {
+            PrefPanelListener ppl = i.next();
             ppl.beginEditing();
         }        
     }
-    
+
     private void selectTab(int tabNumber)
     {
         tabbedPane.setSelectedIndex(tabNumber);
     }
-    
+
     private void makeDialog()
     {
-        setIconImage(BlueJTheme.getIconImage());
+        Image icon = BlueJTheme.getIconImage();
+        if (icon != null) {
+            setIconImage(icon);
+        }
         setTitle(Config.getApplicationName() + ": " + Config.getString("prefmgr.title"));
 
         tabbedPane = new JTabbedPane();
 
-        for (ListIterator i = tabs.listIterator(); i.hasNext(); ) {
+        for (ListIterator<JPanel> i = tabs.listIterator(); i.hasNext(); ) {
             int index = i.nextIndex();
-            JPanel p = (JPanel)i.next();
-            tabbedPane.addTab((String)titles.get(index), null, p);
+            JPanel p = i.next();
+            tabbedPane.addTab(titles.get(index), null, p);
         }
 
         JPanel contentPanel = (JPanel)getContentPane();
@@ -202,14 +220,14 @@ public class PrefMgrDialog extends JFrame
                 JButton okButton = BlueJTheme.getOkButton();
                 {
                     okButton.addActionListener(new ActionListener() {
-                            public void actionPerformed(ActionEvent e) {
-                                for (Iterator i = listeners.iterator(); i.hasNext(); ) {
-                                    PrefPanelListener ppl = (PrefPanelListener)i.next();
-                                    ppl.commitEditing();
-                                }
-                                setVisible(false);
+                        public void actionPerformed(ActionEvent e) {
+                            for (Iterator<PrefPanelListener> i = listeners.iterator(); i.hasNext(); ) {
+                                PrefPanelListener ppl = i.next();
+                                ppl.commitEditing();
                             }
-                        });
+                            setVisible(false);
+                        }
+                    });
                 }
 
                 getRootPane().setDefaultButton(okButton);
@@ -217,18 +235,17 @@ public class PrefMgrDialog extends JFrame
                 JButton cancelButton = BlueJTheme.getCancelButton();
                 {
                     cancelButton.addActionListener(new ActionListener() {
-                            public void actionPerformed(ActionEvent e) {
-                                for (Iterator i = listeners.iterator(); i.hasNext(); ) {
-                                    PrefPanelListener ppl = (PrefPanelListener)i.next();
-                                    ppl.revertEditing();
-                                }
-                                setVisible(false);
+                        public void actionPerformed(ActionEvent e) {
+                            for (Iterator<PrefPanelListener> i = listeners.iterator(); i.hasNext(); ) {
+                                PrefPanelListener ppl = i.next();
+                                ppl.revertEditing();
                             }
-                        });
+                            setVisible(false);
+                        }
+                    });
                 }
 
-                buttonPanel.add(okButton);
-                buttonPanel.add(cancelButton);
+                DialogManager.addOKCancelButtons(buttonPanel, okButton, cancelButton);
             }
 
             contentPanel.add(tabbedPane, BorderLayout.CENTER);
@@ -237,11 +254,11 @@ public class PrefMgrDialog extends JFrame
 
         // save position when window is moved
         addComponentListener(new ComponentAdapter() {
-                public void componentMoved(ComponentEvent event)
-                {
-                    Config.putLocation("bluej.preferences", getLocation());
-                }
-            });
+            public void componentMoved(ComponentEvent event)
+            {
+                Config.putLocation("bluej.preferences", getLocation());
+            }
+        });
 
         setLocation(Config.getLocation("bluej.preferences"));
         pack();        

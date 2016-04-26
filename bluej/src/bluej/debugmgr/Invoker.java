@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,23 +30,28 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-import bluej.BlueJEvent;
+import javax.swing.JFrame;
+
 import bluej.Config;
 import bluej.compiler.CompileObserver;
 import bluej.compiler.EventqueueCompileObserver;
 import bluej.compiler.JobQueue;
 import bluej.debugger.Debugger;
+import bluej.debugger.DebuggerObject;
 import bluej.debugger.DebuggerResult;
 import bluej.debugger.ExceptionDescription;
-import bluej.debugger.gentype.GenTypeSolid;
-import bluej.debugger.gentype.GenTypeWildcard;
+import bluej.debugger.gentype.GenTypeParameter;
 import bluej.debugger.gentype.JavaType;
 import bluej.debugger.gentype.NameTransform;
-import bluej.debugger.gentype.TextType;
+import bluej.debugmgr.objectbench.ObjectBenchInterface;
 import bluej.debugmgr.objectbench.ObjectWrapper;
 import bluej.pkgmgr.Package;
 import bluej.pkgmgr.PkgMgrFrame;
-import bluej.testmgr.record.*;
+import bluej.testmgr.record.ConstructionInvokerRecord;
+import bluej.testmgr.record.ExpressionInvokerRecord;
+import bluej.testmgr.record.InvokerRecord;
+import bluej.testmgr.record.MethodInvokerRecord;
+import bluej.testmgr.record.VoidMethodInvokerRecord;
 import bluej.utility.Debug;
 import bluej.utility.DialogManager;
 import bluej.utility.JavaNames;
@@ -61,15 +66,10 @@ import bluej.views.MethodView;
  * resulting class file and executes a method in a new thread.
  * 
  * @author Michael Kolling
- * @version $Id: Invoker.java 6703 2009-09-17 04:48:20Z davmac $
  */
-
 public class Invoker
     implements CompileObserver, CallDialogWatcher
 {
-    private static final String creating = Config.getString("pkgmgr.creating");
-    private static final String createDone = Config.getString("pkgmgr.createDone");
-
     public static final int OBJ_NAME_LENGTH = 8;
     public static final String SHELLNAME = "__SHELL";
     private static int shellNumber = 0;
@@ -84,32 +84,74 @@ public class Invoker
      * cache the dialogs we create. We store the mapping from method to dialog
      * in this hashtable.
      */
-    private static Map<CallableView, MethodDialog> methods = new HashMap<CallableView, MethodDialog>();
+    private static Map<MethodView, MethodDialog> methods = new HashMap<MethodView, MethodDialog>();
+    private static Map<ConstructorView, ConstructorDialog> constructors =
+        new HashMap<ConstructorView, ConstructorDialog>();
 
-    private PkgMgrFrame pmf;
-    private Package pkg;
+    private JFrame pmf;
+    private File pkgPath;
+    private String pkgName;
+    private String pkgScopeId;
+    private CallHistory callHistory;
     private ResultWatcher watcher;
     private CallableView member;
     private String shellName;
+    /** Name of the result object */
     private String objName;
-    private Map<?, ?> typeMap; // map type parameter names to types
+    private Map<String,GenTypeParameter> typeMap; // map type parameter names to types
     private ValueCollection localVars;
+    private ValueCollection objectBenchVars;
+    private ObjectBenchInterface objectBench;
+    private Debugger debugger;
     private String imports; // import statements to include in shell file
-    private boolean doTryAgain = false; // whether to re-try
+    private NameTransform nameTransform;
+    private InvokerCompiler compiler;
     
-    /**
-     * The instance name for any object we create. For a constructed object the
-     * user sets it in the dialog. For a method call with result we set this to
-     * "result". For a void method we set this to null.
-     */
+    /** Name of the target object to which the call is applied */
     private String instanceName;
 
     private CallDialog dialog;
     private boolean constructing;
 
     private String commandString;
-    private ExecutionEvent executionEvent;
     private InvokerRecord ir;
+
+    /**
+     * Construct an invoker, specifying most attributes manually.
+     */
+    public Invoker(JFrame frame, CallableView member, ResultWatcher watcher, File pkgPath, String pkgName,
+            String pkgScopeId, CallHistory callHistory, ValueCollection objectBenchVars,
+            ObjectBenchInterface objectBench, Debugger debugger, InvokerCompiler compiler,
+            String instanceName)
+    {
+        this.pmf = frame;
+        this.member = member;
+        this.watcher = watcher;
+        if (member instanceof ConstructorView) {
+            this.objName = member.getClassName().toLowerCase();
+            constructing = true;
+        }
+        else if (member instanceof MethodView) {
+            constructing = false;
+        }
+        
+        this.instanceName = instanceName;
+        this.pkgPath = pkgPath;
+        this.pkgName = pkgName;
+        this.pkgScopeId = pkgScopeId;
+        this.callHistory = callHistory;
+        this.objectBenchVars = objectBenchVars;
+        this.objectBench = objectBench;
+        this.debugger = debugger;
+        this.nameTransform = new NameTransform() {
+            public String transform(String typeName)
+            {
+                return typeName;
+            }
+        };
+        this.compiler = compiler;
+        this.shellName = getShellName();
+    }
 
     /**
      * Create an invoker for a free form statement or expression. After using this
@@ -118,14 +160,8 @@ public class Invoker
      */
     public Invoker(PkgMgrFrame pmf, ValueCollection localVars, String command, ResultWatcher watcher)
     {
-        if (pmf.isEmptyFrame())
-            throw new IllegalArgumentException();
-
-        if (watcher == null)
-            throw new NullPointerException("Invoker: watcher == null");
-
-        this.pmf = pmf;
-        this.pkg = pmf.getPackage();
+        initialize(pmf);
+        
         this.watcher = watcher;
         this.member = null;
         this.shellName = getShellName();
@@ -134,10 +170,9 @@ public class Invoker
         this.localVars = localVars;
 
         constructing = false;
-        executionEvent = new ExecutionEvent(this.pkg);
         commandString = command;
     }
-
+    
     /**
      * Call a class's constructor OR call a static method and create an
      * ObjectWrapper for the resulting object
@@ -151,31 +186,23 @@ public class Invoker
      */
     public Invoker(PkgMgrFrame pmf, CallableView member, ResultWatcher watcher)
     {
-        if (pmf.isEmptyFrame())
-            throw new IllegalArgumentException();
+        initialize(pmf);
 
-        if (watcher == null)
-            throw new NullPointerException("Invoker: watcher == null");
-
-        this.pmf = pmf;
-        this.pkg = pmf.getPackage();
         this.member = member;
         this.watcher = watcher;
-
         this.shellName = getShellName();
 
         // in the case of a constructor, we need to construct an object name
         if (member instanceof ConstructorView) {
             this.objName = pmf.getProject().getDebugger().guessNewName(member.getClassName());
             constructing = true;
-            executionEvent = new ExecutionEvent(pkg, member.getClassName(), null);
         }
         else if (member instanceof MethodView) {
             constructing = false;
-                executionEvent = new ExecutionEvent(pkg, member.getClassName(), null );
         }
         else {
             Debug.reportError("illegal member type in invocation");
+            throw new IllegalArgumentException("Unknown callable type");
         }
     }
 
@@ -193,17 +220,10 @@ public class Invoker
      */
     public Invoker(PkgMgrFrame pmf, MethodView member, ObjectWrapper objWrapper, ResultWatcher watcher)
     {
-        if (pmf.isEmptyFrame())
-            throw new IllegalArgumentException();
+        initialize(pmf);
 
-        if (watcher == null)
-            throw new NullPointerException("Invoker: watcher == null");
-
-        this.pmf = pmf;
-        this.pkg = pmf.getPackage();
         this.member = member;
         this.watcher = watcher;
-
         this.shellName = getShellName();
 
         // We want a map of all the type parameters that may appear in the
@@ -213,14 +233,36 @@ public class Invoker
         // Tpar names in the method signature however correspond to names from
         // the class in which the method was declared. So we need to map tpars
         // from the object's class to that class.
-        this.objName = objWrapper.getName();
+        this.instanceName = objWrapper.getName();
         this.typeMap = objWrapper.getObject().getGenType().mapToSuper(member.getClassName()).getMap();
 
-        executionEvent = new ExecutionEvent(pkg, member.getClassName(), objName);
-        
         constructing = false;
     }
 
+    /**
+     * Initialize most of the invoker's necessary fields via a PkgMgrFrame reference.
+     */
+    private void initialize(PkgMgrFrame pmf)
+    {
+        this.pmf = pmf;
+        final Package pkg = pmf.getPackage();
+        this.pkgPath = pkg.getPath();
+        this.pkgName = pkg.getQualifiedName();
+        this.pkgScopeId = pkg.getId();
+        this.callHistory = pkg.getCallHistory();
+        this.objectBenchVars = pmf.getObjectBench();
+        this.objectBench = pmf.getObjectBench();
+        this.debugger = pkg.getProject().getDebugger();
+        this.nameTransform = new CleverQualifyTypeNameTransform(pkg);
+        compiler = new InvokerCompiler() {
+            public void compile(File[] files, CompileObserver observer)
+            {
+                JobQueue.getJobQueue().addJob(files, observer, pkg.getProject().getClassLoader(),
+                        pkg.getProject().getProjectDir(),true);
+            }
+        };
+    }
+    
     /**
      * Set the import statements that should be in effect when this invocation
      * is performed.
@@ -242,18 +284,6 @@ public class Invoker
      */
     public void invokeInteractive()
     {
-        //in greenfoot mode we don't ever want to ask for instance name
-        if(constructing && Config.isGreenfoot()) {     
-            instanceName = objName;
-        }
-        
-        if (!Config.isGreenfoot()) {
-            boolean isStatic = constructing || member.isStatic();
-            if (!pkg.getProject().getExecControls().processDebuggerState(pmf, isStatic)) {
-                return;
-            }
-        }
-        
         // check for a method call with no parameter
         // if so, just do it
         if ((!constructing || Config.isGreenfoot()) && !member.hasParameters()) {
@@ -261,31 +291,42 @@ public class Invoker
             doInvocation(null, (JavaType []) null, null);
         }
         else {
-            MethodDialog mDialog = methods.get(member);
+            CallDialog cDialog;
+            if (member instanceof MethodView) {
+                // Method requires a method dialog
+                MethodView mmember = (MethodView) member;
+                MethodDialog mDialog = methods.get(member);
 
-            if (mDialog == null) {
-                mDialog = new MethodDialog(pmf, objName, member, typeMap);
-                methods.put(member, mDialog);
-                mDialog.setVisible(true);
+                if (mDialog == null) {
+                    mDialog = new MethodDialog(pmf, objectBench, callHistory, instanceName, mmember, typeMap);
+                    methods.put(mmember, mDialog);
+                }
+                else {
+                    mDialog.setInstanceInfo(instanceName, typeMap);
+                    mDialog.setCallLabel(mmember.isStatic() ? mmember.getClassName() : instanceName);
+                }
+                cDialog = mDialog;
             }
             else {
-                mDialog.setInstanceInfo(objName, typeMap);
+                // Constructor
+                ConstructorView cmember = (ConstructorView) member;
+                ConstructorDialog conDialog = constructors.get(cmember);
+                
+                if (conDialog == null) {
+                    conDialog = new ConstructorDialog(pmf, objectBench, callHistory, objName, cmember);
+                    constructors.put(cmember, conDialog);
+                }
+                else {
+                    conDialog.setInstanceInfo(objName);
+                }
+                cDialog = conDialog;
             }
 
-            mDialog.setEnabled(true);
-            mDialog.setWatcher(this);
-            dialog = mDialog;
+            cDialog.setVisible(true);
+            cDialog.setEnabled(true);
+            cDialog.setWatcher(this);
+            dialog = cDialog;
         }
-    }
-
-    /**
-     * After attempting a free form invocation, and getting an error, we try
-     * again. First time round, we tried interpreting the input as an
-     * expression, the second time we try as a statement (i.e. without a result type).
-     */
-    public void tryAgain()
-    {
-        doTryAgain = true;
     }
 
     // -- CallDialogWatcher interface --
@@ -297,26 +338,17 @@ public class Invoker
     public void callDialogEvent(CallDialog dlg, int event)
     {
         if (event == CallDialog.CANCEL) {
-
             dlg.setVisible(false);
         }
         else if (event == CallDialog.OK) {
-
-            if (dlg instanceof MethodDialog) {
-                MethodDialog mDialog = (MethodDialog) dlg;
-                mDialog.setEnabled(false);
-                instanceName = mDialog.getNewInstanceName();                
-                String[] actualTypeParams = mDialog.getTypeParams();
-                
-                pmf.setWaitCursor(true);
-                doInvocation(mDialog.getArgs(), mDialog.getArgGenTypes(true), actualTypeParams);
-                
-                if (constructing)
-                    pkg.setStatus(creating);
-            }
+            dialog.setEnabled(false);
+            objName = dialog.getNewInstanceName();                
+            String[] actualTypeParams = dialog.getTypeParams();
+            doInvocation(dialog.getArgs(), dialog.getArgGenTypes(true), actualTypeParams);
         }
-        else
+        else {
             Debug.reportError("Invoker: Unknown CallDialog event");
+        }
     }
 
     // -- end of CallDialogWatcher interface --
@@ -328,12 +360,9 @@ public class Invoker
      */
     public void invokeDirect(String[] params)
     {
-        if (instanceName == null)
-            instanceName = objName;
-
         final JavaType[] argTypes = member.getParamTypes(false);
         for (int i = 0; i < argTypes.length; i++) {
-            argTypes[i] = argTypes[i].mapTparsToTypes(typeMap);
+            argTypes[i] = argTypes[i].mapTparsToTypes(typeMap).getUpperBound();
         }
         
         doInvocation(params, argTypes, null);
@@ -369,26 +398,8 @@ public class Invoker
         if (! member.isGeneric() || member.isConstructor()) {
             for (int i = 0; i < numArgs; i++) {
                 JavaType argType = argTypes[i];
-                
-                if (argType instanceof GenTypeWildcard) {
-                    GenTypeSolid [] ubounds = ((GenTypeWildcard) argType).getUpperBounds();
-                    
-                    if (ubounds.length != 0)
-                        argType = ubounds[0];
-                    else
-                        argType = new TextType("java.lang.Object");
-                }
-                
-                argTypeStrings[i] = argType.toString(new CleverQualifyTypeNameTransform(pkg));
+                argTypeStrings[i] = argType.toString(nameTransform);
             }
-        }
-
-        executionEvent.setParameters(argTypes, args);
-        if (constructing) {
-            executionEvent.setObjectName(instanceName);
-        }
-        else {
-            executionEvent.setMethodName(((MethodView) member).getName());
         }
 
         doInvocation(args, argTypeStrings, typeParams);
@@ -439,7 +450,7 @@ public class Invoker
 
         String constype = null;
         if (constructing) {
-            constype = cleverQualifyTypeName(pkg, className);
+            constype = nameTransform.transform(className);
             if (typeParams != null && typeParams.length > 0) {
                 constype += "<";
                 for (int i = 0; i < typeParams.length; i++) {
@@ -452,48 +463,26 @@ public class Invoker
                 constype += ">";
             }
             command = "new " + constype;
-            ir = new ConstructionInvokerRecord(constype, instanceName, command + actualArgString, args);
-
-            //          BeanShell
-            //commandAsString = command + actualArgString;
+            ir = new ConstructionInvokerRecord(constype, objName, command + actualArgString, args);
         }
         else { // it's a method call
             MethodView method = (MethodView) member;
             isVoid = method.isVoid();
 
             if (method.isStatic())
-                command = cleverQualifyTypeName(pkg, className) + "." + method.getName();
+                command = nameTransform.transform(className) + "." + method.getName();
             else {
-                command = objName + "." + method.getName();
+                command = instanceName + "." + method.getName();
             }
 
             if (isVoid) {
-                if (method.isMain()) {
-                    // if we are calling a main method then we want to simulate a
-                    // new launch of an application, so first of all we unload all our
-                    // classes (prevents problems with static variables not being
-                    // reinitialised because the class hangs around from a previous
-                    // call)
-                    if (! Config.isGreenfoot()) {
-                        pmf.getProject().removeClassLoader();
-                        pmf.getProject().newRemoteClassLoaderLeavingBreakpoints();
-                    }
-
-                    ir = new StaticVoidMainMethodInvokerRecord();
-                } 
-                else {
-                    ir = new VoidMethodInvokerRecord(command + actualArgString, args);
-                }
-                instanceName = null;
+                ir = new VoidMethodInvokerRecord(command + actualArgString, args);
+                objName = null;
             }
             else {
-                ir = new MethodInvokerRecord(method.getGenericReturnType(), command + actualArgString, args, pmf);
-                instanceName = "result";
+                ir = new MethodInvokerRecord(method.getGenericReturnType(), command + actualArgString, args);
+                objName = "result";
             }
-
-            //          BeanShell
-            //commandAsString = "bluej.runtime.Shell.makeObj(" + command +
-            // actualArgString + ");";
         }
 
         if (constructing && member.getParameterCount() == 0 && (typeParams == null || typeParams.length == 0)) {
@@ -501,31 +490,27 @@ public class Invoker
             // We can do this without writing and compiling a shell file.
             
             commandString = command + actualArgString;
-            BlueJEvent.raiseEvent(BlueJEvent.METHOD_CALL, commandString);
+            watcher.beginCompile(); // there is no compile step, really
+            watcher.beginExecution(ir);
             
             // We must however do so in a seperate thread. Otherwise a constructor which
             // goes into an infinite loop can hang BlueJ.
             new Thread() {
                 public void run() {
-                        EventQueue.invokeLater(new Runnable() {
-                                public void run() {
-                            closeCallDialog();
-                                }
-                        });
-                        
-                    final DebuggerResult result = pkg.getProject().getDebugger().instantiateClass(className);
+                	EventQueue.invokeLater(new Runnable() {
+                	    public void run() {
+                	        closeCallDialog();
+                	    }
+                	});
+                	
+                    final DebuggerResult result = debugger.instantiateClass(className);
                     
                     EventQueue.invokeLater(new Runnable() {
                         public void run() {
                             // the execution is completed, get the result if there was one
                             // (this could be either a construction or a function result)
                             
-                            handleResult(result); // handles error situations
-                                
-                            pmf.setWaitCursor(false);
-                            
-                            // update all open inspect windows
-                            pkg.getProject().updateInspectors();
+                            handleResult(result, false); // handles error situations
                         }
                     });
                 }
@@ -535,6 +520,7 @@ public class Invoker
             if (isVoid)
                 argString += ';';
             
+            watcher.beginCompile();
             File shell = writeInvocationFile(paramInit, command + argString, isVoid, constype);
             if (shell != null) {
                 commandString = command + actualArgString;
@@ -579,14 +565,14 @@ public class Invoker
     /**
      * Arrange to execute a free form (text) invocation.
      * 
-     * Invocation here means: construct shell class and compile. The execution
+     * <p>Invocation here means: construct shell class and compile. The execution
      * is done once we return from compilation (in method "endCompile").
      * Compilation is done asynchronously by the CompilerThread.
      * 
-     * This method is still executed in the interface thread, while "endCompile"
+     * <p>This method is still executed in the interface thread, while "endCompile"
      * will be executed by the CompilerThread.
      * 
-     * Returns true if successful, or false if there was a problem (the shell
+     * <p>Returns true if successful, or false if there was a problem (the shell
      * file couldn't be written). In case of failure, a dialog is displayed to
      * alert the user.
      */
@@ -596,18 +582,17 @@ public class Invoker
         if (hasResult) {
             if (resultType.equals(""))
                 resultType = null;
-            instanceName = "result";
+            objName = "result";
             ir = new ExpressionInvokerRecord(commandString);
         }
         else {
-            instanceName = null;
+            objName = null;
             // this is a statement, treat as a void method result
             ir = new VoidMethodInvokerRecord(commandString, null);
         }
 
         File shell = writeInvocationFile("", commandString, !hasResult, resultType);
         if (shell != null) {
-            executionEvent.setCommand(commandString);
             compileInvocationFile(shell);
             return true;
         }
@@ -621,15 +606,13 @@ public class Invoker
      * invocation. Returns the written file, or null if the file cannot be written
      * (an error dialog will be shown in this case).
      * 
-     * <p>A shell file has the following form:
+     * <p>A shell file has, very roughly, the following form:
      * 
      * <p><pre>
      * $PKGLINE
      * $IMPORTS
      * public class $CLASSNAME extends bluej.runtime.Shell
      * {
-     *   $VARDECL
-     * 
      *   public static void run() throws Throwable
      *   {
      *     $SCOPEINIT
@@ -642,74 +625,52 @@ public class Invoker
      * PARAMINIT and INVOCATION correspond directly to the parameters
      * 'paramInit' and 'callString' as passed to this method.<p>
      * 
-     * VARDECL declares a static member variable, __bluej_runtime_result,
-     * whose type depends on 'constructing' and 'constype' parameters. Only
-     * present if 'isVoid' is false.<p>
-     * 
      * SCOPEINIT declares a Map, __bluej_runtime_scope, which maps object
      * names to their values (allowing objects from the object bench to be
      * accessed).
      * 
      *  
-     * @param pkg   the Package in which scope to execute
      * @param paramInit  java code which initializes parameter variables
      * @param callString java code which executes requested method/code
-     * @param constructing  true to store the result directly, false to wrap
-     *                      it in an ObjectResultWrapper
      * @param isVoid   true if no result is returned
      * @param constype  the exact type of the object being constructed. Only
-     *                  needed if 'constructing' is true.
+     *                  needed if 'constructing' is true, but can be supplied in other
+     *                  cases to yield a more accurate result type (when generic types
+     *                  are involved).
      */
     private File writeInvocationFile(String paramInit, String callString,
             boolean isVoid, String constype)
     {
         // Create package specification line ("package xyz")
         String packageLine;
-        if (pkg.isUnnamedPackage())
+        if (pkgName.length() == 0) {
             packageLine = "";
-        else
-            packageLine = "package " + pkg.getQualifiedName() + ";";
-
-        // add variable declaration for a (possible) result
+        }
+        else {
+            packageLine = "package " + pkgName + ";";
+        }
 
         StringBuffer buffer = new StringBuffer();
-        if (!isVoid) {
-            if (constructing) {
-                buffer.append("public static ");
-                buffer.append(constype);
-            }
-            else
-                buffer.append("public static java.lang.Object");
-            buffer.append(" __bluej_runtime_result;");
-            buffer.append(Config.nl);
-        }
-        String resultDecl = buffer.toString();
-        buffer.setLength(0);
         
-        // Build scope, ie. add one line for every object on the object
+        // Build scope, i.e. add one line for every object on the object
         // bench that gets the object and makes it available for use as
-        // a parameter. Then add one line for each parameter setting the
-        // parameter value.
-
+        // a parameter.
+        
         // A sample of the code generated
         //  java.util.Map __bluej_runtime_scope = getScope("BJIDC:\\aproject");
-        //  JavaType instnameA = (JavaType) __bluej_runtime_scope("instnameA");
-        //  OtherJavaType instnameB = (OtherJavaType)
-        // __bluej_runtime_scope("instnameB");
+        //  JavaType instnameA = (JavaType) __bluej_runtime_scope.get("instnameA");
+        //  OtherJavaType instnameB = (OtherJavaType) __bluej_runtime_scope.get("instnameB");
 
-        String scopeId = Utility.quoteString(pkg.getId());
-        Iterator<ObjectWrapper> wrappers = pmf.getObjectBench().getValueIterator();
-        NameTransform cqtTransform = new CleverQualifyTypeNameTransform(pkg);
+        String scopeId = Utility.quoteString(pkgScopeId);
+        Iterator<? extends NamedValue> wrappers = objectBenchVars.getValueIterator();
 
         Map<String, String> objBenchVarsMap = new HashMap<String, String>();
         
         if (wrappers.hasNext() || localVars != null) {
             buffer.append("final bluej.runtime.BJMap __bluej_runtime_scope = getScope(\"" + scopeId + "\");" + Config.nl);
-        
-            // writeVariables("", buffer, false, wrappers, cqtTransform);
             while (wrappers.hasNext()) {
-                NamedValue objBenchVar = (NamedValue) wrappers.next();
-                objBenchVarsMap.put(objBenchVar.getName(), getVarDeclString("", false, objBenchVar, cqtTransform));
+                NamedValue objBenchVar = wrappers.next();
+                objBenchVarsMap.put(objBenchVar.getName(), getVarDeclString("", false, objBenchVar, nameTransform));
             }
         }
         
@@ -717,11 +678,10 @@ public class Invoker
         // the result type, we put the local variables inside the result wrapper object
         // later on.
         if (localVars != null && constype == null) {
-            // writeVariables("lv:", buffer, false, localVars.getValueIterator(), cqtTransform);
             Iterator<? extends NamedValue> i = localVars.getValueIterator();
             while (i.hasNext()) {
                 NamedValue localVar = i.next();
-                objBenchVarsMap.put(localVar.getName(), getVarDeclString("lv:", false, localVar, cqtTransform));
+                objBenchVarsMap.put(localVar.getName(), getVarDeclString("lv:", false, localVar, nameTransform));
             }
         }
         
@@ -735,45 +695,57 @@ public class Invoker
 
         // build the invocation string
         
-        if (constructing) {
-            // A sample of the code generated (for a constructor)
-            //  __bluej_runtime_result = new SomeType(2,"adb");
+        // A sample of the code generated:
+        //
+        // Result type not known:
+        //    try {
+        //      return makeObj(2+new String("ap").length());
+        //    }
+        //    finally {
+        //    }
+        //
+        // Result type known:
+        //    return new java.lang.Object() {
+        //       int result;
+        //       try {
+        //           result = 2+new String("ap").length();
+        //       }
+        //       finally {
+        //       }
+        //    }
+        //
+        // Note that codepad local variable values, if any, are saved in the finally block.
 
-            buffer.append(shellName);
-            buffer.append(".__bluej_runtime_result = ");
-            buffer.append(callString);
-        }
-        else {
-            // A sample of the code generated (for a method call)
-            //  __bluej_runtime_result = makeObj(2+new String("ap").length());
-
-            if (!isVoid) {
-                buffer.append(shellName);
-                if (constype == null) {
-                    buffer.append(".__bluej_runtime_result = makeObj(");
+        if (!isVoid) {
+            if (constype == null) {
+                buffer.append(paramInit);
+                buffer.append("try {" + Config.nl);
+                buffer.append("return makeObj(");
+            }
+            else {
+                buffer.append("return new java.lang.Object() { ");
+                buffer.append(constype + " result;" + Config.nl);
+                buffer.append("{ ");
+                buffer.append(paramInit);
+                if (localVars != null) {
+                    writeVariables("lv:", buffer, false, localVars.getValueIterator(), nameTransform);
                 }
-                else {
-                    buffer.append(".__bluej_runtime_result = new java.lang.Object() { ");
-                    buffer.append(constype + " result;");
-                    if (localVars != null) {
-                        buffer.append("{ ");
-                        writeVariables("lv:", buffer, false, localVars.getValueIterator(), cqtTransform);
-                        buffer.append("this.result = ");
-                    }
-                }
+                buffer.append("try {" + Config.nl);
+                buffer.append("result=(");
             }
             buffer.append(callString);
             // Append a new line, as the call string may end with a //-style comment
             buffer.append(Config.nl);
-            if (!isVoid && constype == null) {
-                buffer.append(")");
-            }
+            buffer.append(");}");
+            buffer.append(Config.nl);
+            buffer.append("finally {" + Config.nl);
         }
-
-        if(! isVoid && ! callString.endsWith(";")) {
-            buffer.append(";");
+        else {
+            buffer.append(paramInit);
+            buffer.append(callString);
+            // Append a new line, as the call string may end with a //-style comment
+            buffer.append(Config.nl);
         }
-        buffer.append(Config.nl);
 
         String invocation = buffer.toString();
         
@@ -793,7 +765,7 @@ public class Invoker
         }
         String scopeSave = buffer.toString();
 
-        File shellFile = new File(pkg.getPath(), shellName + ".java");
+        File shellFile = new File(pkgPath, shellName + ".java");
         BufferedWriter shell = null;
         try {
             shell = new BufferedWriter(new FileWriter(shellFile));
@@ -808,20 +780,28 @@ public class Invoker
             shell.write(shellName);
             shell.write(" extends bluej.runtime.Shell {");
             shell.newLine();
-            shell.write(resultDecl);
-            shell.newLine();
-            shell.write("public static void run() throws Throwable {");
+            shell.write("public static ");
+            if (isVoid) {
+                shell.write("void");
+            }
+            else {
+                shell.write("java.lang.Object");
+            }
+            shell.write(" run() throws Throwable {");
             shell.newLine();
             shell.write(vardecl);
             shell.newLine();
-            shell.write(paramInit);
             shell.write(invocation);
             shell.write(scopeSave);
-            if (! isVoid && constype != null && ! constructing) {
-                shell.write("} };");
+            if (! isVoid) {
+                shell.write("}"); // end finally block
+                if (constype != null) {
+                    shell.write("} };"); // end block, anonymous inner object
+                }
             }
             shell.newLine();
-            shell.write("}}");
+            shell.write("}}"); // end method, class
+            shell.newLine();
             shell.close();
         }
         catch (IOException e) {
@@ -855,10 +835,12 @@ public class Invoker
                 String type = wrapper.getGenType().toString(nt);
                 String instname = wrapper.getName();
                 
-                if (wrapper.isFinal())
+                if (wrapper.isFinal()) {
                     buffer.append("final ");
-                if (isStatic)
+                }
+                if (isStatic) {
                     buffer.append("static ");
+                }
                 
                 buffer.append(type);
                 
@@ -885,10 +867,12 @@ public class Invoker
             String instname = wrapper.getName();
             StringBuffer buffer = new StringBuffer();
             
-            if (wrapper.isFinal())
+            if (wrapper.isFinal()) {
                 buffer.append("final ");
-            if (isStatic)
+            }
+            if (isStatic) {
                 buffer.append("static ");
+            }
             
             buffer.append(type);
             
@@ -1007,7 +991,7 @@ public class Invoker
     private void compileInvocationFile(File shellFile)
     {
         File[] files = {shellFile};
-        JobQueue.getJobQueue().addJob(files, new EventqueueCompileObserver(this), pkg.getProject().getClassLoader(), pkg.getProject().getProjectDir(),true);
+        compiler.compile(files, new EventqueueCompileObserver(this));
     }
 
     // -- CompileObserver interface --
@@ -1024,7 +1008,7 @@ public class Invoker
         if (dialog != null) {
             dialog.setErrorMessage("Error: " + message);
         }
-        watcher.putError(message);
+        watcher.putError(message, ir);
     }
     
     /**
@@ -1048,9 +1032,8 @@ public class Invoker
             }
         }
 
-        pmf.setWaitCursor(false);
-
         if (successful) {
+            watcher.beginExecution(ir);
             startClass();
         }
         else {
@@ -1060,24 +1043,11 @@ public class Invoker
 
     /**
      * Clean up after an invocation or attempted invocation.
-     * @param successful  Whether the invocation was successful
+     * @param successful  Whether the invocation compilation was successful
      */
     private void finishCall(boolean successful)
     {
-        if (constructing && successful) {
-            pkg.setStatus(createDone);
-        }
-        else {
-            pkg.setStatus(" ");
-        }
-
         deleteShellFiles();
-        
-        if (! successful && doTryAgain) {
-                doTryAgain = false;
-                doFreeFormInvocation(null);
-                return;
-        }
         
         if (! successful && dialog != null) {
             // Re-enable call dialog: use can try again with
@@ -1099,9 +1069,7 @@ public class Invoker
             if (Config.isWinOS()) {
                 dialog.dispose();
             }
-            if (dialog instanceof MethodDialog) {
-                ((MethodDialog) dialog).updateParameters();
-            }
+            dialog.updateParameters();
         }
     }
 
@@ -1110,10 +1078,10 @@ public class Invoker
      */
     private void deleteShellFiles()
     {
-        File srcFile = new File(pkg.getPath(), shellName + ".java");
+        File srcFile = new File(pkgPath, shellName + ".java");
         srcFile.delete();
 
-        File classFile = new File(pkg.getPath(), shellName + ".class");
+        File classFile = new File(pkgPath, shellName + ".class");
         classFile.delete();
     }
 
@@ -1123,26 +1091,21 @@ public class Invoker
      * Execute an interactive method call. At this point, the shell class has
      * been compiled and we are ready to go.
      */
-    public void startClass()
+    private void startClass()
     {
-        BlueJEvent.raiseEvent(BlueJEvent.METHOD_CALL, commandString);
-        final String shellClassName = pkg.getQualifiedName(shellName);
+        final String shellClassName = JavaNames.combineNames(pkgName, shellName);
         
         new Thread() {
             public void run() {
                 try {
-                    final DebuggerResult result = pkg.getProject().getDebugger().runClassMain(shellClassName);
+                    final DebuggerResult result = debugger.runClassMain(shellClassName);
                     
                     EventQueue.invokeLater(new Runnable() {
                         public void run() {
                             // the execution is completed, get the result if there was one
                             // (this could be either a construction or a function result)
                             
-                            handleResult(result);
-                            
-                            // update all open inspect windows
-                            pkg.getProject().updateInspectors();
-                            
+                            handleResult(result, constructing);
                             finishCall(true);
                         }
                     });
@@ -1160,10 +1123,12 @@ public class Invoker
      * a freshly created object, a function result or an exception) and make
      * sure that it gets processed appropriately.
      * 
-     * "exitStatus" and "result" fields should be set with appropriate values before
+     * <p>"exitStatus" and "result" fields should be set with appropriate values before
      * calling this.
+     * 
+     * <p>This method is called on the Swing event thread.
      */
-    public void handleResult(DebuggerResult result)
+    public void handleResult(DebuggerResult result, boolean unwrap)
     {
         try {
             // first, check whether we had an unexpected exit
@@ -1171,50 +1136,25 @@ public class Invoker
             switch(status) {
                 case Debugger.NORMAL_EXIT :
                     // result will be null here for a void call
-                    watcher.putResult(result.getResultObject(), instanceName, ir);
-                    ir.setResultObject(result.getResultObject());   
-                    executionEvent.setResultObject(result.getResultObject());
-                    executionEvent.setResult(ExecutionEvent.NORMAL_EXIT);
-                    break;
-
-                case Debugger.FORCED_EXIT : // exit through System.exit()
-                    String excMsg = result.getException().getText();
-                    if (instanceName != null) {
-                        // always report System.exit for non-void calls
-                        pkg.reportExit(excMsg);
-                        watcher.putException(excMsg);
+                    DebuggerObject resultObj = result.getResultObject();
+                    if (unwrap) {
+                        // For constructor calls, the result is expected to be the created object.
+                        resultObj = resultObj.getFieldObject(0);
                     }
-                    else {
-                        // for void calls, only report non-zero exits
-                        if (!"0".equals(excMsg))
-                            pkg.reportExit(excMsg);
-                    }
-                    executionEvent.setResult(ExecutionEvent.FORCED_EXIT);
+                    ir.setResultObject(resultObj);   
+                    watcher.putResult(resultObj, objName, ir);
                     break;
 
                 case Debugger.EXCEPTION :
                     ExceptionDescription exc = result.getException();
-                    String msg = exc.getText();
-                    String text = exc.getClassName();
-                    if (text != null) {
-                        text = JavaNames.stripPrefix(text) + ":\n" + msg;
-                        pkg.exceptionMessage(exc.getStack(), text);
-                        watcher.putException(text);
-                    }
-                    else {
-                        pkg.reportException(msg);
-                        watcher.putException(msg);
-                    }
-                    executionEvent.setResult(ExecutionEvent.EXCEPTION_EXIT);
+                    watcher.putException(exc, ir);
                     break;
 
                 case Debugger.TERMINATED : // terminated by user
-                    watcher.putVMTerminated();
-                    executionEvent.setResult(ExecutionEvent.TERMINATED_EXIT);
+                    watcher.putVMTerminated(ir);
                     break;
 
             } // switch
-            BlueJEvent.raiseEvent(BlueJEvent.EXECUTION_RESULT, executionEvent);
         }
         catch (Throwable e) {
             e.printStackTrace(System.err);

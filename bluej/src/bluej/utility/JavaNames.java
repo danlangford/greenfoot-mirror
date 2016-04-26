@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,22 +29,49 @@ import java.util.*;
  * java names.
  *
  * @author  Andrew Patterson
- * @version $Id: JavaNames.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class JavaNames
 {
+    private static Set<String> javaKeywords;
+    
+    static {
+        javaKeywords = new HashSet<String>();
+        String[] keywords = new String[] {"abstract", "assert", "boolean", "break", "byte",
+                "case", "catch", "char", "class", "const", "continue", "default", "do",
+                "double", "else", "enum", "extends", "final", "finally", "float", "for",
+                "goto", "if", "implements", "import", "instanceof", "int", "interface",
+                "long", "native", "new", "package", "private", "protected", "public",
+                "return", "short", "static", "strictfp", "super", "switch", "synchronized",                 
+                "this", "throw", "throws", "transient", "try", "void", "volatile", "while",
+                "false", "null", "true"
+        };
+        
+        
+        Collections.addAll(javaKeywords, keywords);
+    }
+    
     /**
      * Check whether a string is a valid Java identifier
      */
     public static boolean isIdentifier(String str)
     {
-        if (str.length() == 0)
+        if (str.length() == 0) {
             return false;
-        if (!Character.isJavaIdentifierStart(str.charAt(0)))
+        }
+        
+        if (!Character.isJavaIdentifierStart(str.charAt(0))) {
             return false;
-        for (int i=1; i < str.length(); i++)
-            if (! Character.isJavaIdentifierPart(str.charAt(i)))
+        }
+        
+        for (int i=1; i < str.length(); i++) {
+            if (! Character.isJavaIdentifierPart(str.charAt(i))) {
                 return false;
+            }
+        }
+        
+        if (isJavaKeyword(str)) {
+            return false;
+        }
 
         return true;
     }
@@ -56,14 +83,16 @@ public class JavaNames
      */
     public static boolean isQualifiedIdentifier(String str)
     {
-        if (str.length() == 0)
+        if (str.length() == 0) {
             return true;
+        }
 
         StringTokenizer st = new StringTokenizer(str, ".");
 
         while(st.hasMoreTokens()) {
-            if(!JavaNames.isIdentifier(st.nextToken()))
+            if(!JavaNames.isIdentifier(st.nextToken())) {
                 return false;
+            }
         }
 
         return true;
@@ -119,11 +148,13 @@ public class JavaNames
 
     /**
      * Return the prefix (all but the base name) from a
-     * fully qualified Java name.
+     * fully qualified Java name. Examples:
      *
-     * java.util.ArrayList --> java.util
-     * ""                  --> ""
-     * ArrayList           --> ""
+     * <pre>
+     * java.util.ArrayList   returns   java.util
+     * ""                    returns   ""
+     * ArrayList             returns   ""
+     * </pre>
      */
     public static String getPrefix(String qualifiedName)
     {
@@ -197,12 +228,12 @@ public class JavaNames
      * Convert a qualifed name to a file. This is mostly only useful for
      * packages, as other files have a filename extension with a dot in it.
      */
-    public static File convertQualifiedNameToFile(String name)
+    public static File convertQualifiedNameToFile(String name, File root)
     {
         int n = 0;
         int i;
         
-        File f = null;
+        File f = root;
         
         i = name.indexOf('.', n);
         while (i != -1) {
@@ -286,5 +317,13 @@ public class JavaNames
     public static String getArrayElementType(String arrayType)
     {
         return JavaNames.stripSuffix(arrayType, "[]");
+    }
+    
+    /**
+     * Check whether the given string is a Java keyword / reserved word.
+     */
+    public static boolean isJavaKeyword(String word)
+    {
+        return javaKeywords.contains(word);
     }
 }

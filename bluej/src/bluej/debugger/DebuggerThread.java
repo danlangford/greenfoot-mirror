@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -26,29 +26,31 @@ import java.util.List;
 /**
  * A class defining the debugger thread primitives needed by BlueJ.
  *
- * Objects of this class can only be constructed 
  * @author  Michael Cahill
  * @author  Michael Kolling
  * @author  Andrew Patterson
- * @version $Id: DebuggerThread.java 6215 2009-03-30 13:28:25Z polle $
  */
-
 public abstract class DebuggerThread
 {
     public abstract String getName();
 
     public abstract String getStatus();
-    
+
     public abstract boolean isSuspended();
-	public abstract boolean isAtBreakpoint();
+    public abstract boolean isAtBreakpoint();
 
     public abstract String getClass(int frameNo);
     public abstract String getClassSourceName(int frameNo);
     public abstract int getLineNumber(int frameNo);
     public abstract boolean isKnownSystemThread();
 
-    public abstract List getStack();
-    public abstract List getLocalVariables(int frameNo);
+    /**
+     * Get the current execution of the stack. This is only reliable if the
+     * thread is currently halted.
+     */
+    public abstract List<SourceLocation> getStack();
+    
+    public abstract List<String> getLocalVariables(int frameNo);
     public abstract boolean varIsObject(int frameNo, int index);
     public abstract DebuggerObject getStackObject(int frameNo, int index);
     public abstract DebuggerObject getCurrentObject(int frameNo);
@@ -57,9 +59,20 @@ public abstract class DebuggerThread
     public abstract void setSelectedFrame(int frame);
     public abstract int getSelectedFrame();
 
-	public abstract void halt();
-	public abstract void cont();
-	
+    public abstract void halt();
+    public abstract void cont();
+
+    /**
+     * Step to the next line in the current method. This is only valid when the thread is
+     * suspended. It is safe to call this from a DebuggerListener.
+     */
     public abstract void step();
+
+    /**
+     * Step to the next executed line (which might be in a called method). This is only valid when the
+     * thread is suspended. It is safe to call this from a DebuggerListener.
+     */
     public abstract void stepInto();
+    
+    public abstract boolean sameThread(DebuggerThread thread);
 }

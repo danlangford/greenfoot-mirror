@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -41,6 +41,7 @@ import greenfoot.gui.input.mouse.LocationTracker;
 import greenfoot.gui.input.mouse.MousePollingManager;
 import greenfoot.gui.input.mouse.WorldLocator;
 import greenfoot.platforms.WorldHandlerDelegate;
+import greenfoot.record.InteractionListener;
 import greenfoot.util.GraphicsUtilities;
 
 import java.awt.Component;
@@ -55,10 +56,12 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
 import javax.swing.SwingUtilities;
 import javax.swing.event.EventListenerList;
 
+import bluej.debugger.gentype.JavaType;
 import bluej.debugmgr.objectbench.ObjectBenchInterface;
 
 /**
@@ -71,7 +74,7 @@ public class WorldHandler
     implements TriggeredMouseListener, TriggeredMouseMotionListener, TriggeredKeyListener, DropTarget, DragListener, SimulationListener
 {
     private World initialisingWorld;
-    private World world;
+    private volatile World world;
     private WorldCanvas worldCanvas;
 
     // where did the the drag/drop operation begin? In pixels
@@ -96,11 +99,10 @@ public class WorldHandler
     private int dragOffsetY;
     // The actor being dragged
     private Actor dragActor;
+    private boolean dragActorMoved;
     private Cursor defaultCursor;
+    private InteractionListener interactionListener;
     
-    // Most recently instantiated world class
-    String lastWorldClass;
-
     public static synchronized void initialise(WorldCanvas worldCanvas, WorldHandlerDelegate helper)
     {
         instance = new WorldHandler(worldCanvas, helper);
@@ -128,14 +130,11 @@ public class WorldHandler
     private WorldHandler() 
     {
         instance = this;
-        handlerDelegate = new WorldHandlerDelegate(){
+        mousePollingManager = new MousePollingManager(null);
+        handlerDelegate = new WorldHandlerDelegate() {
 
             public void discardWorld(World world)
             {                
-            }
-
-            public void dragFinished(Object o)
-            {
             }
 
             public InputManager getInputManager()
@@ -155,6 +154,10 @@ public class WorldHandler
             public void mouseClicked(MouseEvent e)
             {
             }
+            
+            public void mouseMoved(MouseEvent e)
+            {
+            }
 
             public void setWorld(World oldWorld, World newWorld)
             {
@@ -162,7 +165,25 @@ public class WorldHandler
 
             public void setWorldHandler(WorldHandler handler)
             {
-            }};
+            }
+            
+            public void addActor(Actor actor, int x, int y)
+            {
+            }
+
+            public void initialisingWorld(World world)
+            {
+            }
+            
+            public void simulationActive()
+            {
+            }
+
+            public InteractionListener getInteractionListener()
+            {
+                return null;
+            }           
+        };
     }
         
     /**
@@ -176,27 +197,11 @@ public class WorldHandler
         instance = this;
         this.handlerDelegate = handlerDelegate;
         this.handlerDelegate.setWorldHandler(this);
+        interactionListener = handlerDelegate.getInteractionListener();
 
         this.worldCanvas = worldCanvas;
-        mousePollingManager = new MousePollingManager(new WorldLocator() {
-            public Actor getTopMostActorAt(MouseEvent e)
-            {
-                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getX(), e.getY(), worldCanvas);
-                return WorldHandler.this.getObject(p.x, p.y);
-            }
-
-            public int getTranslatedX(MouseEvent e)
-            {
-                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getX(), e.getY(), worldCanvas);
-                return WorldVisitor.toCellFloor(getWorld(), p.x);
-            }
-
-            public int getTranslatedY(MouseEvent e)
-            {
-                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getX(), e.getY(), worldCanvas);
-                return WorldVisitor.toCellFloor(getWorld(), p.y);
-            }
-        });
+        
+        mousePollingManager = new MousePollingManager(null);
 
         worldCanvas.setDropTargetListener(this);
 
@@ -232,8 +237,6 @@ public class WorldHandler
     }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see java.awt.event.MouseListener#mouseClicked(java.awt.event.MouseEvent)
      */
     public void mouseClicked(MouseEvent e)
@@ -242,8 +245,6 @@ public class WorldHandler
     }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see java.awt.event.MouseListener#mousePressed(java.awt.event.MouseEvent)
      */
     public void mousePressed(MouseEvent e)
@@ -261,8 +262,9 @@ public class WorldHandler
     private void startDrag(Actor actor, Point p)
     {
         dragActor = actor;
-        dragBeginX = actor.getX() * world.getCellSize() + world.getCellSize() / 2;
-        dragBeginY = actor.getY() * world.getCellSize() + world.getCellSize() / 2;
+        dragActorMoved = false;
+        dragBeginX = ActorVisitor.getX(actor) * world.getCellSize() + world.getCellSize() / 2;
+        dragBeginY = ActorVisitor.getY(actor) * world.getCellSize() + world.getCellSize() / 2;
         dragOffsetX = dragBeginX - p.x;
         dragOffsetY = dragBeginY - p.y;
         objectDropped = false;
@@ -270,16 +272,35 @@ public class WorldHandler
         worldCanvas.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         drag(actor, p);
     }
+    
+    public boolean isDragging()
+    {
+        return dragActor != null;
+    }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see java.awt.event.MouseListener#mouseReleased(java.awt.event.MouseEvent)
      */
     public void mouseReleased(MouseEvent e)
     {
         handlerDelegate.maybeShowPopup(e);
         if (SwingUtilities.isLeftMouseButton(e)) {
+            if (dragActor != null && dragActorMoved) {
+                // This makes sure that a single (final) setLocation
+                // call is received by the actor when dragging ends.
+                // This matters if the actor has overridden setLocation
+                Simulation.getInstance().runLater(new Runnable() {
+                    private Actor dragActor = WorldHandler.this.dragActor;
+                    @Override
+                    public void run()
+                    {
+                        int ax = ActorVisitor.getX(dragActor);
+                        int ay = ActorVisitor.getY(dragActor);
+                        dragActor.setLocation(ax, ay);
+                        notifyMovedActor(dragActor, ax, ay);
+                    }
+                });
+            }
             dragActor = null;
             worldCanvas.setCursor(defaultCursor);
         };
@@ -297,55 +318,84 @@ public class WorldHandler
      */
     public Actor getObject(int x, int y)
     {
-        // Grab a snapshot of world to avoid concurrency issues
-        World world = this.world;
-
-        if (world == null)
-            return null;
-
-        Collection<?> objectsThere = WorldVisitor.getObjectsAtPixel(world, x, y);
-        if (objectsThere.isEmpty()) {
+        return getObject(this.world, x, y);
+    }
+    
+    /**
+     * Returns an object from the given world at the given pixel location. If multiple objects
+     * exist at the one location, this method returns the top-most one according to
+     * paint order.
+     * 
+     * @param x
+     *            The x-coordinate
+     * @param y
+     *            The y-coordinate
+     */
+    private static Actor getObject(World world, int x, int y)
+    {
+        if (world == null) {
             return null;
         }
+        
+        ReentrantReadWriteLock lock = WorldVisitor.getLock(world);
+        int timeout = WorldVisitor.getReadLockTimeout(world);
+        try {
+            if (lock.readLock().tryLock(timeout, TimeUnit.MILLISECONDS)) {
 
-        Iterator<?> iter = objectsThere.iterator();
-        Actor topmostActor = (Actor) iter.next();
-        int seq = ActorVisitor.getLastPaintSeqNum(topmostActor);
+                Collection<?> objectsThere = WorldVisitor.getObjectsAtPixel(world, x, y);
+                if (objectsThere.isEmpty()) {
+                    lock.readLock().unlock();
+                    return null;
+                }
 
-        while (iter.hasNext()) {
-            Actor actor = (Actor) iter.next();
-            int actorSeq = ActorVisitor.getLastPaintSeqNum(actor);
-            if (actorSeq > seq) {
-                topmostActor = actor;
-                seq = actorSeq;
+                Iterator<?> iter = objectsThere.iterator();
+                Actor topmostActor = (Actor) iter.next();
+                int seq = ActorVisitor.getLastPaintSeqNum(topmostActor);
+
+                while (iter.hasNext()) {
+                    Actor actor = (Actor) iter.next();
+                    int actorSeq = ActorVisitor.getLastPaintSeqNum(actor);
+                    if (actorSeq > seq) {
+                        topmostActor = actor;
+                        seq = actorSeq;
+                    }
+                }
+                
+                lock.readLock().unlock();
+                return topmostActor;
             }
         }
+        catch (InterruptedException ie) {}
 
-        return topmostActor;
+        return null;
     }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see java.awt.event.MouseListener#mouseEntered(java.awt.event.MouseEvent)
      */
     public void mouseEntered(MouseEvent e)
     {
-        // TODO figure out if I need this still:
-        //handlerDelegate.setQuickAddActive(false);
         worldCanvas.requestFocusInWindow();
     }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see java.awt.event.MouseListener#mouseExited(java.awt.event.MouseEvent)
      */
     public void mouseExited(MouseEvent e)
     {
         if (dragActor != null) {
-            ActorVisitor.setLocationInPixels(dragActor, dragBeginX, dragBeginY);
-            repaint();
+            dragActorMoved = false;
+            Simulation.getInstance().runLater(new Runnable() {
+                private Actor dragActor = WorldHandler.this.dragActor;
+                private int dragBeginX = WorldHandler.this.dragBeginX;
+                private int dragBeginY = WorldHandler.this.dragBeginY;
+                @Override
+                public void run()
+                {
+                    ActorVisitor.setLocationInPixels(dragActor, dragBeginX, dragBeginY);
+                    repaint();
+                }
+            });
         }
     }
 
@@ -358,16 +408,12 @@ public class WorldHandler
     }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see java.awt.event.KeyListener#keyTyped(java.awt.event.KeyEvent)
      */
     public void keyTyped(KeyEvent e)
     {}
 
     /*
-     * (non-Javadoc)
-     * 
      * @see java.awt.event.KeyListener#keyPressed(java.awt.event.KeyEvent)
      */
     public void keyPressed(KeyEvent e)
@@ -375,8 +421,6 @@ public class WorldHandler
     }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see java.awt.event.KeyListener#keyReleased(java.awt.event.KeyEvent)
      */
     public void keyReleased(KeyEvent e)
@@ -397,19 +441,20 @@ public class WorldHandler
     }
 
     /**
-     * 
+     * Notify that construction of a new world has started.
      * @see #setWorld(World)
-     * @param world
      */
     public void setInitialisingWorld(World world)
     {
+        handlerDelegate.initialisingWorld(world);
         this.initialisingWorld = world;
     }
 
     /** 
      * Removes the current world.
      */
-    public synchronized void discardWorld() {
+    public synchronized void discardWorld()
+    {
         if(world == null) return;
         handlerDelegate.discardWorld(world); 
         final World discardedWorld = world;
@@ -426,18 +471,43 @@ public class WorldHandler
     /**
      * Sets a new world. A world is set in two steps:
      * 
-     * 1. When it is partially created the constructor in World will set the
+     * <ol>
+     * <li> When it is partially created the constructor in World will set the
      * world in world handler, so that actors can access the world early on in
-     * their own constructors. (with worldInitialising(World world)
+     * their own constructors (with worldInitialising(World world)).
      * 
-     * 2. When the world-object is fully created (finished the constructor) it
+     * <li> When the world-object is fully created (finished the constructor) it
      * will notify the worldhandler that it is fully created. (with setWorld)
+     * </ol>
      * 
+     * @param world  The new world. Must not be null.
      * @see #setInitialisingWorld(World)
      */
     public synchronized void setWorld(final World world)
     {
         handlerDelegate.setWorld(this.world, world);
+        mousePollingManager.setWorldLocator(new WorldLocator() {
+            @Override
+            public Actor getTopMostActorAt(MouseEvent e)
+            {
+                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getX(), e.getY(), worldCanvas);
+                return getObject(world, p.x, p.y);
+            }
+
+            @Override
+            public int getTranslatedX(MouseEvent e)
+            {
+                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getX(), e.getY(), worldCanvas);
+                return WorldVisitor.toCellFloor(world, p.x);
+            }
+
+            @Override
+            public int getTranslatedY(MouseEvent e)
+            {
+                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getX(), e.getY(), worldCanvas);
+                return WorldVisitor.toCellFloor(world, p.y);
+            }
+        });
         this.world = world;
         initialisingWorld = null;
         EventQueue.invokeLater(new Runnable() {
@@ -446,9 +516,7 @@ public class WorldHandler
                 if(worldCanvas != null) {
                     worldCanvas.setWorld(world);
                 }                
-                if (world != null) {
-                    fireWorldCreatedEvent(world);
-                }
+                fireWorldCreatedEvent(world);
             }
         });
     }
@@ -456,36 +524,48 @@ public class WorldHandler
     /**
      * Return the currently active world.
      */
-    public World getWorld()
+    public synchronized World getWorld()
     {
-        if (world == null)
+        if (world == null) {
             return initialisingWorld;
-        else
+        }
+        else {
             return world;
+        }
     }
 
     /**
-     * Handle drop of actors. Handles all types of drops (Move, QuickAddd etc)
+     * Handle drop of actors. Handles QuickAdd
+     * 
+     * When existing actors are dragged around in the world, that uses drag -- drop is *not* called for those
      */
     public boolean drop(Object o, Point p)
     {
+        final World world = this.world;
+        
         int maxHeight = WorldVisitor.getHeightInPixels(world);
         int maxWidth = WorldVisitor.getWidthInPixels(world);
-        int x = (int) p.getX();
-        int y = (int) p.getY();
+        final int x = (int) p.getX();
+        final int y = (int) p.getY();
 
-        if (x >= maxWidth || y >= maxHeight) {
+        if (x >= maxWidth || y >= maxHeight || x < 0 || y < 0) {
             return false;
         }
         else if (o instanceof ObjectDragProxy) {
             // create the real object
-            ObjectDragProxy to = (ObjectDragProxy) o;
+            final ObjectDragProxy to = (ObjectDragProxy) o;
             to.createRealObject();
-            world.removeObject(to);
+            Simulation.getInstance().runLater(new Runnable() {
+                @Override
+                public void run()
+                {
+                    world.removeObject(to);
+                }
+            });
             objectDropped = true;
             return true;
         }
-        else if (o instanceof Actor && ((Actor) o).getWorld() == null) {
+        else if (o instanceof Actor && ActorVisitor.getWorld((Actor) o) == null) {
             // object received from the inspector via the Get button.
             Actor actor = (Actor) o;
             addActorAtPixel(actor, x, y);
@@ -493,21 +573,22 @@ public class WorldHandler
             return true;
         }
         else if (o instanceof Actor) {
-            Actor actor = (Actor) o;
-            if (actor.getWorld() == null) {
+            final Actor actor = (Actor) o;
+            if (ActorVisitor.getWorld(actor) == null) {
                 // Under some strange circumstances the world can be null here.
                 // This can happen in the GridWorld scenario because it
                 // overrides World.addObject().
                 return false;
             }
-            try {
-                ActorVisitor.setLocationInPixels(actor, x, y);
-                objectDropped = true;
-            }
-            catch (IndexOutOfBoundsException e) {
-                // it happens...
-                return false;
-            }
+            Simulation.getInstance().runLater(new Runnable() {
+                @Override
+                public void run()
+                {
+                    ActorVisitor.setLocationInPixels(actor, x, y);
+                }
+            });
+            dragActorMoved = true;
+            objectDropped = true;
             return true;
         }
         else {
@@ -521,23 +602,44 @@ public class WorldHandler
     public boolean drag(Object o, Point p)
     {
         if (o instanceof Actor && world != null) {
-            int x = WorldVisitor.toCellFloor(getWorld(), (int) p.getX());
-            int y = WorldVisitor.toCellFloor(getWorld(), (int) p.getY());
-            Actor actor = (Actor) o;
+            int x = WorldVisitor.toCellFloor(getWorld(), (int) p.getX() + dragOffsetX);
+            int y = WorldVisitor.toCellFloor(getWorld(), (int) p.getY() + dragOffsetY);
+            final Actor actor = (Actor) o;
             try {
-
-                int oldX = actor.getX();
-                int oldY = actor.getY();
+                int oldX = ActorVisitor.getX(actor);
+                int oldY = ActorVisitor.getY(actor);
 
                 if (oldX != x || oldY != y) {
-                    if (x < world.getWidth() && y < world.getHeight() && x >= 0 && y >= 0) {
-                        ActorVisitor.setLocationInPixels(actor, (int) p.getX() + dragOffsetX, (int) p.getY()
-                                + dragOffsetY);
-                        repaint();
+                    if (x < WorldVisitor.getWidthInCells(world) && y < WorldVisitor.getHeightInCells(world)
+                            && x >= 0 && y >= 0) {
+                        WriteLock writeLock = WorldVisitor.getLock(world).writeLock();
+                        // The only reason we would fail to obtain the lock is if a repaint
+                        // is happening at this very instant. That shouldn't be too much of
+                        // a problem; it will mean a slight glitch in the drag, probably not
+                        // noticeable.
+                        if (writeLock.tryLock()) {
+                            ActorVisitor.setLocationInPixels(actor,
+                                    (int) p.getX() + dragOffsetX,
+                                    (int) p.getY() + dragOffsetY);
+                            writeLock.unlock();
+                            dragActorMoved = true;
+                            repaint();
+                        }
                     }
                     else {
-                        ActorVisitor.setLocationInPixels(actor, dragBeginX, dragBeginY);
-                        repaint();
+                        WriteLock writeLock = WorldVisitor.getLock(world).writeLock();
+                        if (writeLock.tryLock()) {
+                            ActorVisitor.setLocationInPixels(actor, dragBeginX, dragBeginY);
+                            writeLock.unlock();
+                            
+                            dragActorMoved = false; // Pinged back to where it was
+
+                            x = WorldVisitor.toCellFloor(getWorld(), dragBeginX);
+                            y = WorldVisitor.toCellFloor(getWorld(), dragBeginY);
+                            notifyMovedActor(actor, x, y);
+
+                            repaint();
+                        }
                         return false;
                     }
                 }
@@ -555,12 +657,9 @@ public class WorldHandler
     }
 
     /**
-     * Adds the object where the mouse event occured.
+     * Adds the object where the mouse event occurred.
      * 
-     * @return true if location changed
-     * @throws IndexOutOfBoundsException
-     *             If the coordinates are outside the bounds of the world. Note
-     *             that a wrapping world has no bounds.
+     * @return true if successful, or false if the mouse event was outside the world bounds.
      */
     public synchronized boolean addObjectAtEvent(Actor actor, MouseEvent e)
     {
@@ -573,13 +672,29 @@ public class WorldHandler
         return addActorAtPixel(actor, xPixel, yPixel);
     }
 
-    private boolean addActorAtPixel(Actor actor, int xPixel, int yPixel)
+    /**
+     * Add an actor at the given pixel co-ordinates. The co-ordinates are translated
+     * into cell co-ordinates, and the actor is added at those cell co-ordinates, if they
+     * are within the world.
+     * 
+     * @return  true if the Actor was added into the world; false if the co-ordinates were
+     *          outside the world.
+     */
+    private boolean addActorAtPixel(final Actor actor, int xPixel, int yPixel)
     {
-        World world = getWorld();
-        int x = WorldVisitor.toCellFloor(world, xPixel);
-        int y = WorldVisitor.toCellFloor(world, yPixel);
-        if (x < world.getWidth() && y < world.getHeight()) {
-            world.addObject(actor, x, y);
+        final World world = getWorld();
+        final int x = WorldVisitor.toCellFloor(world, xPixel);
+        final int y = WorldVisitor.toCellFloor(world, yPixel);
+        if (x < WorldVisitor.getWidthInCells(world) && y < WorldVisitor.getHeightInCells(world)
+                && x >= 0 && y >= 0) {
+            Simulation.getInstance().runLater(new Runnable() {
+                @Override
+                public void run()
+                {
+                    world.addObject(actor, x, y);
+                }
+            });
+            handlerDelegate.addActor(actor, x, y);
             return true;
         }
         else {
@@ -590,23 +705,29 @@ public class WorldHandler
     public void dragEnded(Object o)
     {
         if (o instanceof Actor && world != null) {
-            Actor actor = (Actor) o;
-            world.removeObject(actor);
+            final Actor actor = (Actor) o;
+            Simulation.getInstance().runLater(new Runnable() {
+                @Override
+                public void run()
+                {
+                    world.removeObject(actor);
+                }
+            });
         }
     }
 
     public void dragFinished(Object o)
     {
-        handlerDelegate.dragFinished(o);
+        finishDrag(o);
     }
 
-    protected void fireWorldCreatedEvent(World discardedWorld)
+    protected void fireWorldCreatedEvent(World newWorld)
     {
         // Guaranteed to return a non-null array
         Object[] listeners = listenerList.getListenerList();
         // Process the listeners last to first, notifying
         // those that are interested in this event
-        WorldEvent worldEvent = new WorldEvent(this, discardedWorld);
+        WorldEvent worldEvent = new WorldEvent(newWorld);
         for (int i = listeners.length - 2; i >= 0; i -= 2) {
             if (listeners[i] == WorldListener.class) {
                 ((WorldListener) listeners[i + 1]).worldCreated(worldEvent);
@@ -620,7 +741,7 @@ public class WorldHandler
         Object[] listeners = listenerList.getListenerList();
         // Process the listeners last to first, notifying
         // those that are interested in this event
-        WorldEvent worldEvent = new WorldEvent(this, discardedWorld);
+        WorldEvent worldEvent = new WorldEvent(discardedWorld);
         for (int i = listeners.length - 2; i >= 0; i -= 2) {
             if (listeners[i] == WorldListener.class) {
                 ((WorldListener) listeners[i + 1]).worldRemoved(worldEvent);
@@ -684,7 +805,7 @@ public class WorldHandler
 
     /**
      * Method that cleans up after a drag, and re-enables the worldhandler to
-     * recieve events. It also puts the object back in its original place if it
+     * receive events. It also puts the object back in its original place if it
      * was not dropped.
      */
     public void finishDrag(Object o)
@@ -692,17 +813,25 @@ public class WorldHandler
         // if the operation was cancelled, add the object back into the
         // world at its original position
         if (!isObjectDropped() && o instanceof Actor) {
-            Actor actor = (Actor) o;
+            final Actor actor = (Actor) o;
             setObjectDropped(true);
-            ActorVisitor.setLocationInPixels(actor, dragBeginX, dragBeginY);
+            dragActorMoved = false;
+            Simulation.getInstance().runLater(new Runnable() {
+                @Override
+                public void run()
+                {
+                    ActorVisitor.setLocationInPixels(actor, dragBeginX, dragBeginY);
+                }
+            });
         }
     }
 
     public void simulationChanged(SimulationEvent e)
     {
-        inputManager.simulationChanged(e); // TODO maybe add somewhere else?
+        inputManager.simulationChanged(e);
         if (e.getType() == SimulationEvent.NEW_ACT) {
             mousePollingManager.newActStarted();
+            handlerDelegate.simulationActive();
         }
     }
 
@@ -735,7 +864,10 @@ public class WorldHandler
     public void mouseMoved(MouseEvent e)
     {
         objectDropped = false;
-        drag(dragActor, e.getPoint());
+        if (dragActor != null) {
+            drag(dragActor, e.getPoint());
+        }
+        handlerDelegate.mouseMoved(e);
     }
 
     /**
@@ -778,9 +910,9 @@ public class WorldHandler
 
     public void listeningEnded()
     {
-    // TODO: instead of relying on mousePressed to start a drag on the world, we
-    // should initiate it in listeningStarted. Maybe by passing the event object
-    // to listening started. 
+        // TODO: instead of relying on mousePressed to start a drag on the world, we
+        // should initiate it in listeningStarted. Maybe by passing the event object
+        // to listening started. 
     }
 
     public void listeningStarted(Object obj)
@@ -788,11 +920,57 @@ public class WorldHandler
         // If the obj is not null, it means we have to activate the dragging of that object.
         if (obj != null && obj != dragActor && obj instanceof Actor) {
             Actor actor = (Actor) obj;
-            int x = (int) Math.floor(WorldVisitor.getCellCenter(world, actor.getX()));
-            int y = (int) Math.floor(WorldVisitor.getCellCenter(world, actor.getY()));
+            int ax = ActorVisitor.getX(actor);
+            int ay = ActorVisitor.getY(actor);
+            int x = (int) Math.floor(WorldVisitor.getCellCenter(world, ax));
+            int y = (int) Math.floor(WorldVisitor.getCellCenter(world, ay));
             Point p = new Point(x, y);
             startDrag(actor, p);
         }
-    } 
+    }
+    
+    /**
+     * Notify that an actor was constructed interactively by the user.
+     * @param actor   The actor object
+     * @param String[] args   The constructor arguments (as Java expressions)
+     */
+    public void notifyCreatedActor(Object actor, String[] args, JavaType[] argTypes)
+    {
+        if (interactionListener != null)
+            interactionListener.createdActor(actor, args, argTypes);
+    }
 
+    public void notifyMethodCall(Object obj, String instanceName, String name, String[] args, JavaType[] argTypes)
+    {
+        if (interactionListener != null)
+            interactionListener.methodCall(obj, instanceName, name, args, argTypes);
+    }
+    
+    public void notifyStaticMethodCall(String className, String name, String[] args, JavaType[] argTypes)
+    {
+        if (interactionListener != null)
+            interactionListener.staticMethodCall(className, name, args, argTypes);
+    }
+
+    /**
+     * Notify the interaction listener that an actor was moved (by dragging it with the mouse).
+     */
+    private void notifyMovedActor(Actor actor, int xCell, int yCell)
+    {
+        if (interactionListener != null) {
+            interactionListener.movedActor(actor, xCell, yCell);
+        }
+    }
+
+    public void notifyRemovedActor(Actor obj)
+    {
+        if (interactionListener != null)
+            interactionListener.removedActor(obj);        
+    }
+
+    public void objectAddedToWorld(Actor object)
+    {
+        if (interactionListener != null)
+            interactionListener.objectAddedToWorld(object);        
+    }
 }

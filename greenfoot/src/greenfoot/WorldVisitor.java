@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -32,10 +32,19 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * in the public interface visible to users.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: WorldVisitor.java 6724 2009-09-19 04:52:42Z davmac $
  */
 public class WorldVisitor
 {
+    public static int getWidthInCells(World w)
+    {
+        return w.width;
+    }
+    
+    public static int getHeightInCells(World w)
+    {
+        return w.height;
+    }
+    
     public static int getWidthInPixels(World w)
     {
         return w.getWidthInPixels();
@@ -48,10 +57,10 @@ public class WorldVisitor
 
     public static int getCellSize(World w)
     {
-        return w.getCellSize();
+        return w.cellSize;
     }
     
-    public static Collection getObjectsAtPixel(World w, int x, int y)
+    public static Collection<Actor> getObjectsAtPixel(World w, int x, int y)
     {
         return w.getObjectsAtPixel(x, y);
     }
@@ -68,6 +77,15 @@ public class WorldVisitor
     public static void paintDebug(World world, Graphics g)
     {
         world.paintDebug(g);
+    }
+    
+    /**
+     * Inform the world that it has been repainted; must be called with the world
+     * lock held.
+     */
+    public static void worldPainted(World world)
+    {
+        world.repainted();
     }
     
     /**
@@ -126,6 +144,6 @@ public class WorldVisitor
     
     public static int getReadLockTimeout(World world) 
     {
-        return world.READ_LOCK_TIMEOUT;    
+        return World.READ_LOCK_TIMEOUT;    
     }
 }

@@ -46,14 +46,16 @@ public class StatusAction extends TeamAction
     {
         // save all bluej.pkg files first
         Project project = pmf.getProject();
-        project.saveAllGraphLayout();
+        project.saveAll();
         doStatus(pmf);
     }
 
     private void doStatus(PkgMgrFrame pmf)
     {
-        StatusFrame status = pmf.getProject().getStatusWindow(pmf);
-        status.setVisible(true);
-        status.update();
+        if (pmf.getProject().getTeamSettingsController().initRepository()) {
+            StatusFrame status = pmf.getProject().getStatusWindow(pmf);
+            status.setVisible(true);
+            status.update();
+        }
     }
 }

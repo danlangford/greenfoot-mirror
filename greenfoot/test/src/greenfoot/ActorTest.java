@@ -22,8 +22,6 @@
 package greenfoot;
 
 import greenfoot.collision.ibsp.Rect;
-import greenfoot.core.WorldHandler;
-import greenfoot.platforms.WorldHandlerDelegate;
 import greenfoot.util.GreenfootUtil;
 import junit.framework.TestCase;
 
@@ -46,7 +44,6 @@ public class ActorTest extends TestCase
         GreenfootUtil.initialise(new TestUtilDelegate());        
     }
     
-    
     public void testNoImage()
     {
         world = WorldCreator.createWorld(10, 10, 10);
@@ -55,7 +52,6 @@ public class ActorTest extends TestCase
         
         world.addObject(o, 0, 0);
         assertNull(o.getImage());
-        assertNull(o.getBoundingRect());
     }
     
     public void testRotatedSizeSmall()
@@ -67,10 +63,9 @@ public class ActorTest extends TestCase
         
         //Width and height should now be sqrt(800) = 28.2842
         Rect r = o.getBoundingRect();
-        assertEquals(30, r.getWidth());
-        assertEquals(30, r.getHeight());
+        assertTrue(r.getWidth() >= 28 && r.getWidth() <= 29);
+        assertTrue(r.getHeight() >= 28 && r.getWidth() <= 29);
     }
-    
     
     public void testOutOfBounds()
     {

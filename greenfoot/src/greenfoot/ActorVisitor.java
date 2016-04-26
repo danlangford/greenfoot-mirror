@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -31,18 +31,58 @@ import greenfoot.platforms.ActorDelegate;
  * in the public interface visible to users.
  * 
  * @author Poul Henriksen 
- * @version $Id$
  */
 public class ActorVisitor
 {
-    public static void setLocationInPixels(Actor actor, int dragBeginX, int dragBeginY) {
+    public static void setLocationInPixels(Actor actor, int dragBeginX, int dragBeginY)
+    {
         actor.setLocationInPixels(dragBeginX, dragBeginY);
     }
     
-   
-    public static boolean contains(Actor actor, int dx, int dy)
+    /**
+     * Get the X co-ordinate of an actor's position, in cells
+     */
+    public static int getX(Actor actor)
     {
-        return actor.contains(dx, dy);
+        return actor.x;
+    }
+    
+    /**
+     * Get the Y co-ordinate of an actor's position, in cells
+     */
+    public static int getY(Actor actor)
+    {
+        return actor.y;
+    }
+    
+    /**
+     * Get the rotation of an actor, in degrees, from 0-359
+     */
+    public static int getRotation(Actor actor)
+    {
+        return actor.rotation;
+    }
+    
+    /**
+     * Get the world that an actor resides in (null if none).
+     */
+    public static World getWorld(Actor actor)
+    {
+        return actor.world;
+    }
+   
+    /**
+     * Checks whether the specified point (specified in pixel co-ordinates) is within the area
+     * covered by the (rotated) graphical representation of the given actor.
+     * 
+     * @param actor  The relevant actor
+     * @param px  The (world relative) x pixel co-ordinate
+     * @param py  The (world relative) y pixel co-ordinate
+     * @return  true if the pixel is within the actor's bounds; false otherwise
+     */
+    public static boolean containsPoint(Actor actor, int px, int py)
+    {
+        return actor.containsPoint(px, py);
     }
 
     public static boolean intersects(Actor actor, Actor other)

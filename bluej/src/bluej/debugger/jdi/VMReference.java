@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -40,12 +40,12 @@ import bluej.Boot;
 import bluej.Config;
 import bluej.classmgr.BPClassLoader;
 import bluej.debugger.Debugger;
-import bluej.debugger.DebuggerObject;
+import bluej.debugger.DebuggerEvent;
+import bluej.debugger.DebuggerEvent.BreakpointProperties;
 import bluej.debugger.DebuggerResult;
 import bluej.debugger.DebuggerTerminal;
 import bluej.debugger.ExceptionDescription;
 import bluej.debugger.SourceLocation;
-import bluej.debugger.gentype.GenTypeClass;
 import bluej.runtime.ExecServer;
 import bluej.utility.Debug;
 
@@ -83,46 +83,48 @@ import com.sun.jdi.event.ThreadDeathEvent;
 import com.sun.jdi.event.ThreadStartEvent;
 import com.sun.jdi.event.VMStartEvent;
 import com.sun.jdi.request.BreakpointRequest;
+import com.sun.jdi.request.ClassPrepareRequest;
 import com.sun.jdi.request.EventRequest;
 import com.sun.jdi.request.EventRequestManager;
 
 /**
  * A class implementing the execution and debugging primitives needed by BlueJ.
  * 
- * Execution and debugging is implemented here on a second ("remote") virtual
+ * <p>Execution and debugging is implemented here on a second ("remote") virtual
  * machine, which gets started from here via the JDI interface.
  * 
- * @author Michael Kolling
- * @version $Id: VMReference.java 6260 2009-04-20 07:20:37Z davmac $
+ * <p>The startup process is as follows:
  * 
- * The startup process is as follows:
- * 
- * 1. Debugger spawns a MachineLoaderThread which begins to load the debug vm
+ * <ol>
+ * <li>Debugger spawns a MachineLoaderThread which begins to load the debug vm
  *    Any access to the debugger during this time uses getVM() which waits
  *    for the machine to be loaded.
  *    (see JdiDebugger.MachineLoaderThread).
- * 2. The MachineLoaderThread creates a VMReference representing the vm. The
+ * <li>The MachineLoaderThread creates a VMReference representing the vm. The
  *    VMReference in turn creates a VMEventHandler to receive events from the
  *    debug VM.
- * 3. A "ClassPrepared" event is received telling BlueJ that the ExecServer
+ * <li>A "ClassPrepared" event is received telling BlueJ that the ExecServer
  *    class has been loaded. At this point, breakpoints are set in certain
  *    places within the server class. Execution in the debug VM continues.
- * 4. The ExecServer "main" method spawns two threads. One is the "server"
+ * <li>The ExecServer "main" method spawns two threads. One is the "server"
  *    thread used to run user code. The "worker" thread is used for helper
  *    functions which do not execute user code paths. Both threads hit the
  *    breakpoints which have been set. This causes a breakpoint event to occur.
- * 5. The breakpoint events are trapped. When the server thread hits the
+ * <li>The breakpoint events are trapped. When the server thread hits the
  *    "vmStarted" breakpoint, the VM is considered to be started.
+ * </ol>
  * 
- * We can now execute commands on the remote VM by invoking methods using the
+ * <p>We can now execute commands on the remote VM by invoking methods using the
  * server thread (which is suspended at the breakpoint). 
  * 
- * Non-user code used by BlueJ is run a seperate "worker" thread.
+ * <p>Non-user code used by BlueJ is run a seperate "worker" thread.
+ * 
+ * @author Michael Kolling
  */
 class VMReference
 {
     // the class name of the execution server class running on the remote VM
-    static final String SERVER_CLASSNAME = "bluej.runtime.ExecServer";
+    static final String SERVER_CLASSNAME = ExecServer.class.getName();
 
     // the field name of the static field within that class
     // the name of the method used to signal a System.exit()
@@ -136,7 +138,7 @@ class VMReference
     static final String SERVER_SUSPEND_METHOD_NAME = "vmSuspend";
 
     // A map which can be used to map instances of VirtualMachine to VMReference 
-    private static Map vmToReferenceMap = new HashMap();
+    private static Map<VirtualMachine, VMReference> vmToReferenceMap = new HashMap<VirtualMachine, VMReference>();
     
     // ==== instance data ====
 
@@ -157,12 +159,11 @@ class VMReference
     // the thread running inside the ExecServer
     private ThreadReference serverThread = null;
     private boolean serverThreadStarted = false;
-    private BreakpointRequest serverBreakpoint;
 
     // the worker thread running inside the ExecServer
     private ThreadReference workerThread = null;
     private boolean workerThreadReady = false;
-    private BreakpointRequest workerBreakpoint;
+    private boolean workerThreadReserved = false;
 
     // a record of the threads we start up for
     // redirecting ExecServer streams
@@ -251,11 +252,11 @@ class VMReference
         
         // Attempt to connect via TCP/IP transport
         
-        List connectors = mgr.attachingConnectors();
+        List<AttachingConnector> connectors = mgr.attachingConnectors();
         AttachingConnector connector = null;
 
         // find the known connectors
-        Iterator it = connectors.iterator();
+        Iterator<AttachingConnector> it = connectors.iterator();
         while (it.hasNext()) {
             AttachingConnector c = (AttachingConnector) it.next();
             
@@ -296,7 +297,7 @@ class VMReference
                         };
                     }
                     
-                    Map arguments = connector.defaultArguments();
+                    Map<String, Argument> arguments = connector.defaultArguments();
                     
                     Connector.Argument hostnameArg = (Connector.Argument) arguments.get("hostname");
                     Connector.Argument portArg = (Connector.Argument) arguments.get("port");
@@ -348,7 +349,7 @@ class VMReference
             
             if (connector != null) {
                 try {
-                    Map arguments = connector.defaultArguments();
+                    Map<String, Argument> arguments = connector.defaultArguments();
                     Connector.Argument addressArg = (Connector.Argument) arguments.get("name");
                     if (addressArg == null) {
                         throw new Exception() {
@@ -423,8 +424,14 @@ class VMReference
         EventRequestManager erm = machine.eventRequestManager();
         erm.createExceptionRequest(null, false, true).enable();
         erm.createClassPrepareRequest().enable();
-        erm.createThreadStartRequest().enable();
-        erm.createThreadDeathRequest().enable();
+        
+        EventRequest tsr = erm.createThreadStartRequest();
+        tsr.setSuspendPolicy(EventRequest.SUSPEND_NONE);
+        tsr.enable();
+        
+        tsr = erm.createThreadDeathRequest();
+        tsr.setSuspendPolicy(EventRequest.SUSPEND_NONE);
+        tsr.enable();
 
         // start the VM event handler (will handle the VMStartEvent
         // which will set the machine running)
@@ -612,7 +619,7 @@ class VMReference
         // remove the "class prepare" event request (not needed anymore)
 
         EventRequestManager erm = machine.eventRequestManager();
-        List list = erm.classPrepareRequests();
+        List<ClassPrepareRequest> list = erm.classPrepareRequests();
         erm.deleteEventRequests(list);
 
         try {
@@ -626,6 +633,16 @@ class VMReference
         // need to be readded)
         serverClassAddBreakpoints();
     }
+    
+    private Location findMethodLocation(ReferenceType classType, String methodName)
+    {
+        Method method = findMethodByName(classType, methodName);
+        if (method == null) {
+            throw new IllegalStateException("can't find method " + classType.name() + "."
+                    + methodName);
+        }
+        return method.location();
+    }
 
     /**
      * This breakpoint is used to stop the server process to make it wait for
@@ -638,30 +655,19 @@ class VMReference
 
         // set a breakpoint in the vm started method
         {
-            Method startedMethod = findMethodByName(serverClass, SERVER_STARTED_METHOD_NAME);
-            if (startedMethod == null) {
-                throw new IllegalStateException("can't find method " + SERVER_CLASSNAME + "."
-                        + SERVER_STARTED_METHOD_NAME);
-            }
-            Location loc = startedMethod.location();
-            serverBreakpoint = erm.createBreakpointRequest(loc);
+            BreakpointRequest serverBreakpoint = erm.createBreakpointRequest(findMethodLocation(serverClass, SERVER_STARTED_METHOD_NAME));
             serverBreakpoint.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
             // the presence of this property indicates to breakEvent that we are
             // a special type of breakpoint
             serverBreakpoint.putProperty(SERVER_STARTED_METHOD_NAME, "yes");
             serverBreakpoint.putProperty(VMEventHandler.DONT_RESUME, "yes");
+            serverBreakpoint.putProperty(Debugger.PERSIST_BREAKPOINT_PROPERTY, "yes");
             serverBreakpoint.enable();
         }
 
         // set a breakpoint in the suspend method
         {
-            Method suspendMethod = findMethodByName(serverClass, SERVER_SUSPEND_METHOD_NAME);
-            if (suspendMethod == null) {
-                throw new IllegalStateException("can't find method " + SERVER_CLASSNAME + "."
-                        + SERVER_SUSPEND_METHOD_NAME);
-            }
-            Location loc = suspendMethod.location();
-            workerBreakpoint = erm.createBreakpointRequest(loc);
+            BreakpointRequest workerBreakpoint = erm.createBreakpointRequest(findMethodLocation(serverClass, SERVER_SUSPEND_METHOD_NAME));
             workerBreakpoint.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
             // the presence of this property indicates to breakEvent that we are
             // a special type of breakpoint
@@ -669,6 +675,7 @@ class VMReference
             // the presence of this property indicates that we should not
             // be restarted after receiving this event
             workerBreakpoint.putProperty(VMEventHandler.DONT_RESUME, "yes");
+            workerBreakpoint.putProperty(Debugger.PERSIST_BREAKPOINT_PROPERTY, "yes");
             workerBreakpoint.enable();
         }
 
@@ -716,6 +723,7 @@ class VMReference
     {
         synchronized(workerThread) {
             workerThreadReadyWait();
+            workerThreadReserved = true;
             setStaticFieldValue(serverClass, ExecServer.WORKER_ACTION_NAME, machine.mirrorOf(ExecServer.NEW_LOADER));
             
             StringBuffer newcpath = new StringBuffer(200);
@@ -728,9 +736,11 @@ class VMReference
             
             workerThreadReady = false;
             workerThread.resume();
-            workerThreadReadyWait();
+            workerThreadFinishWait();
             
             currentLoader = (ClassLoaderReference) getStaticFieldObject(serverClass, ExecServer.WORKER_RETURN_NAME);
+            workerThreadReserved = false;
+            workerThread.notify();
             
             return currentLoader;
         }
@@ -753,50 +763,47 @@ class VMReference
      * this function never returns null.
      * 
      * @return a Reference to the class mirrored in the remote VM
-     * @throws ClassNotFoundException
+     * @throws ClassNotFoundException  if the remote class can't be loaded
      */
     ReferenceType loadClass(String className)
         throws ClassNotFoundException
     {
-        synchronized(workerThread) {
-            workerThreadReadyWait();
-            setStaticFieldValue(serverClass, ExecServer.WORKER_ACTION_NAME, machine.mirrorOf(ExecServer.LOAD_CLASS));
-            
-            setStaticFieldObject(serverClass, ExecServer.CLASSNAME_NAME, className);
-            
-            workerThreadReady = false;
-            workerThread.resume();
-            workerThreadReadyWait();
-            
-            ClassObjectReference robject = (ClassObjectReference) getStaticFieldObject(serverClass, ExecServer.WORKER_RETURN_NAME);
-            if (robject == null)
-                throw new ClassNotFoundException(className);
-            
-            return robject.reflectedType();
+        ReferenceType rt = loadClass(className, null);
+        if (rt == null) {
+            throw new ClassNotFoundException(className);
         }
-        
+        return rt;
     }
     
     /**
      * Load a class in the remote VM using the given class loader.
      * @param className  The name of the class to load
-     * @param clr        The remote classloader reference to use
+     * @param clr        The remote classloader reference to use, or null to use
+     *                   the current established project classloader
      * @return     A reference to the loaded class, or null if the class could not be loaded.
      */
     ReferenceType loadClass(String className, ClassLoaderReference clr)
     {
         synchronized(workerThread) {
             workerThreadReadyWait();
+            workerThreadReserved = true;
             setStaticFieldValue(serverClass, ExecServer.CLASSLOADER_NAME, clr);
+            setStaticFieldValue(serverClass, ExecServer.WORKER_ACTION_NAME, machine.mirrorOf(ExecServer.LOAD_CLASS));
+            setStaticFieldObject(serverClass, ExecServer.CLASSNAME_NAME, className);
             
-            try {
-                ReferenceType rt = loadClass(className);
-                return rt;
-            }
-            catch (Exception cnfe) {
-                // ClassNotFoundException or VMDisconnectedException
+            workerThreadReady = false;
+            workerThread.resume();
+            workerThreadFinishWait();
+            
+            ClassObjectReference robject = (ClassObjectReference) getStaticFieldObject(serverClass, ExecServer.WORKER_RETURN_NAME);
+            workerThreadReserved = false;
+            workerThread.notify();
+            
+            if (robject == null) {
                 return null;
             }
+            
+            return robject.reflectedType();
         }
     }
     
@@ -884,19 +891,9 @@ class VMReference
                 }
             }
             
-            ClassObjectReference execdClass = (ClassObjectReference) getStaticFieldObject(serverClass, ExecServer.EXECUTED_CLASS_NAME);
-            ClassType ctype = (ClassType) execdClass.reflectedType();
-            Field rfield = ctype.fieldByName("__bluej_runtime_result");
-            if (rfield != null) {
-                rval = (ObjectReference) ctype.getValue(rfield);
-                if (rval != null) {
-                    GenTypeClass rgtype = (GenTypeClass) JdiReflective.fromField(rfield, ctype);
-                    JdiObject robj = JdiObject.getDebuggerObject(rval, rgtype);
-                    ctype.setValue(rfield, null);
-                    return new DebuggerResult(robj);
-                }
-            }
-            return new DebuggerResult((DebuggerObject) null);
+            ObjectReference objR = getStaticFieldObject(serverClass, ExecServer.METHOD_RETURN_NAME);
+            JdiObject robj = JdiObject.getDebuggerObject(objR);
+            return new DebuggerResult(robj);
         }
         catch (VMDisconnectedException e) {
             exitStatus = Debugger.TERMINATED;
@@ -982,6 +979,14 @@ class VMReference
     }
     
     /**
+     * Emit a thread halted/resumed event for the given thread.
+     */
+    public void emitThreadEvent(JdiThread thread, boolean halted)
+    {
+        eventHandler.emitThreadEvent(thread, halted);
+    }
+    
+    /**
      * Return the status of the last invocation. One of (NORMAL_EXIT,
      * FORCED_EXIT, EXCEPTION, TERMINATED).
      * 
@@ -1024,8 +1029,9 @@ class VMReference
             // restart in this VM; the method waiting for it to start will hang
             // indefinitely unless we kick it here.
             exitStatus = Debugger.TERMINATED;
-            if (!serverThreadStarted)
+            if (!serverThreadStarted) {
                 notifyAll();
+            }
         }
         
         if (workerThread != null) {
@@ -1062,6 +1068,23 @@ class VMReference
         //if (tr == serverThread && serverThreadStarted || tr == workerThread)
         //    close();
     }
+    
+    /**
+     * A thread has been suspended (due to a breakpoint, step, or
+     * call to DebuggerThread.halt()).
+     */
+    public void threadHaltedEvent(JdiThread thread)
+    {
+        owner.threadHalted(thread);
+    }
+    
+    /**
+     * A thread has been resumed.
+     */
+    public void threadResumedEvent(JdiThread thread)
+    {
+        owner.threadResumed(thread);
+    }
 
     /**
      * An exception has occurred in a thread.
@@ -1071,42 +1094,19 @@ class VMReference
      */
     public void exceptionEvent(ExceptionEvent exc)
     {
-        ObjectReference remoteException = exc.exception();
+        // ObjectReference remoteException = exc.exception();
 
         // get the exception text
         // attention: the following depends on the (undocumented) fact that
         // the internal exception message field is named "detailMessage".
-        Field msgField = remoteException.referenceType().fieldByName("detailMessage");
-        StringReference msgVal = (StringReference) remoteException.getValue(msgField);
+        
+        // Field msgField = remoteException.referenceType().fieldByName("detailMessage");
+        // StringReference msgVal = (StringReference) remoteException.getValue(msgField);
 
-        String exceptionText = (msgVal == null ? null : msgVal.value());
-        String excClass = exc.exception().type().name();
+        // String exceptionText = (msgVal == null ? null : msgVal.value());
+        // String excClass = exc.exception().type().name();
 
-        // PENDING: to be removed after exit scheme is tested
-        // if (excClass.equals("bluej.runtime.ExitException")) {
-        // 
-        // // this was a "System.exit()", not a real exception!
-        // exitStatus = Debugger.FORCED_EXIT;
-        // owner.raiseStateChangeEvent(Debugger.RUNNING, Debugger.IDLE);
-        // lastException = new ExceptionDescription(exceptionText);
-        // }
-        // else {
-        // real exception
-
-        //Location loc = exc.location();
-        //String sourceClass = loc.declaringType().name();
-        //String fileName;
-        //try {
-        //    fileName = loc.sourceName();
-        //} catch (AbsentInformationException e) {
-        //    fileName = null;
-        //}
-        //int lineNumber = loc.lineNumber();
-
-        List stack = JdiThread.getStack(exc.thread());
-        //exitStatus = Debugger.EXCEPTION;
-        //lastException = new ExceptionDescription(excClass, exceptionText, stack);
-        //        }
+        // List<SourceLocation> stack = JdiThread.getStack(exc.thread());
     }
 
     /**
@@ -1118,7 +1118,7 @@ class VMReference
      * @param args  The arguments to pass to the method (List of Values)
      * @return      The return Value from the method
      */
-    private Value safeInvoke(ObjectReference o, Method m, List args)
+    private Value safeInvoke(ObjectReference o, Method m, List<? extends Value> args)
     {
         synchronized (workerThread) {
             workerThreadReadyWait();
@@ -1138,7 +1138,7 @@ class VMReference
     
     public void exceptionEvent(InvocationException exc)
     {
-        List empty = new LinkedList();
+        List<Value> empty = new LinkedList<Value>();
         
         ObjectReference remoteException = exc.exception();
         Field msgField = remoteException.referenceType().fieldByName("detailMessage");
@@ -1147,12 +1147,12 @@ class VMReference
         String excClass = exc.exception().type().name();
         
         ReferenceType remoteType = exc.exception().referenceType();
-        List getStackTraceMethods = remoteType.methodsByName("getStackTrace");
+        List<Method> getStackTraceMethods = remoteType.methodsByName("getStackTrace");
         Method getStackTrace = (Method)getStackTraceMethods.get(0);
         ArrayReference stackValue = (ArrayReference)safeInvoke(exc.exception(),  getStackTrace, empty);
         
         ObjectReference [] stackt = (ObjectReference [])stackValue.getValues().toArray(new ObjectReference[0]);
-        List stack = new LinkedList();
+        List<SourceLocation> stack = new LinkedList<SourceLocation>();
         
         // "stackt" is now an array of Values. Each Value represents a
         // "StackTraceElement" object.
@@ -1190,7 +1190,7 @@ class VMReference
     /**
      * A breakpoint has been hit or step completed in a thread.
      */
-    public void breakpointEvent(LocatableEvent event, boolean breakpoint)
+    public void breakpointEvent(LocatableEvent event, boolean breakpoint, boolean skipUpdate)
     {
         // if the breakpoint is marked as with the SERVER_STARTED property
         // then this is our own breakpoint that is used to detect when a new
@@ -1217,36 +1217,54 @@ class VMReference
             
             synchronized (workerThread) {
                 workerThreadReady = true;
-                workerThread.notify();
+                workerThread.notifyAll();
             }
         }
         else {
             // breakpoint set by user in user code
             if (serverThread.equals(event.thread())) {
                 owner.raiseStateChangeEvent(Debugger.SUSPENDED);
+            }
+            
+            Location location = event.location();
+            String className = location.declaringType().name();
+            String fileName;
+            try {
+                fileName = location.sourceName();
+            }
+            catch (AbsentInformationException e) {
+                fileName = null;
+            }
 
-                Location location = event.location();
-                String className = location.declaringType().name();
-                String fileName;
-                try {
-                    fileName = location.sourceName();
-                }
-                catch (AbsentInformationException e) {
-                    fileName = null;
-                }
-
-                // A breakpoint in the shell class or a BlueJ runtime class means that
-                // the user has stepped past the end of their own code
-                if (fileName != null && fileName.startsWith("__SHELL")
-                        || className != null && className.startsWith("bluej.runtime.")) {
-                    serverThread.resume();
-                    return;
-                }
+            // A breakpoint in the shell class or a BlueJ runtime class means that
+            // the user has stepped past the end of their own code
+            if (fileName != null && fileName.startsWith("__SHELL")
+                    || className != null && className.startsWith("bluej.runtime.")) {
+                event.thread().resume();
+                return;
             }
 
             // signal the breakpoint/step to the user
-            owner.breakpoint(event.thread(), breakpoint);
+            owner.breakpoint(event.thread(), breakpoint, skipUpdate, makeBreakpointProperties(event.request()));
         }
+    }
+
+    private BreakpointProperties makeBreakpointProperties(final EventRequest request)
+    {
+        if (request == null)
+            return null;
+        else
+            return new DebuggerEvent.BreakpointProperties() {
+                public Object get(Object key)
+                {
+                    return request.getProperty(key);
+                }
+            };
+    }
+
+    public boolean screenBreakpointEvent(LocatableEvent event, boolean breakpoint)
+    {
+        return owner.screenBreakpoint(event.thread(), breakpoint, makeBreakpointProperties(event.request()));
     }
 
     // ==== code for active debugging: setting breakpoints, stepping, etc ===
@@ -1264,17 +1282,17 @@ class VMReference
         catch (ClassNotFoundException cnfe) {
             return null;
         }
-        List allTypesInFile = new ArrayList();
+        List<ReferenceType> allTypesInFile = new ArrayList<ReferenceType>();
 
         // find all ReferenceType's declared in this source file
         buildNestedTypes(remoteClass, allTypesInFile);
 
-        Iterator it = allTypesInFile.iterator();
+        Iterator<ReferenceType> it = allTypesInFile.iterator();
         while (it.hasNext()) {
-            ReferenceType r = (ReferenceType) it.next();
+            ReferenceType r = it.next();
 
             try {
-                List list = r.locationsOfLine(line);
+                List<Location> list = r.locationsOfLine(line);
                 if (list.size() > 0)
                     return (Location) list.get(0);
             }
@@ -1292,11 +1310,12 @@ class VMReference
      * @param l
      *            the List to add the reference types to
      */
-    private void buildNestedTypes(ReferenceType rootType, List l)
+    private void buildNestedTypes(ReferenceType rootType, List<ReferenceType> l)
     {
         try {
             synchronized(workerThread) {
                 workerThreadReadyWait();
+                workerThreadReserved = true;
                 setStaticFieldValue(serverClass, ExecServer.WORKER_ACTION_NAME, machine.mirrorOf(ExecServer.LOAD_ALL));
                 
                 // parameters
@@ -1305,10 +1324,13 @@ class VMReference
                 workerThreadReady = false;
                 workerThread.resume();
                 
-                workerThreadReadyWait();
+                workerThreadFinishWait();
                 ObjectReference or = getStaticFieldObject(serverClass, ExecServer.WORKER_RETURN_NAME);
+                workerThreadReserved = false;
+                workerThread.notify();
+                
                 ArrayReference inners = (ArrayReference) or;
-                Iterator i = inners.getValues().iterator();
+                Iterator<Value> i = inners.getValues().iterator();
                 while (i.hasNext()) {
                     ClassObjectReference cor = (ClassObjectReference) i.next();
                     ReferenceType rt = cor.reflectedType();
@@ -1329,9 +1351,10 @@ class VMReference
      *            The class in which to set the breakpoint.
      * @param line
      *            The line number of the breakpoint.
+     * @param properties The collection of properties to set on the breakpoint.  Can be null.
      * @return null if there was no problem, or an error string
      */
-    String setBreakpoint(String className, int line)
+    String setBreakpoint(String className, int line, Map<String, String> properties)
     {
         Location location = loadClassesAndFindLine(className, line);
         if (location == null) {
@@ -1341,10 +1364,66 @@ class VMReference
         BreakpointRequest bpreq = erm.createBreakpointRequest(location);
         bpreq.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
         bpreq.putProperty(VMEventHandler.DONT_RESUME, "yes");
+        if (properties != null) {
+            for (Map.Entry<String, String> property : properties.entrySet()) {
+                bpreq.putProperty(property.getKey(), property.getValue());
+            }
+        }
         bpreq.enable();
 
         return null;
     }
+
+    String setBreakpoint(ReferenceType classType, int line, Map<String, String> properties)
+    {
+        try {
+            List<Location> locations = classType.locationsOfLine(line);
+            if (locations.isEmpty()) {
+                return Config.getString("debugger.jdiDebugger.noCodeMsg");
+            }
+
+            setBreakpoint(locations.get(0), properties);
+            return null;
+        }
+        catch (AbsentInformationException aie) {
+            return Config.getString("debugger.jdiDebugger.noCodeMsg");
+        }
+    }
+    
+    void setBreakpoint(Location location, Map<String,String> properties)
+    {
+        EventRequestManager erm = machine.eventRequestManager();
+        BreakpointRequest bpreq = erm.createBreakpointRequest(location);
+        bpreq.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
+        bpreq.putProperty(VMEventHandler.DONT_RESUME, "yes");
+        if (properties != null) {
+            for (Map.Entry<String, String> property : properties.entrySet()) {
+                bpreq.putProperty(property.getKey(), property.getValue());
+            }
+        }
+        bpreq.enable();
+    }
+    
+    // As above but sets the breakpoint on the first line of a given method
+    String setBreakpoint(String className, String methodName, Map<String, String> properties)
+    {
+        try {
+            loadClass(className);
+            ClassType classType = (ClassType)findClassByName(className);
+            Location loc = findMethodLocation(classType, methodName);
+            return setBreakpoint(className, loc.lineNumber(), properties);
+        } catch (ClassNotFoundException e) {
+            return "Could not find class: " + className; 
+        }
+    }
+    
+    String setBreakpoint(ReferenceType classType, String methodName, Map<String, String> properties)
+    {
+        Location loc = findMethodLocation(classType, methodName);
+        setBreakpoint(loc, properties);
+        return null;
+    }    
+    
 
     /**
      * Clear all the breakpoints at a specified line in a class.
@@ -1362,35 +1441,60 @@ class VMReference
             return Config.getString("debugger.jdiDebugger.noCodeMsg");
         }
 
+        return clearBreakpoint(location);
+    }
+    
+    // As above but clears the breakpoint in a given method (as set by the corresponding setBreakpoint method that takes a method name)
+    String clearBreakpoint(String className, String methodName)
+    {
+        try {
+            ClassType classType = (ClassType)findClassByName(className);
+            Location loc = findMethodLocation(classType, methodName);
+            return clearBreakpoint(loc);
+        }  catch (ClassNotFoundException e) {
+            return "Could not find class: " + className; 
+        }
+    }
+    
+    String clearBreakpoint(ReferenceType classType, String methodName)
+    {
+        Location loc = findMethodLocation(classType, methodName);
+        return clearBreakpoint(loc);
+    }
+    
+    String clearBreakpoint(Location location)
+    {
         EventRequestManager erm = machine.eventRequestManager();
         boolean found = false;
-        List list = erm.breakpointRequests();
+        List<BreakpointRequest> list = erm.breakpointRequests();
         for (int i = 0; i < list.size(); i++) {
-            BreakpointRequest bp = (BreakpointRequest) list.get(i);
+            BreakpointRequest bp = list.get(i);
             if (bp.location().equals(location)) {
                 erm.deleteEventRequest(bp);
                 found = true;
             }
         }
         // bp not found
-        if (found)
+        if (found) {
             return null;
-        else
+        }
+        else {
             return Config.getString("debugger.jdiDebugger.noBreakpointMsg");
+        }
     }
 
     /**
      * Return a list of the Locations of user breakpoints in the VM.
      */
-    public List getBreakpoints()
+    public List<Location> getBreakpoints()
     {
         // Debug.message("[VMRef] getBreakpoints()");
 
         EventRequestManager erm = machine.eventRequestManager();
-        List breaks = new LinkedList();
+        List<Location> breaks = new LinkedList<Location>();
 
-        List allBreakpoints = erm.breakpointRequests();
-        Iterator it = allBreakpoints.iterator();
+        List<BreakpointRequest> allBreakpoints = erm.breakpointRequests();
+        Iterator<BreakpointRequest> it = allBreakpoints.iterator();
 
         while (it.hasNext()) {
             BreakpointRequest bp = (BreakpointRequest) it.next();
@@ -1409,14 +1513,14 @@ class VMReference
     public void clearAllBreakpoints()
     {
         EventRequestManager erm = machine.eventRequestManager();
-        List breaks = new LinkedList();
+        List<BreakpointRequest> breaks = new LinkedList<BreakpointRequest>();
 
-        List allBreakpoints = erm.breakpointRequests();
-        Iterator it = allBreakpoints.iterator();
+        List<BreakpointRequest> allBreakpoints = erm.breakpointRequests();
+        Iterator<BreakpointRequest> it = allBreakpoints.iterator();
 
         while (it.hasNext()) {
             BreakpointRequest bp = (BreakpointRequest) it.next();
-            if (bp != serverBreakpoint && bp != workerBreakpoint) {
+            if (bp.getProperty(Debugger.PERSIST_BREAKPOINT_PROPERTY) == null) {
                 breaks.add(bp);
             }
         }
@@ -1431,16 +1535,15 @@ class VMReference
     {
         EventRequestManager erm = machine.eventRequestManager();
 
-        List allBreakpoints = erm.breakpointRequests();
-        Iterator it = allBreakpoints.iterator();
-        List toDelete = new LinkedList();
+        List<BreakpointRequest> allBreakpoints = erm.breakpointRequests();
+        Iterator<BreakpointRequest> it = allBreakpoints.iterator();
+        List<BreakpointRequest> toDelete = new LinkedList<BreakpointRequest>();
 
         while (it.hasNext()) {
-            BreakpointRequest bp = (BreakpointRequest) it.next();
+            BreakpointRequest bp = it.next();
 
             ReferenceType bpType = bp.location().declaringType();
-            if (bpType.name().equals(className)
-                    && bpType.classLoader() == currentLoader) {
+            if (bpType.name().equals(className) && bp.getProperty(Debugger.PERSIST_BREAKPOINT_PROPERTY) == null) {
                 toDelete.add(bp);
             }
         }
@@ -1454,7 +1557,7 @@ class VMReference
      * @param loader
      *            The new class loader to restore the breakpoints into
      */
-    public void restoreBreakpoints(List saved)
+    public void restoreBreakpoints(List<Location> saved)
     {
         // Debug.message("[VMRef] restoreBreakpoints()");
 
@@ -1464,12 +1567,12 @@ class VMReference
         // this has to be done before we suspend the machine because
         // loadClassesAndFindLine needs the machine running to work
         // see bug #526
-        List newSaved = new ArrayList();
+        List<Location> newSaved = new ArrayList<Location>();
 
-        Iterator savedIterator = saved.iterator();
+        Iterator<Location> savedIterator = saved.iterator();
 
         while (savedIterator.hasNext()) {
-            Location oldLocation = (Location) savedIterator.next();
+            Location oldLocation = savedIterator.next();
 
             Location newLocation = loadClassesAndFindLine(oldLocation.declaringType().name(), oldLocation.lineNumber());
 
@@ -1499,7 +1602,7 @@ class VMReference
             serverClassAddBreakpoints();
             
             // add all the new breakpoints we have created
-            Iterator it = newSaved.iterator();
+            Iterator<Location> it = newSaved.iterator();
             
             while (it.hasNext()) {
                 Location l = (Location) it.next();
@@ -1553,13 +1656,36 @@ class VMReference
     /**
      * Wait until the "worker" thread is ready for use. This method should
      * be called with the workerThread monitor held.
+     * 
+     * @throws VMDisconnectedException  if the VM terminates.
      */
     private void workerThreadReadyWait()
     {
         try {
-            while (!workerThreadReady) {
-                if (exitStatus == Debugger.TERMINATED)
+            while (!workerThreadReady || workerThreadReserved) {
+                if (exitStatus == Debugger.TERMINATED) {
                     throw new VMDisconnectedException();
+                }
+                workerThread.wait();
+            }
+        }
+        catch(InterruptedException ie) {}
+    }
+    
+    /**
+     * Wait until the "worker" thread has finished executing. This
+     * should be called only if workerThreadReserved has been set to
+     * true by the current thread.
+     * 
+     * @throws VMDisconnectedException  if the VM terminates.
+     */
+    private void workerThreadFinishWait()
+    {
+        try {
+            while (!workerThreadReady) {
+                if (exitStatus == Debugger.TERMINATED) {
+                    throw new VMDisconnectedException();
+                }
                 workerThread.wait();
             }
         }
@@ -1792,7 +1918,7 @@ class VMReference
      * Remove an object from the object map on the debug vm.
      * @param instanceName   the name of the object to remove
      */
-    synchronized void removeObject(String scopeId, String instanceName)
+    void removeObject(String scopeId, String instanceName)
     {
         synchronized(workerThread) {
             try {
@@ -1901,14 +2027,14 @@ class VMReference
         throws ClassNotFoundException
     {
         // find the class
-        List list = machine.classesByName(className);
+        List<ReferenceType> list = machine.classesByName(className);
         if (list.size() == 1) {
             return (ReferenceType) list.get(0);
         }
         else if (list.size() > 1) {
-            Iterator iter = list.iterator();
+            Iterator<ReferenceType> iter = list.iterator();
             while (iter.hasNext()) {
-                ReferenceType cl = (ReferenceType) iter.next();
+                ReferenceType cl = iter.next();
                 if (cl.classLoader() == clr)
                     return cl;
             }
@@ -1937,9 +2063,9 @@ class VMReference
      * The method is expected to exist. We expect only one single method to
      * exist with this name and report an error if more than one is found.
      */
-    Method findMethodByName(ClassType type, String methodName)
+    Method findMethodByName(ReferenceType type, String methodName)
     {
-        List list = type.methodsByName(methodName);
+        List<Method> list = type.methodsByName(methodName);
         if (list.size() != 1) {
             throw new IllegalArgumentException("getting method " + methodName + " resulted in " + list.size()
                     + " methods");

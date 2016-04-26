@@ -34,17 +34,19 @@ import java.io.File;
  *
  * @author Michael Kolling
  * @see FileUtility
- * @version $Id: PackageFileView.java 6347 2009-05-20 15:22:43Z polle $
+ * @version $Id: PackageFileView.java 7860 2010-07-15 02:45:20Z davmac $
  */
 public class PackageFileView extends FileView
 {
-    static final Icon packageIcon = Config.getImageAsIcon("image.filechooser.packageIcon");
+    static final Icon bluejProjectIcon = Config.getFixedImageAsIcon("bluej-project.png");
+    static final Icon greenfootProjectIcon = Config.getFixedImageAsIcon("greenfoot-project.png");
 
     /**
      * The name of the file.  Do nothing special here. Let the system file
      * view handle this. (All methods that return null get then handled by
      * the system.)
      */
+    @Override
     public String getName(File f)
     {
         return null;
@@ -53,6 +55,7 @@ public class PackageFileView extends FileView
     /**
      * A human readable description of the file.
      */
+    @Override
     public String getDescription(File f)
     {
         return null;
@@ -61,6 +64,7 @@ public class PackageFileView extends FileView
     /**
      * A human readable description of the type of the file.
      */
+    @Override
     public String getTypeDescription(File f)
     {
         return null;
@@ -70,11 +74,24 @@ public class PackageFileView extends FileView
      * Here we return proper BlueJ package icons for BlueJ packages.
      * Everything else gets handled by the system (by returning null).
      */
+    @Override
     public Icon getIcon(File f)
     {
-        if(Package.isPackage(f))
-            return packageIcon;
-        else
+        if (Config.isMacOS() && f.getAbsolutePath().equals("/net")) {
+            // On MacOS this path is a special mapping; looking for a particular
+            // file inside it can cause a significant delay.
             return null;
+        }
+        
+        if(Package.isPackage(f))
+            if (Config.isGreenfoot()) {
+                return greenfootProjectIcon;
+            }
+            else {
+                return bluejProjectIcon;
+            }
+        else {
+            return null;
+        }
     }
 }

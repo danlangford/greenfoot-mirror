@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,19 +21,22 @@
  */
 package greenfoot.platforms.standalone;
 
-import java.awt.Component;
+import greenfoot.GreenfootImage;
+import greenfoot.platforms.GreenfootUtilDelegate;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
-
-
-import greenfoot.platforms.GreenfootUtilDelegate;
+import java.util.HashMap;
+import java.util.Map;
 
 public class GreenfootUtilDelegateStandAlone implements GreenfootUtilDelegate
 {
-
+    /** Holds images for classes. Avoids loading the same image twice. Key is the filename */
+    public static Map<String, GreenfootImage> classImages = new HashMap<String, GreenfootImage>();
+    
     public void createSkeleton(String className, String superClassName, File file, String templateFileName)
-        throws IOException
+    throws IOException
     {
         // Not needed in stand alone
     }
@@ -51,28 +54,55 @@ public class GreenfootUtilDelegateStandAlone implements GreenfootUtilDelegate
             return res;
         }
         else {
+            if (path.indexOf('\\') != -1) {
+                // Looks suspiciously like a Windows path.
+                path = path.replace('\\', '/');
+                res = this.getClass().getClassLoader().getResource(path);
+                if (res != null && res.toString().contains("!")) {  
+                    return res;
+                }
+            }
             return null;
         }
     }
 
-    public String getNewProjectName(Component parent)
-    {
-        // Not needed in stand alone
-        return null;
-    }
-
-    public File getScenarioFromFileBrowser(Component parent)
-    {
-        // Not needed in stand alone
-        return null;
-    }
-    
     /**
      * Returns the path to a small version of the greenfoot logo.
      */
     public String getGreenfootLogoPath()
     {    
         return this.getClass().getClassLoader().getResource("greenfoot.png").toString();
+    }
+    
+    public void removeCachedImage(String fileName)
+    {
+        synchronized (classImages) {
+            classImages.remove(fileName);
+        }
+    }
+   
+
+    public boolean addCachedImage(String fileName, GreenfootImage image)
+    {
+        synchronized (classImages) {
+            classImages.put(fileName, image);
+        }
+        return true;
+    }
+    
+    public GreenfootImage getCachedImage(String fileName)
+    {
+        synchronized (classImages) {
+            return classImages.get(fileName);
+        }
+    }
+    
+    public boolean isNullCachedImage(String fileName)
+    {
+        if (classImages.containsKey(fileName) && classImages.get(fileName)==null){
+            return true;
+        }
+        return false;
     }
 
 }

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,6 +23,7 @@ package bluej.debugger.jdi;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import bluej.debugger.DebuggerClass;
 import bluej.debugger.DebuggerObject;
@@ -36,7 +37,6 @@ import com.sun.jdi.*;
  *
  *@author     Michael Kolling
  *@created    December 26, 2000
- *@version    $Id: JdiClass.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class JdiClass extends DebuggerClass
 {
@@ -125,9 +125,9 @@ public class JdiClass extends DebuggerClass
      *@param  includeModifiers  Description of Parameter
      *@return                   The StaticFields value
      */
-    public List<String> getStaticFields(boolean includeModifiers)
+    public List<String> getStaticFields(boolean includeModifiers, Map<String, List<String>> restrictedClasses)
     {
-        return getFields(includeModifiers);
+        return getFields(includeModifiers, restrictedClasses);
     }
 
 
@@ -181,14 +181,21 @@ public class JdiClass extends DebuggerClass
     /**
      *  Return a list of strings with the description of each field
      *  in the format "<modifier> <type> <name> = <value>".
+     * @param restrictedClasses 
      */
-    private List<String> getFields(boolean includeModifiers)
+    private List<String> getFields(boolean includeModifiers, Map<String, List<String>> restrictedClasses)
     {
         List<String> fieldStrings = new ArrayList<String>(staticFields.size());
         List<Field> visible = remoteClass.visibleFields();
 
         for (int i = 0; i < staticFields.size(); i++) {
             Field field = (Field) staticFields.get(i);
+            
+            if (restrictedClasses != null) {
+                List<String> fieldWhitelist = restrictedClasses.get(field.declaringType().name());
+                if (fieldWhitelist != null && !fieldWhitelist.contains(field.name())) 
+                    continue; // ignore this one
+            }
 
             Value val = remoteClass.getValue(field);
 

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,24 +22,46 @@
 package bluej.debugger.jdi;
 
 import java.io.File;
-import java.util.*;
-
-import javax.swing.event.EventListenerList;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 import bluej.Config;
 import bluej.classmgr.BPClassLoader;
-import bluej.debugger.*;
-import bluej.debugger.gentype.JavaType;
+import bluej.debugger.Debugger;
+import bluej.debugger.DebuggerClass;
+import bluej.debugger.DebuggerEvent;
+import bluej.debugger.DebuggerListener;
+import bluej.debugger.DebuggerObject;
+import bluej.debugger.DebuggerResult;
+import bluej.debugger.DebuggerTerminal;
+import bluej.debugger.DebuggerTestResult;
+import bluej.debugger.DebuggerThreadTreeModel;
+import bluej.debugger.ExceptionDescription;
+import bluej.debugger.SourceLocation;
 import bluej.debugmgr.Invoker;
 import bluej.utility.Debug;
 import bluej.utility.JavaNames;
 
-import com.sun.jdi.*;
+import com.sun.jdi.ArrayReference;
+import com.sun.jdi.Field;
+import com.sun.jdi.InvocationException;
+import com.sun.jdi.ObjectReference;
+import com.sun.jdi.ReferenceType;
+import com.sun.jdi.StringReference;
+import com.sun.jdi.ThreadReference;
+import com.sun.jdi.VMDisconnectedException;
+import com.sun.jdi.VMOutOfMemoryException;
+import com.sun.jdi.Value;
 
 /**
  * A class implementing the execution and debugging primitives needed by BlueJ.
  * 
- * This class is tightly coupled with the classes VMReference and
+ * <p>This class is tightly coupled with the classes VMReference and
  * VMEventHandler. JdiDebugger is the half of the debugger that is persistent
  * across debugger sessions. VMReference and VMEventHandler will be constructed
  * anew each time a remote VM is started. VMReference handles most of the work
@@ -47,21 +69,17 @@ import com.sun.jdi.*;
  * listens for remote VM events and calls back into VMReference on reciept of
  * these events.
  * 
- * Most of the actual access to the virtual machine occurs through the
+ * <p>Most of the actual access to the virtual machine occurs through the
  * MachineLoader thread. When the vm is restarted by user request, a new loader
  * thread is created immediately so that any method calls/etc will execute on
  * the new machine (after waiting until it has loaded).
  * 
  * @author Michael Kolling
  * @author Andrew Patterson
- * @version $Id: JdiDebugger.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class JdiDebugger extends Debugger
 {
     private static final int loaderPriority = Thread.NORM_PRIORITY - 2;
-
-    // indicates whether the debug VM has been successfully loaded and started
-    volatile private boolean vmRunning = false;
 
     // If false, specifies that a new VM should be started when the old one dies
     private boolean autoRestart = true;
@@ -70,7 +88,10 @@ public class JdiDebugger extends Debugger
     // method that a new loader thread doesn't need to be re-created.
     private boolean selfRestart = false;
 
-    // the reference to the current remote VM handler
+    /**
+     * The reference to the current remote VM handler. Will be null if the remote VM is not
+     * currently running.
+     */
     private VMReference vmRef;
 
     // the thread that we spawn to load the current remote VM
@@ -86,7 +107,7 @@ public class JdiDebugger extends Debugger
     private JdiThreadTreeModel treeModel;
 
     // listeners for events that occur in the debugger
-    private EventListenerList listenerList = new EventListenerList();
+    private List<DebuggerListener> listenerList = new ArrayList<DebuggerListener>();
 
     // the directory to launch the VM in
     private File startingDirectory;
@@ -96,7 +117,7 @@ public class JdiDebugger extends Debugger
 
     // a Set of strings which have been used as names on the
     // object bench. We endeavour to not reuse them.
-    private Set usedNames;
+    private Set<String> usedNames;
 
     // indicate whether we want to see system threads
     private boolean hideSystemThreads;
@@ -113,7 +134,7 @@ public class JdiDebugger extends Debugger
     /**
      * Construct an instance of the debugger.
      * 
-     * This constructor should not be used by the main part of BlueJ. Access
+     * <p>This constructor should not be used by the main part of BlueJ. Access
      * should be through Debugger.getDebuggerImpl().
      * 
      * @param startingDirectory
@@ -129,7 +150,7 @@ public class JdiDebugger extends Debugger
 
         allThreads = new JdiThreadSet();
         treeModel = new JdiThreadTreeModel(new JdiThreadNode());
-        usedNames = new TreeSet();
+        usedNames = new TreeSet<String>();
         hideSystemThreads = true;
     }
 
@@ -143,25 +164,26 @@ public class JdiDebugger extends Debugger
         // latter case, there's no need to create a new machine loader, as
         // that's pre-done in close(), below.
 
-        if (vmRunning)
+        if (vmRef != null) {
             throw new IllegalStateException("JdiDebugger.launch() was called but the debugger was already loaded");
+        }
 
-        if (machineLoader != null && !selfRestart)
+        if (machineLoader != null && !selfRestart) {
             // Attempt to restart VM while already restarting - ignored,
             // except when self-restarting, seeing as the new machine loader
             // has already been created in that case.
             return;
+        }
 
         autoRestart = true;
-
-        raiseStateChangeEvent(Debugger.NOTREADY);
 
         // start the MachineLoader (a separate thread) to load the
         // remote virtual machine in the background
 
-        if (!selfRestart)
+        if (!selfRestart) {
             // if selfRestart == true, this has already been done
             machineLoader = new MachineLoaderThread();
+        }
         selfRestart = false;
         // lower priority to improve GUI response time
         machineLoader.setPriority(loaderPriority);
@@ -192,18 +214,18 @@ public class JdiDebugger extends Debugger
         // Launching: vmRunning = false. selfRestart = false.
         //              machineLoader != null.
 
-        if (vmRunning) {
+        if (vmRef != null) {
             // The process is already started. We want to stop it (and
             // possibly to then restart it).
             autoRestart = restart;
             selfRestart = restart;
-            // vmRunning = false;
 
             // Create the new machine loader thread. That way any operation
             // on the VM between now and the time the new machine has finished
             // loading, can sleep until the new machine is ready.
-            if (selfRestart)
+            if (selfRestart) {
                 machineLoader = new MachineLoaderThread();
+            }
 
             // kill the remote debugger process
             vmRef.close();
@@ -228,9 +250,11 @@ public class JdiDebugger extends Debugger
      * @param l
      *            the DebuggerListener to add
      */
-    public synchronized void addDebuggerListener(DebuggerListener l)
+    public void addDebuggerListener(DebuggerListener l)
     {
-        listenerList.add(DebuggerListener.class, l);
+        synchronized (listenerList) {
+            listenerList.add(l);
+        }
     }
 
     /**
@@ -239,9 +263,21 @@ public class JdiDebugger extends Debugger
      * @param l
      *            the DebuggerListener to remove
      */
-    public synchronized void removeDebuggerListener(DebuggerListener l)
+    public void removeDebuggerListener(DebuggerListener l)
     {
-        listenerList.remove(DebuggerListener.class, l);
+        synchronized (listenerList) {
+            listenerList.remove(l);
+        }
+    }
+    
+    /**
+     * Get a copy of the listener list.
+     */
+    private DebuggerListener [] getListeners()
+    {
+        synchronized (listenerList) {
+            return listenerList.toArray(new DebuggerListener[listenerList.size()]);
+        }
     }
 
     /**
@@ -336,12 +372,14 @@ public class JdiDebugger extends Debugger
      * @return true if the object could be added with this name, false if there
      *         was a name clash.
      */
-    public synchronized boolean addObject(String scopeId, String newInstanceName, DebuggerObject dob)
+    public boolean addObject(String scopeId, String newInstanceName, DebuggerObject dob)
     {
         VMReference vmr = getVMNoWait();
         if (vmr != null) {
             vmr.addObject(scopeId, newInstanceName, ((JdiObject) dob).getObjectReference());
-            usedNames.add(newInstanceName);
+            synchronized (this) {
+                usedNames.add(newInstanceName);
+            }
         }
         return true;
     }
@@ -362,7 +400,7 @@ public class JdiDebugger extends Debugger
      * 
      * @return a Map of (String name, DebuggerObject obj) entries
      */
-    public Map getObjects()
+    public Map<String, DebuggerObject> getObjects()
     {
         throw new IllegalStateException("not implemented");
         // the returned array consists of double the number of objects
@@ -384,34 +422,7 @@ public class JdiDebugger extends Debugger
         return machineState;
     }
     
-    /**
-     * Get the value of a static field in a class. Return null if the field could
-     * not be found. Throws ClassNotFoundException if the class cannot be found.
-     */
-    public DebuggerObject getStaticValue(String className, String fieldName)
-        throws ClassNotFoundException
-    {
-        // Debug.message("[getStaticValue] " + className + ", " + fieldName);
-        try {
-            VMReference vmr = getVMNoWait();
-            if (vmr != null) {
-                ClassType rt = (ClassType) vmr.findClassByName(className);
-                Field f = rt.fieldByName(fieldName);
-                if (f == null)
-                    return null;
-                
-                ObjectReference ob = vmr.getStaticFieldObject(rt, fieldName);
-                JavaType expectedType = JdiReflective.fromField(f, rt);
-                
-                if (ob != null)
-                    return JdiObject.getDebuggerObject(ob, expectedType);
-            }
-        }
-        catch (VMDisconnectedException vde) {}
-        return null;
-    }
-    
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.Debugger#getMirror(java.lang.String)
      */
     public DebuggerObject getMirror(String value)
@@ -457,10 +468,10 @@ public class JdiDebugger extends Debugger
      * @return a Map of (String name, DebuggerObject obj) entries
      *         null if an error occurs (such as VM termination)
      */
-    public Map runTestSetUp(String className)
+    public Map<String, DebuggerObject> runTestSetUp(String className)
     {
         ArrayReference arrayRef = null;
-        Map returnMap = new HashMap();
+        Map<String, DebuggerObject> returnMap = new HashMap<String, DebuggerObject>();
         
         VMReference vmr = getVM();
         try {
@@ -646,20 +657,20 @@ public class JdiDebugger extends Debugger
         }
     }
     
-    /**
-     * Get a class from the virtual machine. Throws ClassNotFoundException
-     * if the class cannot be found.
+    /*
+     * @see bluej.debugger.Debugger#getClass(java.lang.String, boolean)
      */
-    public DebuggerClass getClass(String className)
+    public DebuggerClass getClass(String className, boolean initialize)
         throws ClassNotFoundException
     {
         VMReference vmr = getVM();
-        if (vmr == null)
+        if (vmr == null) {
             throw new ClassNotFoundException("Virtual machine terminated.");
+        }
             
         ReferenceType classMirror;
         synchronized (serverThreadLock) {
-            if (machineState != Debugger.RUNNING) {
+            if (initialize && machineState != Debugger.RUNNING) {
                 classMirror = vmr.loadInitClass(className);
             }
             else {
@@ -676,17 +687,20 @@ public class JdiDebugger extends Debugger
      * notify all listeners that have registered interest for
      * notification on this event type.
      */ 
-    private void fireTargetEvent(DebuggerEvent ce)
+    private void fireTargetEvent(DebuggerEvent ce, boolean skipUpdate)
     {
         // Guaranteed to return a non-null array
-        Object[] listeners = listenerList.getListenerList();
+        DebuggerListener[] listeners = getListeners();
         // Process the listeners last to first, notifying
         // those that are interested in this event
-        for (int i = listeners.length - 2; i >= 0; i -= 2) {
-            if (listeners[i] == DebuggerListener.class) {
-                ((DebuggerListener) listeners[i + 1]).debuggerEvent(ce);
-            }
+        for (int i = listeners.length - 1; i >= 0; i --) {
+            listeners[i].processDebuggerEvent(ce, skipUpdate);
         }
+    }
+    
+    private void fireTargetEvent(DebuggerEvent ce)
+    {
+        fireTargetEvent(ce, false);
     }
 
     void raiseStateChangeEvent(int newState)
@@ -697,22 +711,23 @@ public class JdiDebugger extends Debugger
         
         if (newState != machineState) {
             
-            // If going from running state to notready state, first pass
-            // through idle state
+            // Going from SUSPENDED to any other state must ass through RUNNING
+            if (machineState == SUSPENDED && newState != RUNNING) {
+                machineState = RUNNING;
+                fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_STATECHANGED, SUSPENDED, RUNNING));
+            }
+            
+            // If going from RUNNING state to NOTREADY state, first pass
+            // through IDLE state
             if (machineState == RUNNING && newState == NOTREADY) {
-                fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_STATECHANGED, RUNNING, IDLE));
                 machineState = IDLE;
+                fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_STATECHANGED, RUNNING, IDLE));
             }
             
             int oldState = machineState;
             machineState = newState;
             fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_STATECHANGED, oldState, newState));
         }
-    }
-
-    void raiseRemoveStepMarksEvent()
-    {
-        fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.DEBUGGER_REMOVESTEPMARKS));
     }
 
     // ==== code for active debugging: setting breakpoints, stepping, etc ===
@@ -729,7 +744,7 @@ public class JdiDebugger extends Debugger
      * 
      * @return null if there was no problem, or an error string
      */
-    public String toggleBreakpoint(String className, int line, boolean set)
+    public String toggleBreakpoint(String className, int line, boolean set, Map<String, String> properties)
     {
         // Debug.message("[toggleBreakpoint]: " + className + " line " + line);
 
@@ -737,7 +752,7 @@ public class JdiDebugger extends Debugger
         try {
             if (vmr != null) {
                 if (set) {
-                    return vmr.setBreakpoint(className, line);
+                    return vmr.setBreakpoint(className, line, properties);
                 }
                 else {
                     return vmr.clearBreakpoint(className, line);
@@ -753,6 +768,60 @@ public class JdiDebugger extends Debugger
             return Config.getString("debugger.jdiDebugger.internalErrorMsg");
         }
     }
+    
+    /*
+     * @see bluej.debugger.Debugger#toggleBreakpoint(java.lang.String, java.lang.String, boolean, java.util.Map)
+     */
+    public String toggleBreakpoint(String className, String method, boolean set, Map<String, String> properties)
+    {
+        VMReference vmr = getVM();
+        try {
+            if (vmr != null) {
+                if (set) {
+                    return vmr.setBreakpoint(className, method, properties);
+                }
+                else {
+                    return vmr.clearBreakpoint(className, method);
+                }
+            }
+            else {
+                return "VM terminated.";
+            }
+        }
+        catch (Exception e) {
+            Debug.reportError("breakpoint error: " + e);
+            e.printStackTrace(System.out);
+            return Config.getString("debugger.jdiDebugger.internalErrorMsg");
+        }
+    }
+    
+    /*
+     * @see bluej.debugger.Debugger#toggleBreakpoint(bluej.debugger.DebuggerClass, java.lang.String, boolean, java.util.Map)
+     */
+    public String toggleBreakpoint(DebuggerClass debuggerClass, String method, boolean set, Map<String, String> properties)
+    {
+        VMReference vmr = getVM();
+        try {
+            if (vmr != null) {
+                JdiClass jdiClass = (JdiClass) debuggerClass;
+                if (set) {
+                    return vmr.setBreakpoint(jdiClass.remoteClass, method, properties);
+                }
+                else {
+                    return vmr.clearBreakpoint(jdiClass.remoteClass, method);
+                }
+            }
+            else {
+                return "VM terminated.";
+            }
+        }
+        catch (Exception e) {
+            Debug.reportError("breakpoint error: " + e);
+            e.printStackTrace(System.out);
+            return Config.getString("debugger.jdiDebugger.internalErrorMsg");
+        }
+    }
+
 
     /**
      * Called by VMReference when a breakpoint/step is encountered in the
@@ -761,28 +830,68 @@ public class JdiDebugger extends Debugger
      * @param tr   the thread in which code hit the breakpoint/step
      * @param bp   true for a breakpoint, false for a step
      */
-    public void breakpoint(final ThreadReference tr, final boolean bp)
+    public void breakpoint(final ThreadReference tr, final boolean bp, boolean skipUpdate, DebuggerEvent.BreakpointProperties props)
     {
         final JdiThread breakThread = allThreads.find(tr);
-        treeModel.syncExec(new Runnable() {
-            public void run()
-            {
-                JdiThreadNode jtn = treeModel.findThreadNode(tr);
-                // if the thread at the breakpoint is not currently displayed,
-                // display it now.
-                if (jtn == null) {
-                    JdiThreadNode root = treeModel.getThreadRoot();
-                    treeModel.insertNodeInto(new JdiThreadNode(breakThread), root, 0);
+        if (false == skipUpdate) {
+            treeModel.syncExec(new Runnable() {
+                public void run()
+                {
+                    JdiThreadNode jtn = treeModel.findThreadNode(tr);
+                    // if the thread at the breakpoint is not currently displayed,
+                    // display it now.
+                    if (jtn == null) {
+                        JdiThreadNode root = treeModel.getThreadRoot();
+                        treeModel.insertNodeInto(new JdiThreadNode(breakThread), root, 0);
+                    }
+                    else {
+                        treeModel.nodeChanged(jtn);
+                    }
                 }
-                else
-                    treeModel.nodeChanged(jtn);
-            }
-        });
+            });
+        }
 
-        if (bp)
-            fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.THREAD_BREAKPOINT, breakThread));
-        else
-            fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.THREAD_HALT, breakThread));
+        if (bp) {
+            fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.THREAD_BREAKPOINT, breakThread, props), skipUpdate);
+        }
+        else {
+            fireTargetEvent(new DebuggerEvent(this, DebuggerEvent.THREAD_HALT, breakThread, props), skipUpdate);
+        }
+    }
+    
+    /**
+     * Screen a breakpoint/step event through interested listeners.
+     * 
+     * @param thread  The thread which hit the breakpoint/step event.
+     * @param breakpoint  True if this is a breakpoint; false if a step. Note that both can occur
+     *                    simultaneously, in which case both are screened individually.
+     * @param props   The breakpoint properties (if any).
+     * @return   true if the event is screened, that is, the GUI should not be updated because the
+     *                result of the event is temporary.
+     */
+    public boolean screenBreakpoint(ThreadReference thread, boolean breakpoint,
+            DebuggerEvent.BreakpointProperties props)
+    {
+        JdiThread breakThread = allThreads.find(thread);
+        breakThread.stopped();
+        
+        DebuggerEvent event;
+        if (breakpoint) {
+            event = new DebuggerEvent(this, DebuggerEvent.THREAD_BREAKPOINT, breakThread, props);
+        }
+        else {
+            event = new DebuggerEvent(this, DebuggerEvent.THREAD_HALT, breakThread, props);
+        }
+        
+        boolean done = false;
+        // Guaranteed to return a non-null array
+        DebuggerListener[] listeners = getListeners();
+        // Process the listeners last to first, notifying
+        // those that are interested in this event
+        for (int i = listeners.length - 1; i >= 0; i--) {
+            done = done || listeners[i].examineDebuggerEvent(event);
+        }
+        return done;
     }
 
     // - event handling
@@ -800,24 +909,23 @@ public class JdiDebugger extends Debugger
             // It's possible to receive vmDisconnect before we're even aware that
             // we're running. We can ignore it in that case. Synchronization insures
             // that valid disconnect events are never lost.
-            if (vmRunning) {
+            if (vmRef != null) {
                 // Indicate to the launch procedure that we are not in a launch 
                 // (see launch()).
                 //
                 // In the case of a self-restart, a new machine loader has only
                 // just been set-up, so don't trash it now!
-                if (!selfRestart)
+                if (!selfRestart) {
                     machineLoader = new MachineLoaderThread();
-                vmRunning = false;
+                }
                 selfRestart = true;
                 
                 vmRef.closeIO();
                 vmRef = null;
                 
-                launch();
-                
-                raiseRemoveStepMarksEvent();
                 raiseStateChangeEvent(Debugger.NOTREADY);
+
+                launch();
                 
                 usedNames.clear();
                 treeModel.syncExec(new Runnable() {
@@ -839,7 +947,7 @@ public class JdiDebugger extends Debugger
      */
     void threadStart(final ThreadReference tr)
     {
-        final JdiThread newThread = new JdiThread(treeModel, tr);
+        final JdiThread newThread = new JdiThread(this, tr);
         allThreads.add(newThread);
         treeModel.syncExec(new Runnable() {
             public void run()
@@ -889,7 +997,7 @@ public class JdiDebugger extends Debugger
     {
         treeModel.setRoot(new JdiThreadNode());
 
-        for (Iterator it = allThreads.iterator(); it.hasNext();) {
+        for (Iterator<JdiThread> it = allThreads.iterator(); it.hasNext();) {
             JdiThread currentThread = (JdiThread) it.next();
             displayThread(currentThread);
         }
@@ -911,13 +1019,6 @@ public class JdiDebugger extends Debugger
 
     // -- support methods --
 
-    /*
-    public void dumpThreadInfo()
-    {
-        getVM().dumpThreadInfo();
-    }
-    */
-
     /**
      * Get the VM, waiting for it to finish loading first (if necessary). In
      * rare cases, when the project has been closed, this may return null.
@@ -927,10 +1028,12 @@ public class JdiDebugger extends Debugger
     private VMReference getVM()
     {
         MachineLoaderThread mlt = machineLoader;
-        if (mlt == null)
+        if (mlt == null) {
             return null;
-        else
+        }
+        else {
             return mlt.getVM();
+        }
     }
     
     /**
@@ -960,24 +1063,25 @@ public class JdiDebugger extends Debugger
         public void run()
         {
             try {
-                vmRef = new VMReference(JdiDebugger.this, terminal, startingDirectory);
-                
-                synchronized(JdiDebugger.this) {
-                    if (vmRef.getExitStatus() != Debugger.TERMINATED) {
-                        if (autoRestart) {
-                            // We now have a running VM.
-                            vmRef.newClassLoader(lastProjectClassLoader.getURLs());
-                            vmRunning = true;
-                        }
-                        else {
-                            // autoRestart is false - a call to JdiDebugger.close(false)
-                            // occurred (to shut down debugger). So we should just close
-                            // the launched VM.
-                            vmRef.close();
-                        }
-                    }
-                }
+                VMReference newVM = new VMReference(JdiDebugger.this, terminal, startingDirectory);
 
+                BPClassLoader lastLoader;
+                synchronized(JdiDebugger.this) {
+                    if (! autoRestart) {
+                        newVM.close();
+                        JdiDebugger.this.notifyAll();
+                        return;
+                    }
+                    lastLoader = lastProjectClassLoader;
+                }
+                
+                // Do this outside of the synchronized blocks, mainly to avoid holding
+                // the monitor unnecessarily:
+                newVM.newClassLoader(lastLoader.getURLs());
+
+                synchronized(JdiDebugger.this) {
+                    vmRef = newVM;
+                }
             }
             catch (JdiVmCreationException e) {
                 raiseStateChangeEvent(Debugger.LAUNCH_FAILED);
@@ -985,32 +1089,115 @@ public class JdiDebugger extends Debugger
 
             // wake any internal getVM() calls that
             // are waiting for us to finish
-            synchronized(this) {
-                notifyAll();
+            synchronized(JdiDebugger.this) {
+                JdiDebugger.this.notifyAll();
             }
         }
 
-        private synchronized VMReference getVM()
+        private VMReference getVM()
         {
-            // We can't just rely on synchronization, since it's possible that
-            // getVM() may creep in before run() begins execution. That's why
-            // we use notify()/wait().
-            while (!vmRunning) {
-                try {
-                    wait();
+            synchronized (JdiDebugger.this) {
+                // We can't just rely on synchronization, since it's possible that
+                // getVM() may creep in before run() begins execution. That's why
+                // we use notify()/wait().
+                while (vmRef == null && autoRestart) {
+                    try {
+                        JdiDebugger.this.wait();
+                    }
+                    catch (InterruptedException e) {}
                 }
-                catch (InterruptedException e) {}
+                    
+                return vmRef;
             }
-                
-            return autoRestart ? vmRef : null;
         }
         
-        private synchronized VMReference getVMNoWait()
+        /**
+         * Get the VM reference, without waiting for it to start. If no VM has started,
+         * this returns null.
+         */
+        private VMReference getVMNoWait()
         {
-            if (! vmRunning)
-                return null;
-            else
+            synchronized (JdiDebugger.this) {
                 return vmRef;
+            }
         }
+    }
+
+    /**
+     * Emit an event (to listeners) due to a thread being halted.
+     */
+    void emitThreadHaltEvent(JdiThread thread)
+    {
+        vmRef.emitThreadEvent(thread, true);
+    }
+    
+    /**
+     * Emit an event (to listeners) due to a thread being resumed.
+     */
+    void emitThreadResumedEvent(JdiThread thread)
+    {
+        vmRef.emitThreadEvent(thread, false);
+    }
+    
+    /**
+     * A thread has become halted; inform listeners.
+     */
+    void threadHalted(final JdiThread thread)
+    {
+        DebuggerEvent event = new DebuggerEvent(this, DebuggerEvent.THREAD_HALT, thread, null);
+        
+        boolean skipUpdate = false;
+        // Guaranteed to return a non-null array
+        DebuggerListener[] listeners = getListeners();
+        // Process the listeners last to first, notifying
+        // those that are interested in this event
+        for (int i = listeners.length - 1; i >= 0; i--) {
+            skipUpdate |= listeners[i].examineDebuggerEvent(event);
+        }
+        
+        if (! skipUpdate) {
+            treeModel.syncExec(new Runnable() {
+                public void run()
+                {
+                    JdiThreadNode threadNode = treeModel.findThreadNode(thread.getRemoteThread());
+                    if (threadNode != null) {
+                        treeModel.nodeChanged(threadNode);
+                    }
+                }
+            });
+        }
+        
+        fireTargetEvent(event, skipUpdate);
+    }
+    
+    /**
+     * A thread has been resumed; inform listeners.
+     */
+    void threadResumed(final JdiThread thread)
+    {
+        DebuggerEvent event = new DebuggerEvent(this, DebuggerEvent.THREAD_CONTINUE, thread, null);
+        
+        boolean skipUpdate = false;
+        // Guaranteed to return a non-null array
+        DebuggerListener [] listeners = getListeners();
+        // Process the listeners last to first, notifying
+        // those that are interested in this event
+        for (int i = listeners.length - 2; i >= 0; i -= 2) {
+            skipUpdate |= listeners[i].examineDebuggerEvent(event);
+        }
+
+        if (! skipUpdate) {
+            treeModel.syncExec(new Runnable() {
+                public void run()
+                {
+                    JdiThreadNode threadNode = treeModel.findThreadNode(thread.getRemoteThread());
+                    if (threadNode != null) {
+                        treeModel.nodeChanged(threadNode);
+                    }
+                }
+            });
+        }
+        
+        fireTargetEvent(event, skipUpdate);
     }
 }

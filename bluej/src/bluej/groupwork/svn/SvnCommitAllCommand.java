@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,14 +22,14 @@
 package bluej.groupwork.svn;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.Set;
 
 import org.tigris.subversion.javahl.ClientException;
-import org.tigris.subversion.javahl.NodeKind;
+import org.tigris.subversion.javahl.Depth;
 import org.tigris.subversion.javahl.SVNClientInterface;
 import org.tigris.subversion.javahl.Status;
-import org.tigris.subversion.javahl.StatusKind;
 
 import bluej.groupwork.TeamworkCommandAborted;
 import bluej.groupwork.TeamworkCommandError;
@@ -42,14 +42,14 @@ import bluej.groupwork.TeamworkCommandResult;
  */
 public class SvnCommitAllCommand extends SvnCommand
 {
-    protected Set newFiles;
-    protected Set binaryNewFiles;
-    protected Set deletedFiles;
-    protected Set files;
+    protected Set<File> newFiles;
+    protected Set<File> binaryNewFiles;
+    protected Set<File> deletedFiles;
+    protected Set<File> files;
     protected String commitComment;
     
-    public SvnCommitAllCommand(SvnRepository repository, Set newFiles, Set binaryNewFiles,
-            Set deletedFiles, Set files, String commitComment)
+    public SvnCommitAllCommand(SvnRepository repository, Set<File> newFiles, Set<File> binaryNewFiles,
+            Set<File> deletedFiles, Set<File> files, String commitComment)
     {
         super(repository);
         this.newFiles = newFiles;
@@ -65,14 +65,13 @@ public class SvnCommitAllCommand extends SvnCommand
         
         try {
             // First "svn add" the new files
-            Iterator i = newFiles.iterator();
+            Iterator<File> i = newFiles.iterator();
             while (i.hasNext()) {
                 File newFile = (File) i.next();
                 
                 Status status = client.singleStatus(newFile.getAbsolutePath(), false);
                 if (! status.isManaged()) {
-                    addDir(client, newFile.getParentFile(), files);
-                    client.add(newFile.getAbsolutePath(), false);
+                    client.add(newFile.getAbsolutePath(), Depth.empty, false, false, true);
                     if (! newFile.isDirectory()) {
                         client.propertySet(newFile.getAbsolutePath(), "svn:eol-style",
                                 "native", false);
@@ -87,8 +86,7 @@ public class SvnCommitAllCommand extends SvnCommand
                 
                 Status status = client.singleStatus(newFile.getAbsolutePath(), false);
                 if (! status.isManaged()) {
-                    addDir(client, newFile.getParentFile(), files);
-                    client.add(newFile.getAbsolutePath(), false);
+                    client.add(newFile.getAbsolutePath(), Depth.empty, false, false, true);
                     if (! newFile.isDirectory()) {
                         client.propertySet(newFile.getAbsolutePath(), "svn:mime-type",
                                 "application/octet-stream", false);
@@ -100,7 +98,7 @@ public class SvnCommitAllCommand extends SvnCommand
             i = deletedFiles.iterator();
             while (i.hasNext()) {
                 File newFile = (File) i.next();
-                client.remove(new String[] {newFile.getAbsolutePath()}, "", true);
+                client.remove(new String[] {newFile.getAbsolutePath()}, "", true, false, Collections.emptyMap());
             }
             
             // now do the commit
@@ -110,49 +108,19 @@ public class SvnCommitAllCommand extends SvnCommand
                 File file = (File) i.next();
                 commitFiles[j] = file.getAbsolutePath();
             }
-            client.commit(commitFiles, commitComment, false);
+            client.commit(commitFiles, commitComment, Depth.empty, false, false, null, Collections.emptyMap());
             
             if (! isCancelled()) {
                 return new TeamworkCommandResult();
             }
         }
         catch (ClientException ce) {
+            ce.printStackTrace();
             if (! isCancelled()) {
                 return new TeamworkCommandError(ce.getMessage(), ce.getLocalizedMessage());
             }
         }
 
         return new TeamworkCommandAborted();
-    }
-    
-    /**
-     * Add ("svn add") a directory, if necessary
-     * @throws ClientException
-     */
-    protected boolean addDir(SVNClientInterface client, File dir, Set commitFiles) throws ClientException
-    {
-        File projectPath = getRepository().getProjectPath().getAbsoluteFile();
-        if (dir.getAbsoluteFile().equals(projectPath)) {
-            return false;
-        }
-        
-        Status status = client.singleStatus(dir.getAbsolutePath(), false);
-        int istatus = status.getNodeKind();
-        
-        boolean doAdd = (istatus == NodeKind.none || istatus == NodeKind.unknown);
-        boolean commit = (istatus == NodeKind.dir
-                && status.getTextStatus() == StatusKind.added);
-        
-        if (doAdd || commit) {
-            File parent = dir.getParentFile();
-            boolean parentAdded = addDir(client, parent, commitFiles);
-            if (doAdd) {
-                client.add(dir.getAbsolutePath(), false);
-            }
-            commitFiles.add(dir);
-            return true;
-        }
-        
-        return false;
     }
 }

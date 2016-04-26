@@ -35,7 +35,6 @@ bluej.language=english
 #bluej.language=russian
 #bluej.language=spanish
 
-
 #####################################################################
 ## If you have a translated version of the Greenfoot API documentation
 ## you can change this URL to point at it.
@@ -59,9 +58,6 @@ greenfoot.url.tutorial=http://www.greenfoot.org/doc/tutorial.html
 # is ignored). You can adjust the user preferences via the preferences
 # dialog in Greenfoot.
 greenfoot.url.javaStdLib=http://java.sun.com/j2se/1.5/docs/api/index.html
-
-# file chooser
-image.filechooser.packageIcon=greenfoot-package.png
 
 # Options for the generation of the JavaDoc shown in the documentation view of the editor.
 doctool.options=-author -version -nodeprecated -protected
@@ -99,4 +95,17 @@ bluej.compiler.options=-source 1.5 -target 1.5
 ## Settings here have the ability to stop Greenfoot running correctly
 ## if not configured properly.  
 #####################################################################
+
 bluej.vm.args=-Xincgc -Dapple.awt.graphics.UseQuartz=true
+
+#####################################################################
+## External program used for editing images.
+## If this is commented out, Greenfoot will try to use a default set
+## for your system if it exists. If defined here, this overrides the
+## default.
+#####################################################################
+#greenfoot.editor.image=/Applications/Adobe Photoshop CS3/Adobe Photoshop CS3.app
+
+greenfoot.image.create.width=150
+greenfoot.image.create.height=150
+

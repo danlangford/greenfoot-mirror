@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -31,7 +31,6 @@ import javax.swing.*;
 import javax.swing.border.Border;
 
 import bluej.*;
-import bluej.Config;
 import bluej.utility.*;
 
 /**
@@ -39,7 +38,7 @@ import bluej.utility.*;
  *
  * @author  Justin Tan
  * @author  Michael Kolling
- * @version $Id: NewClassDialog.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: NewClassDialog.java 8121 2010-08-20 04:20:13Z davmac $
  */
 class NewClassDialog extends EscapeDialog
 {
@@ -49,7 +48,9 @@ class NewClassDialog extends EscapeDialog
     private String newClassName = "";
     private boolean ok;		// result: which button?
     private boolean isJavaMEpackage;
+    private static List<String> windowsRestrictedWords;  //stores restricted windows class filenames
 
+    
     public NewClassDialog(JFrame parent)
     {
         super(parent, Config.getString("pkgmgr.newClass.title"), true);
@@ -132,9 +133,8 @@ class NewClassDialog extends EscapeDialog
 					});
                 }
 
-                buttonPanel.add(okButton);
-                buttonPanel.add(cancelButton);
-
+                DialogManager.addOKCancelButtons(buttonPanel, okButton, cancelButton);
+                
                 getRootPane().setDefaultButton(okButton);
             }
 
@@ -163,10 +163,11 @@ class NewClassDialog extends EscapeDialog
         String templateString = Config.getPropString("bluej.classTemplates");
 
         StringTokenizer t = new StringTokenizer(templateString);
-        List templates = new ArrayList();
+        List<String> templates = new ArrayList<String>();
 
-        while (t.hasMoreTokens())
+        while (t.hasMoreTokens()) {
             templates.add(t.nextToken());
+        }
 
         // next, get templates from files in template directory and
         // merge them in
@@ -203,21 +204,13 @@ class NewClassDialog extends EscapeDialog
         JRadioButton previousButton = null;
         templateButtons = new ButtonGroup();
 
-        for(Iterator i=templates.iterator(); i.hasNext(); ) {
-            String template = (String)i.next();
-            
-            //Avoid <enum> when we are not running 1.5
-            if(template.equals("enum") && ! Config.isJava15()) {
-                continue;
-            }
-            
+        for(Iterator<String> i=templates.iterator(); i.hasNext(); ) {
+            String template = i.next();
             String label = Config.getString("pkgmgr.newClass." + template, template);
             button = new JRadioButton(label, (previousButton==null));  // enable first
             button.setActionCommand(template);
             templateButtons.add(button);
             panel.add(button);
-//            if(previousButton != null)
-//                previousButton.setNextFocusableComponent(button);
             previousButton = button;
         }
     }
@@ -250,16 +243,21 @@ class NewClassDialog extends EscapeDialog
     public void doOK()
     {
         newClassName = textFld.getText().trim();
-
-        if (JavaNames.isIdentifier(newClassName)) {
+        initialiseRestrictedWordList();
+        if (JavaNames.isIdentifier(newClassName) && 
+                !(isWindowsRestrictedWord(newClassName))) {
             ok = true;
             setVisible(false);
         }
-        else {
-            DialogManager.showError((JFrame)this.getParent(), "invalid-class-name");
+        else 
+        {
+            if (isWindowsRestrictedWord(newClassName))
+                DialogManager.showError((JFrame)this.getParent(), "windows-reserved-class-name");
+            else DialogManager.showError((JFrame)this.getParent(), "invalid-class-name");            
             textFld.selectAll();
             textFld.requestFocus();
         }
+
     }
 
     /**
@@ -269,5 +267,50 @@ class NewClassDialog extends EscapeDialog
     {
         ok = false;
         setVisible(false);
+    }
+    
+    /**
+     * Tests for restricted class names (case insensitive)
+     * @param fileName potential class name
+     * @return true if restricted word
+     */
+    private boolean isWindowsRestrictedWord(String fileName)
+    {
+        if (windowsRestrictedWords.contains(fileName.toUpperCase())){
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Initialises the list of restricted words
+     */
+    private void initialiseRestrictedWordList()
+    {
+        if (windowsRestrictedWords==null){
+            windowsRestrictedWords=new ArrayList<String>();
+            windowsRestrictedWords.add("CON");
+            windowsRestrictedWords.add("PRN");
+            windowsRestrictedWords.add("AUX");
+            windowsRestrictedWords.add("NUL");
+            windowsRestrictedWords.add("COM1");
+            windowsRestrictedWords.add("COM2");
+            windowsRestrictedWords.add("COM3");
+            windowsRestrictedWords.add("COM4");
+            windowsRestrictedWords.add("COM5");
+            windowsRestrictedWords.add("COM6");
+            windowsRestrictedWords.add("COM7");
+            windowsRestrictedWords.add("COM8");
+            windowsRestrictedWords.add("COM9");
+            windowsRestrictedWords.add("LPT1");
+            windowsRestrictedWords.add("LPT2");
+            windowsRestrictedWords.add("LPT3");
+            windowsRestrictedWords.add("LPT4");
+            windowsRestrictedWords.add("LPT5");
+            windowsRestrictedWords.add("LPT6");
+            windowsRestrictedWords.add("LPT7");
+            windowsRestrictedWords.add("LPT8");
+            windowsRestrictedWords.add("LPT9");
+        }
     }
 }

@@ -22,6 +22,7 @@
 package bluej.parser;
 
 import java.io.File;
+import java.io.StringReader;
 import java.net.URL;
 import java.util.Iterator;
 import java.util.List;
@@ -84,13 +85,13 @@ public class Parse15Test extends junit.framework.TestCase
     public void testNoParseExceptions()
         throws Exception
     {
-        ClassParser.parse(getFile("15_generic.dat"), null);
+        InfoParser.parse(getFile("15_generic.dat"));
     }
     
     public void testSelections()
         throws Exception
     {
-        ClassInfo info = ClassParser.parse(getFile("generic_selections.dat"));
+        ClassInfo info = InfoParser.parse(getFile("generic_selections.dat"));
         
 //        Selection testSel = info.getTypeParametersSelection();
 //        assertEquals(3, testSel.getLine());
@@ -104,10 +105,10 @@ public class Parse15Test extends junit.framework.TestCase
         assertEquals(4, testSel.getEndLine());
         assertEquals(31, testSel.getEndColumn());
         
-        List l = info.getInterfaceSelections();
+        List<Selection> l = info.getInterfaceSelections();
         assertEquals(4, l.size());
         // "implements"  "List<Thread>"  ","  "GenInt<U>"
-        Iterator i = l.iterator();
+        Iterator<Selection> i = l.iterator();
         i.next();
         
         testSel = (Selection) i.next();
@@ -122,5 +123,20 @@ public class Parse15Test extends junit.framework.TestCase
         assertEquals(30, testSel.getColumn());
         assertEquals(5, testSel.getEndLine());
         assertEquals(39, testSel.getEndColumn());
+    }
+    
+    public void testStaticImport()
+    {
+        boolean success = true;
+        try {
+            InfoParser.parse(new StringReader(
+                    "import static java.awt.Color.BLACK;\n" +
+                    "class A { }"),
+                    null, null);
+        }
+        catch (Exception e) {
+            success = false;
+        }
+        assertTrue(success);
     }
 }

@@ -19,18 +19,6 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-/*
- * ExportAppPane.java
- *
- * Created on April 19, 2007, 6:15 PM
- *
- * To change this template, choose Tools | Template Manager
- * and open the template in the editor.
-
- * @author Michael Kolling
- * @version $Id: ExportAppPane.java 6277 2009-04-23 21:11:43Z mjrb4 $
- */
-
 package greenfoot.gui.export;
 
 import greenfoot.util.FileChoosers;
@@ -51,6 +39,11 @@ import bluej.BlueJTheme;
 import bluej.Config;
 import javax.swing.JOptionPane;
 
+/**
+ * Export dialog pane for exporting to a standalone application.
+ * 
+ * @author Michael Kolling
+ */
 public class ExportAppPane extends ExportPane
 {
     public static final String FUNCTION = "APP";
@@ -83,6 +76,8 @@ public class ExportAppPane extends ExportPane
     {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setBorder(BlueJTheme.dialogBorder);
+        setBackground(backgroundColor);
+
 
         targetDirField = new JTextField(targetFile.toString(), 26);
         targetDirField.setEditable(false);
@@ -96,11 +91,13 @@ public class ExportAppPane extends ExportPane
         {
             inputPanel.setLayout(new BoxLayout(inputPanel, BoxLayout.Y_AXIS));
             inputPanel.setAlignmentX(LEFT_ALIGNMENT);
+            inputPanel.setBackground(backgroundColor);
 
             inputPanel.add(Box.createVerticalStrut(5));
 
             JPanel exportLocationPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
             {
+                exportLocationPanel.setBackground(backgroundColor);
                 JLabel exportLocationLabel = new JLabel(exportLocationLabelText);
                 exportLocationPanel.add(exportLocationLabel);
 

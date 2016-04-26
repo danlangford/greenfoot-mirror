@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,9 +21,11 @@
  */
 package greenfoot.platforms;
 
+import greenfoot.Actor;
 import greenfoot.World;
 import greenfoot.core.WorldHandler;
 import greenfoot.gui.input.InputManager;
+import greenfoot.record.InteractionListener;
 
 import java.awt.event.MouseEvent;
 
@@ -33,7 +35,6 @@ import java.awt.event.MouseEvent;
  * depending on where and how the greenfoot project is running.
  * 
  * @author Poul Henriksen
- *
  */
 public interface WorldHandlerDelegate
 {
@@ -44,11 +45,13 @@ public interface WorldHandlerDelegate
 
     void mouseClicked(MouseEvent e);
 
+    void mouseMoved(MouseEvent e);
+    
     void setWorld(World oldWorld, World newWorld);
 
-    void dragFinished(Object o);
-
     void setWorldHandler(WorldHandler handler);
+    
+    void addActor(Actor actor, int x, int y); 
     
     /**
      * Instantiate a new world and do any initialisation needed to activate that world.
@@ -58,4 +61,10 @@ public interface WorldHandlerDelegate
     InputManager getInputManager();
 
     void discardWorld(World world);
+    
+    void initialisingWorld(World world);
+    
+    void simulationActive();
+
+    InteractionListener getInteractionListener();
 }

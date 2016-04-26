@@ -54,11 +54,11 @@ public class SaveCopyAction extends AbstractAction
     public void actionPerformed(ActionEvent e)
     {
         // get a file name to save under
-        String newName = FileUtility.getFileName(gfFrame,
+        File newFile = FileUtility.getDirName(gfFrame,
                 Config.getString("project.savecopy.title"),
-                Config.getString("pkgmgr.saveAs.buttonLabel"), true, null, true);
-
-        if (newName != null) {
+                Config.getString("pkgmgr.saveAs.buttonLabel"), false, true);
+                
+        if (newFile != null) {
             GProject project = gfFrame.getProject();
 
             int result = FileUtility.COPY_ERROR;
@@ -67,7 +67,7 @@ public class SaveCopyAction extends AbstractAction
                 project.save();
 
                 result = FileUtility.copyDirectory(project.getDir(),
-                        new File(newName));
+                        newFile);
             }
             catch (RemoteException re) {
                 re.printStackTrace();

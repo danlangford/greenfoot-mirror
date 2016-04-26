@@ -3,8 +3,8 @@
 
 [Setup]
 AppName=BlueJ
-AppVerName=BlueJ 2.5.0
-AppPublisher=Deakin University
+AppVerName=BlueJ 3.0.2
+AppPublisher=La Trobe University
 AppPublisherURL=http://www.bluej.org
 AppSupportURL=http://www.bluej.org
 AppUpdatesURL=http://www.bluej.org
@@ -12,8 +12,10 @@ UninstallFilesDir={app}\uninst
 DefaultDirName={sd}\BlueJ
 DefaultGroupName=BlueJ
 Compression=bzip/9
-OutputBaseFilename=BlueJ-windows-2.5.0
+OutputBaseFilename=BlueJ-windows-302
 OutputDir=.
+PrivilegesRequired=none
+ChangesAssociations=yes
 
 [Messages]
 SetupWindowTitle=BlueJ Installer
@@ -24,6 +26,7 @@ WelcomeLabel2=This installer will install [name/ver] on your computer.%n%nIt is 
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"; MinVersion: 4,4
+Name: "associations"; Description: "Create file association (*.bluej)"; GroupDescription: "File associations"; MinVersion: 4,4
 
 [Icons]
 Name: "{group}\BlueJ"; Filename: "{app}\bluej.exe"; WorkingDir: "{app}"
@@ -31,11 +34,23 @@ Name: "{userdesktop}\BlueJ"; Filename: "{app}\bluej.exe"; WorkingDir: "{app}"; T
 Name: "{group}\Select VM"; Filename: "{app}\bluej.exe"; WorkingDir: "{app}"; Parameters: "/select"; IconIndex: 1
 Name: "{app}\Select VM"; Filename: "{app}\bluej.exe"; WorkingDir: "{app}"; Parameters: "/select"; IconIndex: 1
 
+[Registry]
+; For admin
+Root: HKLM; Subkey: "Software\Classes\.bluej"; ValueType: string; ValueName: ""; ValueData: "BlueJProject"; Flags: uninsdeletevalue; Tasks: associations; Check: isAdminLoggedOn
+Root: HKLM; Subkey: "Software\Classes\BlueJProject"; ValueType: string; ValueName: ""; ValueData: "BlueJ project file"; Flags: uninsdeletekey; Tasks: associations; Check: isAdminLoggedOn
+Root: HKLM; Subkey: "Software\Classes\BlueJProject\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\bluej.exe,0"; Flags: uninsdeletekey; Tasks: associations; Check: isAdminLoggedOn
+Root: HKLM; Subkey: "Software\Classes\BlueJProject\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\bluej.exe"" ""%1"""; Flags: uninsdeletekey; Tasks: associations; Check: isAdminLoggedOn
+; For non-admin
+Root: HKCU; Subkey: "Software\Classes\.bluej"; ValueType: string; ValueName: ""; ValueData: "BlueJProject"; Flags: uninsdeletevalue; Tasks: associations; Check: not isAdminLoggedOn
+Root: HKCU; Subkey: "Software\Classes\BlueJProject"; ValueType: string; ValueName: ""; ValueData: "BlueJ project file"; Flags: uninsdeletekey; Tasks: associations; Check: not isAdminLoggedOn
+Root: HKCU; Subkey: "Software\Classes\BlueJProject\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\bluej.exe,0"; Flags: uninsdeletekey; Tasks: associations; Check: not isAdminLoggedOn
+Root: HKCU; Subkey: "Software\Classes\BlueJProject\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\bluej.exe"" ""%1"""; Flags: uninsdeletekey; Tasks: associations; Check: not isAdminLoggedOn
+
 [InstallDelete]
 Type: files; Name: "{app}\lib\extensions\submission.jar"
 
 [Files]
-Source: "..\install_tmp\*.*"; DestDir: "{app}"; CopyMode: alwaysoverwrite; Flags: recursesubdirs
+Source: "..\install_tmp\*.*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 Source: "..\winlaunch\bjlaunch.exe"; DestDir: "{app}"; DestName: "bluej.exe"
 Source: "..\winlaunch\README.TXT"; DestDir: "{app}"
 

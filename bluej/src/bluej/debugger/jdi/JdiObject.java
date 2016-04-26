@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,31 +21,32 @@
  */
 package bluej.debugger.jdi;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
-import bluej.Config;
 import bluej.debugger.DebuggerClass;
 import bluej.debugger.DebuggerObject;
-import bluej.debugger.gentype.JavaType;
 import bluej.debugger.gentype.GenTypeClass;
+import bluej.debugger.gentype.JavaType;
 import bluej.debugger.gentype.Reflective;
 import bluej.utility.Debug;
 import bluej.utility.JavaNames;
 
-import com.sun.jdi.*;
+import com.sun.jdi.ArrayReference;
+import com.sun.jdi.Field;
+import com.sun.jdi.ObjectReference;
+import com.sun.jdi.ReferenceType;
+import com.sun.jdi.Value;
 
 /**
- * Represents an object running on the user (remote) machine.
+ * Represents an object running on the user (remote) machine, together with an optional generic
+ * type of the object.
  *
  * @author  Michael Kolling
- * @version $Id: JdiObject.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class JdiObject extends DebuggerObject
 {
-    
-    // boolean - true if our JVM supports generics
-    static boolean jvmSupportsGenerics = Config.isJava15();
-    
     /**
      *  Factory method that returns instances of JdiObjects.
      *
@@ -82,11 +83,6 @@ public class JdiObject extends DebuggerObject
      */
     public static JdiObject getDebuggerObject(ObjectReference obj, Field field, JdiObject parent)
     {
-        // Optimize the java 1.4 case - no generics.
-        if (! jvmSupportsGenerics)
-            return getDebuggerObject(obj);
-        
-        // Handle all cases.
         JavaType expectedType = JdiReflective.fromField(field, parent);
         if (obj instanceof ArrayReference)
             return new JdiArray((ArrayReference) obj, expectedType);
@@ -118,8 +114,10 @@ public class JdiObject extends DebuggerObject
     private JdiObject(ObjectReference obj)
     {
         this.obj = obj;
-        obj.disableCollection();
-        getRemoteFields();
+        if (obj != null) {
+            obj.disableCollection();
+            getRemoteFields();
+        }
     }
 
     private JdiObject(ObjectReference obj, GenTypeClass expectedType)
@@ -127,9 +125,7 @@ public class JdiObject extends DebuggerObject
         this.obj = obj;
         if (obj != null) {
             obj.disableCollection();
-        }
-        getRemoteFields();
-        if( obj != null ) {
+            getRemoteFields();
             Reflective reflective = new JdiReflective(obj.referenceType());
             if( expectedType.isGeneric() ) {
                 genType = expectedType.mapToDerived(reflective);
@@ -139,7 +135,9 @@ public class JdiObject extends DebuggerObject
     
     protected void finalize()
     {
-        obj.enableCollection();
+        if (obj != null) {
+            obj.enableCollection();
+        }
     }
     
     public String toString()
@@ -190,24 +188,6 @@ public class JdiObject extends DebuggerObject
         else
             return JavaNames.stripPrefix(getClassName());
     }
-    
-    /**
-     * Determine whether this is a raw object. That is, an object of a class
-     * which has formal type parameters, but for which no actual types have
-     * been given.
-     * @return  true if the object is raw, otherwise false.
-     */
- /*   private boolean isRaw()
-    {
-        if(JdiUtils.getJdiUtils().hasGenericSig(obj)) {
-            if (genType == null)
-                return true;
-            else
-                return genType.isRaw();
-        }
-        else
-            return false;
-    }*/
 
     /**
      *  Get the class of this object.
@@ -224,59 +204,17 @@ public class JdiObject extends DebuggerObject
     
     public GenTypeClass getGenType()
     {
-        if(genType != null)
+        if(genType != null) {
             return genType;
-        else {
+        }
+        else if (obj != null) {
             Reflective r = new JdiReflective(obj.referenceType());
             return new GenTypeClass(r);
         }
+        else {
+            return null;
+        }
     }
-
-    /**
-     *  Is an object of this class assignable to the given fully qualified type?
-     *
-     *@param  type  Description of Parameter
-     *@return       The AssignableTo value
-     */
-/*    public boolean isAssignableTo(String type)
-    {
-        if (obj == null) {
-            return false;
-        }
-        if (obj.referenceType() == null) {
-            return false;
-        }
-        if (obj.referenceType().name() != null
-                 && type.equals(obj.referenceType().name())) {
-            return true;
-        }
-        if ((obj.referenceType() instanceof ClassType))
-        {
-            ClassType clst = ((ClassType) obj.referenceType());
-            InterfaceType[] intt = ((InterfaceType[]) clst.allInterfaces().toArray(new InterfaceType[0]));
-            for (int i = 0; i < intt.length; i++)
-            {
-                if (type.equals(intt[i].name()))
-                {
-                    return true;
-                }
-            }
-            clst = clst.superclass();
-            while (clst != null)
-            {
-                if (clst.name().equals(type))
-                {
-                    return true;
-                }
-                clst = clst.superclass();
-            }
-        }
-        else if ((obj.referenceType() instanceof ArrayType))
-        {
-        }
-        return false;
-    }
-*/
     
     /**
      *  Return true if this object is an array. This is always false, since
@@ -313,7 +251,6 @@ public class JdiObject extends DebuggerObject
     {
         return getFieldCount(false);
     }
-
 
     /**
      *  Return the name of the static field at 'slot'.
@@ -448,42 +385,66 @@ public class JdiObject extends DebuggerObject
         return obj;
     }
 
-
-    /**
-     *  Return an array of strings with the description of each static field
-     *  in the format "<modifier> <type> <name> = <value>".
-     *
-     *@param  includeModifiers  Description of Parameter
-     *@return                   The StaticFields value
+    /*
+     * @see bluej.debugger.DebuggerObject#getInstanceFields(boolean, java.util.Map)
      */
-    public List<String> getStaticFields(boolean includeModifiers)
+    public List<String> getInstanceFields(boolean includeModifiers, Map<String, List<String>> restrictedClasses)
     {
-        return getFields(false, true, includeModifiers);
-    }
-
-    /**
-     *  Return a list of strings with the description of each instance field
-     *  in the format "<modifier> <type> <name> = <value>".
-     *
-     *@param  includeModifiers  Description of Parameter
-     *@return                   The InstanceFields value
-     */
-    public List<String> getInstanceFields(boolean includeModifiers)
-    {
-        return getFields(false, false, includeModifiers);
-    }
-
-
-    /**
-     *  Return a list of strings with the description of each field
-     *  in the format "<modifier> <type> <name> = <value>".
-     *
-     *@param  includeModifiers  Description of Parameter
-     *@return                   The AllFields value
-     */
-    public List<String> getAllFields(boolean includeModifiers)
-    {
-        return getFields(true, true, includeModifiers);
+        List<String> fieldStrings = new ArrayList<String>(obj == null ? 0 : fields.size());
+        
+        if (obj == null)
+            return fieldStrings;
+            
+        ReferenceType cls = obj.referenceType();
+        List<Field> visible = cls.visibleFields();
+        
+        for (int i = 0; i < fields.size(); i++) {
+            Field field = (Field) fields.get(i);
+        
+            if (checkIgnoreField(field))
+                continue;
+            
+            if (restrictedClasses != null) {
+                List<String> fieldWhitelist = restrictedClasses.get(field.declaringType().name());
+                if (fieldWhitelist != null && !fieldWhitelist.contains(field.name())) 
+                    continue; // ignore this one
+            }            
+        
+            if (field.isStatic() == false) {
+                Value val = obj.getValue(field);
+        
+                String valString = JdiUtils.getJdiUtils().getValueString(val);
+                String fieldString = "";
+        
+                if (includeModifiers) {
+                    if (field.isPrivate()) {
+                        fieldString = "private ";
+                    }
+                    if (field.isProtected()) {
+                        fieldString = "protected ";
+                    }
+                    if (field.isPublic()) {
+                        fieldString = "public ";
+                    }
+                }
+        
+                fieldString += JdiReflective.fromField(field, this).toString(true);
+        
+                if (!visible.contains(field)) {
+                    fieldString += " (hidden)";
+                }
+                
+                fieldString += " " + field.name() + " = " +valString;
+                
+                // the following code adds the word "inherited" to inherited
+                // fields - currently unused
+                //else if (!field.declaringType().equals(cls)) {
+                //    fieldString += " (inherited)";
+                //}
+                fieldStrings.add(fieldString);
+            }
+        }
+        return fieldStrings;
     }
 
 
@@ -566,75 +527,6 @@ public class JdiObject extends DebuggerObject
     }
 
 
-    /**
-     *  Return a list of strings with the description of each field
-     *  in the format "<modifier> <type> <name> = <value>".
-     *  If 'getAll' is true, both static and instance fields are returned
-     *  ('getStatic' is ignored). If 'getAll' is false, then 'getStatic'
-     *  determines whether static fields or instance fields are returned.
-     *
-     *@param  getAll            If true, get static and instance fields
-     *@param  getStatic         If 'getAll' is false, determine which fields to get
-     *@param  includeModifiers  If true, include the modifier name (public, private)
-     *@return                   The Fields value
-     */
-    private List<String> getFields(boolean getAll, boolean getStatic,
-            boolean includeModifiers)
-    {
-        List<String> fieldStrings = new ArrayList<String>(fields.size());
-
-        if (obj == null)
-            return fieldStrings;
-            
-        ReferenceType cls = obj.referenceType();
-        List<Field> visible = cls.visibleFields();
-
-        for (int i = 0; i < fields.size(); i++) {
-            Field field = (Field) fields.get(i);
-
-            if (checkIgnoreField(field))
-                continue;
-
-            if (getAll || (field.isStatic() == getStatic)) {
-                Value val = obj.getValue(field);
-
-                String valString = JdiUtils.getJdiUtils().getValueString(val);
-                String fieldString = "";
-
-                if (includeModifiers) {
-                    if (field.isPrivate()) {
-                        fieldString = "private ";
-                    }
-                    if (field.isProtected()) {
-                        fieldString = "protected ";
-                    }
-                    if (field.isPublic()) {
-                        fieldString = "public ";
-                    }
-                }
-
-                if (jvmSupportsGenerics)
-                    fieldString += JdiReflective.fromField(field, this).toString(true);
-                else
-                    fieldString += JavaNames.stripPrefix(field.typeName());
-
-                if (!visible.contains(field)) {
-                    fieldString += " (hidden)";
-                }
-                
-                fieldString += " " + field.name() + " = " +valString;
-                
-                // the following code adds the word "inherited" to inherited
-                // fields - currently unused
-                //else if (!field.declaringType().equals(cls)) {
-                //    fieldString += " (inherited)";
-                //}
-                fieldStrings.add(fieldString);
-            }
-        }
-        return fieldStrings;
-    }
-
     private Field getField(boolean getStatic, int slot)
     {
         for (int i = 0; i < fields.size(); i++) {
@@ -703,14 +595,14 @@ public class JdiObject extends DebuggerObject
         // object must be JdiObject at this point
         JdiObject test = (JdiObject)o;
         return this.obj.equals(test.obj);
-	}
+    }
 		
     /**
      * Base our hashcode on the hashcode of the object that we are
      * referring to in the remote VM.
      */
-	public int hashCode()
-	{
+    public int hashCode()
+    {
         return obj.hashCode();
-	}
+    }
 }

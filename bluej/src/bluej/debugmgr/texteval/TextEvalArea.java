@@ -34,7 +34,7 @@ import bluej.prefmgr.PrefMgr;
  * A customised text area for use in the BlueJ Java text evaluation.
  *
  * @author  Michael Kolling
- * @version $Id: TextEvalArea.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: TextEvalArea.java 7725 2010-05-24 17:05:43Z nccb $
  */
 public final class TextEvalArea extends JScrollPane
     implements KeyListener, FocusListener
@@ -43,12 +43,15 @@ public final class TextEvalArea extends JScrollPane
 
     private TextEvalPane text;
     
+    private boolean frameEmpty;
+    
     /**
      * Create a new text area with given size.
      */
     public TextEvalArea(PkgMgrFrame frame, Font font)
     {
         createComponent(frame, font);
+        frameEmpty = frame.isEmptyFrame();
     }
 
     /**
@@ -168,10 +171,45 @@ public final class TextEvalArea extends JScrollPane
         }
         text.setFont(font);
         text.setSelectionColor(selectionColour);
+        text.setOpaque(false);
+        //To get fill working properly under Nimbus L&F, set background to transparent, too:
+        text.setBackground(new Color(0,0,0,0));
 
         setViewportView(text);
+        updateBackground(frame.isEmptyFrame());
 
         setVerticalScrollBarPolicy(VERTICAL_SCROLLBAR_ALWAYS);
         setPreferredSize(new Dimension(300,100));
+    }
+    
+    protected void paintComponent(Graphics g)
+    {
+        super.paintComponent(g);
+        
+        if (g instanceof Graphics2D && false == frameEmpty) {
+            Graphics2D g2d = (Graphics2D)g;
+            
+            int w = getWidth();
+            int h = getHeight();
+           
+            GradientPaint gp = new GradientPaint(
+                w/4, 0, new Color(235, 230, 200),
+                w, h, new Color(209, 203, 179));
+
+            g2d.setPaint(gp);
+            // We don't draw the outermost pixel, so that when the border is empty, it
+            // shows the gradient from the window beneath (grey)
+            // rather than our gradient (beige) outside the grey bevel border
+            g2d.fillRect(1, 1, w-2, h-2);
+        }
+    }
+
+    public void updateBackground(boolean frameEmpty)
+    {
+        this.frameEmpty = frameEmpty;
+        
+        getViewport().setOpaque(frameEmpty);
+        setOpaque(frameEmpty);
+        
     }
 }

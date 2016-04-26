@@ -27,55 +27,15 @@ import java.util.*;
 import bluej.debugger.gentype.*;
 
 /**
- * Java 1.5 version of JavaUtils.
+ * Java 1.5+ version of JavaUtils.
  * 
  * @author Davin McCall
- * @version $Id: JavaUtils15.java 6215 2009-03-30 13:28:25Z polle $
  */
-public class JavaUtils15 extends JavaUtils {
-
+public class JavaUtils15 extends JavaUtils
+{
     /*
      * Make signatures for methods, constructors
      */
-    
-    public String getSignature(Method method)
-    {
-        String name = getTypeParameters(method);
-        name += getTypeName(method.getGenericReturnType()) + " " + method.getName();
-        Type[] params = method.getGenericParameterTypes();
-        return makeSignature(name, params, method.isVarArgs());
-    }
-    
-    public String getSignature(Constructor cons)
-    {
-        String name = getTypeParameters(cons);
-        name += JavaNames.getBase(cons.getName());
-        Type[] params = cons.getGenericParameterTypes();
-        
-        return makeSignature(name, params, cons.isVarArgs());
-    }
-    
-    /**
-     * Build the signature string. Format: name(type,type,type)
-     */
-    static private String makeSignature(String name, Type[] params, boolean isVarArgs)
-    {
-        String [] typeStrings = typeArrayToStrings(params);
-        return makeDescription(name, typeStrings, null, true, isVarArgs);
-    }
-    
-    /**
-     * Convert an array of types to an array of strings representing those types.
-     */
-    private static String [] typeArrayToStrings(Type [] types)
-    {
-        String [] rval = new String[types.length];
-        for (int i = 0; i < types.length; i++) {
-            rval[i] = getTypeName(types[i]);
-        }
-                
-        return rval;
-    }
     
     /*
      * Make descriptions of methods
@@ -85,24 +45,25 @@ public class JavaUtils15 extends JavaUtils {
      * Get a short or long method description which maps type parameters to types using
      * the supplied map. 
      */
-    public String getDescription(Method method, String [] paramnames, Map tparams, boolean longDesc)
+    public String getDescription(Method method, String [] paramnames,
+            Map<String,? extends GenTypeParameter> tparams, boolean longDesc)
     {
         // If tparams is null, the parent object is raw.
         if(tparams == null) {
             String name = JavaUtils14.getTypeName(method.getReturnType()) + " " + method.getName();
-            Class[] params = method.getParameterTypes();
+            Class<?>[] params = method.getParameterTypes();
             String[] paramTypes = JavaUtils14.getParameterTypes(params);
             return makeDescription(name, paramTypes, paramnames, longDesc, false);
         }
         
         // Don't want to modify the map which was passed in, so make a copy:
-        Map newMap = new HashMap(tparams);
+        Map<String,GenTypeParameter> newMap = new HashMap<String,GenTypeParameter>(tparams);
 
         // add any method type parameters into the map, replacing existing
         // map entries.
-        List myParams = getTypeParams(method);
-        for(Iterator i = myParams.iterator(); i.hasNext(); ) {
-            GenTypeDeclTpar tpar = (GenTypeDeclTpar)i.next();
+        List<GenTypeDeclTpar> myParams = getTypeParams(method);
+        for(Iterator<GenTypeDeclTpar> i = myParams.iterator(); i.hasNext(); ) {
+            GenTypeDeclTpar tpar = i.next();
             newMap.put(tpar.getTparName(), tpar);
         }
         
@@ -118,12 +79,12 @@ public class JavaUtils15 extends JavaUtils {
         return makeDescription(name, paramTypeNames, paramnames, longDesc, method.isVarArgs());
     }
 
-    public String getShortDesc(Method method, String [] paramnames, Map tparams)
+    public String getShortDesc(Method method, String [] paramnames, Map<String,GenTypeParameter> tparams)
     {
         return getDescription(method, paramnames, tparams, false);
     }
 
-    public String getLongDesc(Method method, String [] paramnames, Map tparams)
+    public String getLongDesc(Method method, String [] paramnames, Map<String,GenTypeParameter> tparams)
     {
         return getDescription(method, paramnames, tparams, true);
     }
@@ -160,7 +121,7 @@ public class JavaUtils15 extends JavaUtils {
     /**
      * Make a constructor description (short or long).
      */
-    public String getDescription(Constructor constructor, String [] paramnames, boolean longDesc)
+    public String getDescription(Constructor<?> constructor, String [] paramnames, boolean longDesc)
     {
         String name = getTypeParameters(constructor);
         name += constructor.getName();        
@@ -174,12 +135,12 @@ public class JavaUtils15 extends JavaUtils {
         return makeDescription(name, paramTypeNames, paramnames, longDesc, constructor.isVarArgs());
     }
     
-    public String getShortDesc(Constructor constructor, String [] paramnames)
+    public String getShortDesc(Constructor<?> constructor, String [] paramnames)
     {
         return getDescription(constructor, paramnames, false);
     }
 
-    public String getLongDesc(Constructor constructor, String [] paramnames)
+    public String getLongDesc(Constructor<?> constructor, String [] paramnames)
     {
         return getDescription(constructor, paramnames, true);
     }
@@ -188,7 +149,7 @@ public class JavaUtils15 extends JavaUtils {
      * Check various attributes of constructors / methods
      */
     
-    public boolean isVarArgs(Constructor cons)
+    public boolean isVarArgs(Constructor<?> cons)
     {
         return cons.isVarArgs();
     }
@@ -203,7 +164,8 @@ public class JavaUtils15 extends JavaUtils {
         return method.isSynthetic();
     }
     
-    public boolean isEnum(Class cl) {
+    public boolean isEnum(Class<?> cl)
+    {
         return cl.isEnum();
     }
     
@@ -215,8 +177,8 @@ public class JavaUtils15 extends JavaUtils {
     
     public JavaType getRawReturnType(Method method)
     {
-        Class c = method.getReturnType();
-        return JavaUtils14.genTypeFromClass14(c);
+        Class<?> c = method.getReturnType();
+        return JavaUtils.genTypeFromClass(c);
     }
     
     public JavaType getFieldType(Field field)
@@ -226,26 +188,26 @@ public class JavaUtils15 extends JavaUtils {
     
     public JavaType getRawFieldType(Field field)
     {
-        Class c = field.getType();
-        return JavaUtils14.genTypeFromClass14(c);
+        Class<?> c = field.getType();
+        return JavaUtils.genTypeFromClass(c);
     }
     
-    public List getTypeParams(Method method)
+    public List<GenTypeDeclTpar> getTypeParams(Method method)
     {
         return getTypeParams((GenericDeclaration) method);
     }
     
-    public List getTypeParams(Constructor cons)
+    public List<GenTypeDeclTpar> getTypeParams(Constructor<?> cons)
     {
         return getTypeParams((GenericDeclaration) cons);
     }
 
-    public List getTypeParams(Class cl)
+    public List<GenTypeDeclTpar> getTypeParams(Class<?> cl)
     {
         return getTypeParams((GenericDeclaration) cl);
     }
     
-    public GenTypeClass getSuperclass(Class cl)
+    public GenTypeClass getSuperclass(Class<?> cl)
     {
         Type sc = cl.getGenericSuperclass();
         if( sc == null )
@@ -253,7 +215,7 @@ public class JavaUtils15 extends JavaUtils {
         return (GenTypeClass)genTypeFromType(sc);
     }
     
-    public GenTypeClass [] getInterfaces(Class cl)
+    public GenTypeClass [] getInterfaces(Class<?> cl)
     {
         Type [] classes = cl.getGenericInterfaces();
         GenTypeClass [] gentypes = new GenTypeClass[classes.length];
@@ -280,55 +242,58 @@ public class JavaUtils15 extends JavaUtils {
             params = method.getGenericParameterTypes();
         JavaType [] gentypes = new JavaType[params.length];
         for(int i = 0; i < params.length; i++) {
-            gentypes[i] = genTypeFromType(params[i]);
+            gentypes[i] = (JavaType) genTypeFromType(params[i]);
         }
         return gentypes;
     }
 
-    public String[] getParameterTypes(Constructor constructor) 
+    public String[] getParameterTypes(Constructor<?> constructor) 
     {
         Type [] params = constructor.getGenericParameterTypes();
         boolean isVarArgs = isVarArgs(constructor);
         return getParameterTypes(params, isVarArgs);
     }
 
-    public JavaType[] getParamGenTypes(Constructor constructor)
+    public JavaType[] getParamGenTypes(Constructor<?> constructor)
     {
         Type [] params = constructor.getGenericParameterTypes();
         JavaType [] gentypes = new JavaType[params.length];
         for(int i = 0; i < params.length; i++) {
-            gentypes[i] = genTypeFromType(params[i]);
+            gentypes[i] = (JavaType) genTypeFromType(params[i]);
         }
         return gentypes;
     }
-        
-    /**
-     * Build a GenType structure from a "Type" object.
-     */
-    public JavaType genTypeFromClass(Class t)
-    {
-        return genTypeFromType(t);
-    }
-    
+
     /* -------------- Internal methods ---------------- */
     
     /**
      * Get the type parameters for any GenericDeclaration implementor. This
      * includes Methods, Constructors and Classes.
      */
-    private List getTypeParams(GenericDeclaration decl)
+    private List<GenTypeDeclTpar> getTypeParams(GenericDeclaration decl)
     {
-        List rlist = new ArrayList();
-        TypeVariable [] tvars = decl.getTypeParameters();
+        List<GenTypeDeclTpar> rlist = new ArrayList<GenTypeDeclTpar>();
+        TypeVariable<?> [] tvars = decl.getTypeParameters();
+        
+        Map<String,GenTypeDeclTpar> tvarMap = new HashMap<String,GenTypeDeclTpar>();
+        
+        for (TypeVariable<?> tvar : tvars) {
+            tvarMap.put(tvar.getName(), new GenTypeDeclTpar(tvar.getName()));
+        }
+        
         for( int i = 0; i < tvars.length; i++ ) {
             // find the bounds.
             Type [] bounds = tvars[i].getBounds();
             GenTypeSolid [] upperBounds = new GenTypeSolid[bounds.length];
-            for (int j = 0; j < bounds.length; j++)
-                upperBounds[j] = (GenTypeSolid) genTypeFromType(bounds[j]);
+            for (int j = 0; j < bounds.length; j++) {
+                upperBounds[j] = (GenTypeSolid) genTypeFromType(bounds[j], tvarMap);
+            }
             
             // add the type parameter to the list.
-            rlist.add(new GenTypeDeclTpar(tvars[i].getName(), upperBounds));
+            GenTypeDeclTpar tpar = tvarMap.get(tvars[i].getName());
+            tpar.setBounds(upperBounds);
+            
+            rlist.add(tpar);
         }
         return rlist;
     }
@@ -362,12 +327,12 @@ public class JavaUtils15 extends JavaUtils {
         if( primtype == null )
             Debug.message("type == null??");
             
-        if(primtype instanceof Class)
-            sb.append(JavaUtils14.getTypeName((Class)primtype));
+        if(primtype instanceof Class<?>)
+            sb.append(JavaUtils14.getTypeName((Class<?>)primtype));
         else if(primtype instanceof ParameterizedType)
             sb.append(getTypeName((ParameterizedType)primtype));
-        else if(primtype instanceof TypeVariable)
-            sb.append(((TypeVariable)primtype).getName());
+        else if(primtype instanceof TypeVariable<?>)
+            sb.append(((TypeVariable<?>)primtype).getName());
         else if(primtype instanceof WildcardType)
             sb.append(getTypeName((WildcardType)primtype));
         else
@@ -442,7 +407,8 @@ public class JavaUtils15 extends JavaUtils {
      * Convert a type name into its vararg form. For instance,
      * "int []" becomes "int ...".
      */
-    static private String createVarArg(String typeName) {
+    static private String createVarArg(String typeName)
+    {
         String lastArrayStripped = typeName.substring(0,typeName.length()-2);
         return lastArrayStripped + " ...";        
     }
@@ -461,7 +427,7 @@ public class JavaUtils15 extends JavaUtils {
         return typeParamsToString(method.getTypeParameters(), true);
     }
     
-    static private String getTypeParameters(Constructor cons)
+    static private String getTypeParameters(Constructor<?> cons)
     {
         return typeParamsToString(cons.getTypeParameters(), true);
     }
@@ -471,12 +437,12 @@ public class JavaUtils15 extends JavaUtils {
      * surrounded by angle brackets, with an optional trailing space (omitted if there
      * are no type parameters).
      */
-    static private String typeParamsToString(TypeVariable [] tparams, boolean extraSpace)
+    static private String typeParamsToString(TypeVariable<?> [] tparams, boolean extraSpace)
     {
         if( tparams.length != 0 ) {
             String name = "<";
             for( int i = 0; i < tparams.length; i++ ) {
-                TypeVariable type = tparams[i];
+                TypeVariable<?> type = tparams[i];
                 name += type.getName();        
                 Type[] upperBounds = type.getBounds();
 
@@ -513,76 +479,62 @@ public class JavaUtils15 extends JavaUtils {
      */
     private static JavaType genTypeFromType(Type t)
     {
-        return genTypeFromType(t, new LinkedList());
+        return (JavaType) genTypeFromType(t, new HashMap<String,GenTypeParameter>());
     }
     
     /**
      * Build a GenType structure from a "Type" object, using the given backTrace
      * stack to avoid infinite recursion.
      */
-    private static JavaType genTypeFromType(Type t, List backTrace)
+    private static GenTypeParameter genTypeFromType(Type t, Map<String,? extends GenTypeParameter> tvars)
     {
-        if( t instanceof Class )
-            return JavaUtils14.genTypeFromClass14((Class)t);
-        if (t instanceof TypeVariable) {
-            TypeVariable tv = (TypeVariable) t;
-            if (backTrace.contains(t))
-                return new GenTypeUnbounded();
-            
-            // get the bounds, convert to GenType
-            Type[] bounds = tv.getBounds();
-            GenTypeSolid[] gtBounds = new GenTypeSolid[bounds.length];
-            backTrace.add(t);
-            for (int i = 0; i < bounds.length; i++) {
-                gtBounds[i] = (GenTypeSolid) genTypeFromType(bounds[i], backTrace);
-            }
-
-            return new GenTypeDeclTpar(tv.getName(), gtBounds);
+        if (t instanceof Class<?>) {
+            return JavaUtils.genTypeFromClass((Class<?>)t);
         }
-        if( t instanceof WildcardType ) {
-            if (backTrace.contains(t))
-                return new GenTypeUnbounded();
+        
+        if (t instanceof TypeVariable<?>) {
+            TypeVariable<?> tv = (TypeVariable<?>) t;
+            GenTypeParameter existingTpar = tvars.get(tv.getName());
+            if (existingTpar != null) {
+                return existingTpar;
+            }
             
+            return new GenTypeTpar(tv.getName());
+        }
+        if (t instanceof WildcardType) {
             WildcardType wtype = (WildcardType)t;
             Type[] upperBounds = wtype.getUpperBounds();
             Type[] lowerBounds = wtype.getLowerBounds();
-            backTrace.add(t);
             // The check for lowerBounds[0] == null is necessary. Appears to be
             // a bug in Java 1.5 beta2.
-            if( lowerBounds.length == 0 || lowerBounds[0] == null ) {
-                if( upperBounds.length == 0 || upperBounds[0] == null ) {
+            if (lowerBounds.length == 0 || lowerBounds[0] == null) {
+                if (upperBounds.length == 0 || upperBounds[0] == null) {
                     return new GenTypeUnbounded();
                 }
                 else {
-                    GenTypeSolid gtp = (GenTypeSolid)genTypeFromType(upperBounds[0], backTrace);
+                    GenTypeSolid gtp = (GenTypeSolid)genTypeFromType(upperBounds[0], tvars);
                     if( upperBounds.length != 1 )
                         Debug.message("GenTypeFromType: multiple upper bounds for wildcard type?");
                     return new GenTypeExtends(gtp);
                 }
             } else {
-                if( lowerBounds[0] == null ) {
-                    Debug.message("lower bound[0] is null??");
-                    return new GenTypeSuper(null);
-                }
-                else {
-                    if (upperBounds.length != 0 && upperBounds[0] != null && upperBounds[0] != Object.class)
-                        Debug.message("getTypeName: upper and lower bound?");
-                    if (lowerBounds.length != 1)
-                        Debug.message("getTypeName: multiple lower bounds for wildcard type?");
-                    GenTypeSolid lbound = (GenTypeSolid) genTypeFromType(lowerBounds[0], backTrace);
-                    return new GenTypeSuper(lbound);
-                }
+                if (upperBounds.length != 0 && upperBounds[0] != null && upperBounds[0] != Object.class)
+                    Debug.message("getTypeName: upper and lower bound?");
+                if (lowerBounds.length != 1)
+                    Debug.message("getTypeName: multiple lower bounds for wildcard type?");
+                GenTypeParameter lbound = genTypeFromType(lowerBounds[0], tvars);
+                return new GenTypeSuper((GenTypeSolid) lbound);
             }
         }
         if( t instanceof ParameterizedType ) {
             ParameterizedType pt = (ParameterizedType)t;
-            Class rawtype = (Class)pt.getRawType();
+            Class<?> rawtype = (Class<?>)pt.getRawType();
             Type [] argtypes = pt.getActualTypeArguments();
-            List arggentypes = new ArrayList();
+            List<GenTypeParameter> arggentypes = new ArrayList<GenTypeParameter>();
             
             // Convert the Type [] into a List of GenType
             for( int i = 0; i < argtypes.length; i++ )
-                arggentypes.add(genTypeFromType(argtypes[i], backTrace));
+                arggentypes.add(genTypeFromType(argtypes[i], tvars));
             
             // Check for outer type
             GenTypeClass outer = null;
@@ -594,56 +546,8 @@ public class JavaUtils15 extends JavaUtils {
         
         // Assume we have an array
         GenericArrayType gat = (GenericArrayType)t;
-        JavaType componentType = genTypeFromType(gat.getGenericComponentType(), backTrace);
+        JavaType componentType = (JavaType) genTypeFromType(gat.getGenericComponentType(), tvars);
         
-        Reflective reflective = new JavaReflective(getRclass(gat));
-        return new GenTypeArray(componentType, reflective);
-    }
-    
-    /**
-     * Get the raw name of some type, such as would be returned by
-     * Class.getName()
-     */
-    static private Class getRclass(Type t)
-    {
-        int arrnum = 0;
-        while (! (t instanceof Class)) {
-            if (t instanceof ParameterizedType)
-                t = ((ParameterizedType) t).getRawType();
-        
-            if (t instanceof TypeVariable)
-                t = ((TypeVariable) t).getBounds()[0];
-            
-            if (t instanceof WildcardType)
-                t = ((WildcardType) t).getUpperBounds()[0];
-            
-            if (t instanceof GenericArrayType) {
-                arrnum++;
-                t = ((GenericArrayType) t).getGenericComponentType();
-            }
-        }
-        
-        String rName;
-        Class rClass = (Class) t;
-        ClassLoader classLoader = rClass.getClassLoader();
-        
-        if (arrnum == 0) {
-            rName = rClass.getName();
-        }
-        else {
-            // arrnum > 0 !
-            rName = genTypeFromType(t).arrayComponentName();
-            while (arrnum > 0) {
-                rName = "[" + rName;
-                arrnum--;
-            }
-        }
-            
-        try {
-            if (classLoader == null)
-                classLoader = ClassLoader.getSystemClassLoader();
-            return classLoader.loadClass(rName);
-        }
-        catch (ClassNotFoundException cnfe) { return null; }
+        return new GenTypeArray(componentType);
     }
 }

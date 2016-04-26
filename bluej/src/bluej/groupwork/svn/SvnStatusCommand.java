@@ -26,8 +26,10 @@ import java.io.FileFilter;
 import java.util.*;
 
 import org.tigris.subversion.javahl.ClientException;
+import org.tigris.subversion.javahl.Depth;
 import org.tigris.subversion.javahl.SVNClientInterface;
 import org.tigris.subversion.javahl.Status;
+import org.tigris.subversion.javahl.StatusCallback;
 import org.tigris.subversion.javahl.StatusKind;
 
 import bluej.groupwork.*;
@@ -57,8 +59,16 @@ public class SvnStatusCommand extends SvnCommand
         File projectPath = getRepository().getProjectPath().getAbsoluteFile();
         
         try {
-            Status [] status = client.status(projectPath.getAbsolutePath(),
-                    true, true, true);
+            final List<Status> statusList = new LinkedList<Status>();
+            client.status(projectPath.getAbsolutePath(), Depth.infinity, true,
+                    true, false, false, new String[0], new StatusCallback() {
+                        public void doStatus(Status arg0)
+                        {
+                            statusList.add(arg0);
+                        }
+                    });
+            
+            Status [] status = statusList.toArray(new Status[statusList.size()]);
             
             /*
              * Subversion is a bit stupid. If a directory has been removed from
@@ -93,7 +103,13 @@ public class SvnStatusCommand extends SvnCommand
                 
                 if (textStat == StatusKind.missing
                         || textStat == StatusKind.deleted) {
-                    rinfo = new TeamStatusInfo(file, "" + status[i].getLastChangedRevisionNumber(), "", TeamStatusInfo.STATUS_DELETED);
+                    String rev = "" + status[i].getLastChangedRevisionNumber();
+                    if (reposStat == StatusKind.modified) {
+                        rinfo = new TeamStatusInfo(file, rev, "" + reposRev, TeamStatusInfo.STATUS_CONFLICT_LDRM);
+                    }
+                    else {
+                        rinfo = new TeamStatusInfo(file, rev, "", TeamStatusInfo.STATUS_DELETED);
+                    }
                 }
                 else if (textStat == StatusKind.unversioned) {
                     if (filter.accept(file)) {

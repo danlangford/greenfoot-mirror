@@ -27,6 +27,7 @@ import java.util.*;
 
 import bluej.Config;
 import bluej.editor.EditorManager;
+import bluej.editor.moe.BlueJSyntaxView;
 import bluej.pkgmgr.PkgMgrFrame;
 import bluej.pkgmgr.Project;
 
@@ -34,11 +35,10 @@ import bluej.pkgmgr.Project;
  * A class to manage the user editable preferences
  * settings.
  *
- * Note that this is a singleton class. There can be only one
+ * <p>Note that this is a singleton class. There can be only one
  * instance of PrefMgr at any time.
  *
  * @author  Andrew Patterson
- * @version $Id: PrefMgr.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class PrefMgr
 {
@@ -54,10 +54,11 @@ public class PrefMgr
     public static final String SHOW_JAVAME_TOOLS = "bluej.javame.showtools";   
     public static final String SHOW_TEXT_EVAL = "bluej.startWithTextEval";
     public static final String SHOW_UNCHECKED = "bluej.compiler.showunchecked";
+    public static final String SCOPE_HIGHLIGHTING_STRENGTH = "bluej.editor.scopeHilightingStrength";
+    public static final String NAVIVIEW_EXPANDED="bluej.naviviewExpanded.default";
     
     public static final String USE_THEMES = "bluej.useTheme";
-
-	// font property names
+    // font property names
     private static final String editorFontPropertyName = "bluej.editor.font";
     private static final String editorMacFontPropertyName = "bluej.editor.MacOS.font";
     private static final String editorFontSizePropertyName = "bluej.editor.fontsize";
@@ -65,12 +66,8 @@ public class PrefMgr
     // other constants
     private static final int NUM_RECENT_PROJECTS = Config.getPropInteger("bluej.numberOfRecentProjects", 12);
     
-	// preference variables: FONTS
+    // preference variables: FONTS
     private static int fontSize;
-    private static int editFontsize;
-    private static int printFontsize;
-    private static int printTitleFontsize;
-    private static int printInfoFontsize;
     private static int targetFontSize;
 
     private static Font normalFont;
@@ -84,28 +81,30 @@ public class PrefMgr
 
     // initialised by a call to setEditorFontSize()
     private static int editorFontSize;
-    private static Font editorStandardFont, editorStandoutFont;
+    private static Font editorStandardFont;
 
-	// preference variables: (other than fonts)
-	
+    // preference variables: (other than fonts)
+    
+    /** transparency of the scope highlighting */
+    private static int highlightStrength; 
+    
+    // last value of naviviewExpanded
+    private static boolean isNaviviewExpanded=true;
+    
     // the current project directory
     private static String projectDirectory;
 
     // list of recently used projects
-	private static List recentProjects;
+    private static List<String> recentProjects;
 	
     // flags are all boolean preferences
-    private static HashMap flags = new HashMap();
-
-	// the pref-mgr object
-    private static PrefMgr prefmgr = new PrefMgr();
+    private static HashMap<String,String> flags = new HashMap<String,String>();
 
     /**
      * Initialise the preference manager. Font information is loaded from bluej.defs,
      * defaults for other prefs are loaded from bluej.defs.
-	 */
-    private PrefMgr()
-    {
+     */
+    static {
         //set up fonts
         initEditorFontSize(Config.getPropInteger(editorFontSizePropertyName, 12));
 
@@ -126,6 +125,8 @@ public class PrefMgr
         targetFont = Config.getFont("bluej.target.font", "SansSerif-bold", targetFontSize);
         
         // preferences other than fonts:
+        highlightStrength = Config.getPropInteger(SCOPE_HIGHLIGHTING_STRENGTH, 10);
+        isNaviviewExpanded=Boolean.parseBoolean(Config.getPropString(NAVIVIEW_EXPANDED, "true"));
         
         projectDirectory = Config.getPropString("bluej.projectPath");
         recentProjects = readRecentProjects();
@@ -144,8 +145,16 @@ public class PrefMgr
         flags.put(SHOW_UNCHECKED, Config.getPropString(SHOW_UNCHECKED, "true"));
     }
 
-    // ----- system interface to read or set prefences: -----
+    /**
+     * Private constructor to prevent instantiation
+     */
+    private PrefMgr()
+    {
+        
+    }
     
+    // ----- system interface to read or set prefences: -----
+
     public static String getProjectDirectory()
     {
         return projectDirectory;
@@ -157,7 +166,7 @@ public class PrefMgr
         Config.putPropString("bluej.projectPath", newDir);
     }
 
-    public static List getRecentProjects()
+    public static List<String> getRecentProjects()
     {
         return recentProjects;
     }
@@ -222,8 +231,9 @@ public class PrefMgr
     public static boolean getFlag(String flag)
     {
         String value = (String)flags.get(flag);
-        if(value == null)
+        if(value == null){
             return false;
+        }
         else
             return value.equals("true");
     }
@@ -250,9 +260,9 @@ public class PrefMgr
 
     // ----- end of system preference interface -----
     
-    private static List readRecentProjects()
+    private static List<String> readRecentProjects()
     {
-        List projects = new ArrayList(NUM_RECENT_PROJECTS);
+        List<String> projects = new ArrayList<String>(NUM_RECENT_PROJECTS);
         
         for(int i = 0; i < NUM_RECENT_PROJECTS; i++) {
             String projectName = Config.getPropString("bluej.recentProject" + i, "");
@@ -264,7 +274,7 @@ public class PrefMgr
     
     /**
      * The following methods are protected and should only be accessed by the
-     * code which implements the various preferneces dialog panels
+     * code which implements the various preferences dialog panels
      */
 
     /**
@@ -277,10 +287,10 @@ public class PrefMgr
         if (size > 0) {
             initEditorFontSize(size);
             EditorManager.getEditorManager().refreshAll();
-            Collection projects = Project.getProjects();
-            Iterator i = projects.iterator();
+            Collection<Project> projects = Project.getProjects();
+            Iterator<Project> i = projects.iterator();
             while (i.hasNext()) {
-                Project project = (Project) i.next();
+                Project project = i.next();
                 if (project.hasTerminal()) {
                     project.getTerminal().resetFont();
                 }
@@ -313,7 +323,6 @@ public class PrefMgr
                 font = Config.getFont(editorFontPropertyName, "Monospaced", size);
             }
             editorStandardFont = font;
-            editorStandoutFont = font.deriveFont(Font.BOLD);
         }
     }
     
@@ -325,4 +334,41 @@ public class PrefMgr
     {
         return editorFontSize;
     }
+    
+    public static int getScopeHighlightStrength()
+    {
+        return highlightStrength;
+    }
+
+    /**
+     * Sets the highlight strength in the configs
+     * @param strength representing light<->dark
+     */
+    public static void setScopeHighlightStrength(int strength)
+    {
+        highlightStrength = strength;
+        BlueJSyntaxView.setHighlightStrength(strength);
+        Config.putPropInteger(SCOPE_HIGHLIGHTING_STRENGTH, strength);
+    }
+    
+    /**
+     * Sets the value of the naviview to expanded/collapsed 
+     * to the local variable and to the configs
+     * @param expanded true if expanded; false if not
+     */
+    public static void setNaviviewExpanded(boolean expanded)
+    {
+        isNaviviewExpanded=expanded;
+        Config.putPropString(NAVIVIEW_EXPANDED, String.valueOf(expanded));
+    }
+    
+    /**
+     * Returns the value of whether the naviview is expanded/collapsed
+     * @return true if expanded; false if not
+     */
+    public static boolean getNaviviewExpanded()
+    {   
+        return isNaviviewExpanded;            
+    }
+    
 }

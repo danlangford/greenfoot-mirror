@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,18 +22,26 @@
 package bluej.debugger.gentype;
 
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.Stack;
 
-public class GenTypeArray extends GenTypeClass
+import bluej.utility.JavaReflective;
+
+/**
+ * A specialization of GenTypeClass for arrays.
+ * 
+ * @author Davin McCall
+ */
+public class GenTypeArray extends GenTypeSolid
 {
     JavaType baseType;
     
-    public GenTypeArray(JavaType baseType, Reflective r)
+    /**
+     * Construct a new GenTypeArray, with the given component type.
+     */
+    public GenTypeArray(JavaType baseType)
     {
-        super(r);
+        super();
         this.baseType = baseType;
     }
 
@@ -44,77 +52,167 @@ public class GenTypeArray extends GenTypeClass
     
     public String toString(NameTransform nt)
     {
-        if(baseType instanceof GenTypeParameterizable)
-            return ((GenTypeParameterizable)baseType).toString(nt) + "[]";
-        else
-            return baseType.toString() + "[]";
+        return baseType.toString(nt) + "[]";
     }
-    
+
+    @Override
+    public String toTypeArgString(NameTransform nt)
+    {
+        return toString(nt);
+    }
+
     public String arrayComponentName()
     {
-        return "[" + baseType.arrayComponentName();
+        return "[" + baseType.getUpperBound().arrayComponentName();
     }
     
+    @Override
+    public JavaType getCapture()
+    {
+        JavaType baseCap = baseType.getCapture();
+        if (baseCap == baseType) {
+            return this;
+        }
+        return new GenTypeArray(baseCap);
+    }
+        
     public JavaType getArrayComponent()
     {
         return baseType;
     }
     
-    public JavaType mapTparsToTypes(Map tparams)
-    {
-        JavaType newBase = baseType.mapTparsToTypes(tparams);
-        if( newBase == baseType )
-            return this;
-        else
-            return new GenTypeArray(newBase, reflective);
-    }
-
     public GenTypeSolid getLowerBound()
     {
-        if (baseType.isPrimitive())
-            return this;
+        return this;
+    }
+
+    @Override
+    public boolean equals(JavaType other)
+    {
+        return baseType.equals(other.getArrayComponent());
+    }
+    
+    @Override
+    public void erasedSuperTypes(Set<Reflective> s)
+    {
+        GenTypeSolid baseSolid = baseType.getUpperBound().asSolid();
+        if (baseSolid != null) {
+            Set<Reflective> bSupers = new HashSet<Reflective>();
+            baseSolid.erasedSuperTypes(bSupers);
+            for (Reflective r : bSupers) {
+                s.add(r.getArrayOf());
+            }
+        }
         else {
-            GenTypeSolid Lbounds = ((GenTypeParameterizable) baseType).getLowerBound();
-            Reflective newR = Lbounds.getErasedType().asClass().reflective.getArrayOf();
-            return new GenTypeArray(Lbounds, newR);
+            // Must be primitive
+            Class<?> aClass = null;
+            JavaType baseType = this.baseType.getUpperBound();
+            if (baseType.typeIs(JT_VOID)) {
+                aClass = void.class;
+            }
+            else if (baseType.typeIs(JT_BOOLEAN)) {
+                aClass = boolean.class;
+            }
+            else if (baseType.typeIs(JT_BYTE)) {
+                aClass = byte.class;
+            }
+            else if (baseType.typeIs(JT_CHAR)) {
+                aClass = char.class;
+            }
+            else if (baseType.typeIs(JT_DOUBLE)) {
+                aClass = double.class;
+            }
+            else if (baseType.typeIs(JT_FLOAT)) {
+                aClass = float.class;
+            }
+            else if (baseType.typeIs(JT_INT)) {
+                aClass = int.class;
+            }
+            else if (baseType.typeIs(JT_LONG)) {
+                aClass = long.class;
+            }
+            s.add(new JavaReflective(aClass).getArrayOf());
         }
     }
     
+    @Override
+    public GenTypeArray getArray()
+    {
+        return new GenTypeArray(this);
+    }
+    
+    @Override
     public JavaType getErasedType()
     {
-        if (baseType instanceof GenTypeParameterizable) {
-            GenTypeParameterizable pbtype = (GenTypeParameterizable) baseType;
-            GenTypeClass pbErased = (GenTypeClass) pbtype.getErasedType();
-            return new GenTypeArray(pbErased, pbErased.reflective.getArrayOf());
-        }
-        else
+        JavaType baseErased = baseType.getErasedType();
+        if (baseErased == baseType) {
             return this;
+        }
+        else {
+            return new GenTypeArray(baseErased);
+        }
     }
-
-    public void erasedSuperTypes(Set s)
+    
+    @Override
+    public void getParamsFromTemplate(Map<String, GenTypeParameter> map,
+            GenTypeParameter template)
     {
-        Stack refs = new Stack();
-        if (baseType instanceof GenTypeSolid) {
-            GenTypeSolid sbaseType = (GenTypeSolid) baseType;
-            Set baseEST = new HashSet();
-            sbaseType.erasedSuperTypes(baseEST);
-            Iterator i = baseEST.iterator();
-            while (i.hasNext()) {
-                refs.push(((Reflective) i.next()).getArrayOf());
-            }
-        }
-        else
-            refs.push(reflective);
-        
-        while(! refs.empty()) {
-            Reflective r = (Reflective) refs.pop();
-            if (! s.contains(r)) {
-                // The reflective is not already in the set, so
-                // add it and queue its supertypes
-                s.add(r);
-                refs.addAll(r.getSuperTypesR());
-            }
+        GenTypeParameter ntemplate = template.getArrayComponent();
+        if (ntemplate != null) {
+            baseType.getParamsFromTemplate(map, ntemplate);
         }
     }
-
+        
+    @Override
+    public GenTypeClass[] getReferenceSupertypes()
+    {
+        // There's not really much we can do here
+        return new GenTypeClass[0];
+    }
+    
+    @Override
+    public GenTypeParameter mapTparsToTypes(Map<String, ? extends GenTypeParameter> tparams)
+    {
+        GenTypeParameter mappedBase = baseType.mapTparsToTypes(tparams);
+        if (mappedBase != baseType) {
+            if (mappedBase.isWildcard()) {
+                // An array of wildcard should be represented instead as a wildcard
+                // with array bounds.
+                GenTypeSolid ubound = mappedBase.getUpperBound().asSolid();
+                ubound = (ubound == null) ? ubound : ubound.getArray();
+                GenTypeSolid lbound = mappedBase.getLowerBound();
+                lbound = (lbound == null) ? lbound : lbound.getArray();
+                new GenTypeWildcard(ubound, lbound);
+            }
+            return new GenTypeArray(mappedBase.getUpperBound());
+        }
+        return this;
+    }
+    
+    @Override
+    public boolean isAssignableFrom(JavaType t)
+    {
+        JavaType componentType = t.getArrayComponent();
+        if (componentType != null) {
+            return baseType.getCapture().isAssignableFrom(componentType);
+        }
+        return false;
+    }
+    
+    @Override
+    public boolean isAssignableFromRaw(JavaType t)
+    {
+        JavaType componentType = t.getArrayComponent();
+        if (componentType != null) {
+            return baseType.getCapture().isAssignableFromRaw(componentType);
+        }
+        return false;
+    }
+    
+    @Override
+    public boolean isInterface()
+    {
+        return false;
+    }
+    
 }

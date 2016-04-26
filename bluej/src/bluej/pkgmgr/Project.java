@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,15 +27,14 @@ import java.awt.Window;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -44,8 +43,6 @@ import java.util.StringTokenizer;
 import java.util.TreeMap;
 
 import javax.swing.JFrame;
-
-import com.sun.tools.javac.code.Attribute.Array;
 
 import bluej.BlueJEvent;
 import bluej.Boot;
@@ -75,6 +72,7 @@ import bluej.groupwork.ui.CommitCommentsFrame;
 import bluej.groupwork.ui.StatusFrame;
 import bluej.groupwork.ui.TeamSettingsDialog;
 import bluej.groupwork.ui.UpdateFilesFrame;
+import bluej.parser.entity.EntityResolver;
 import bluej.pkgmgr.target.ClassTarget;
 import bluej.pkgmgr.target.Target;
 import bluej.prefmgr.PrefMgr;
@@ -98,7 +96,6 @@ import bluej.views.View;
  * @author  Axel Schmolitzky
  * @author  Andrew Patterson
  * @author  Bruce Quig
- * @version $Id: Project.java 6707 2009-09-17 05:25:29Z davmac $
  */
 public class Project implements DebuggerListener, InspectorManager 
 {
@@ -113,6 +110,9 @@ public class Project implements DebuggerListener, InspectorManager
     public static final int NEW_PACKAGE_NO_PARENT = 3;
 
     public static final String projectLibDirName = "+libs";
+    
+    /** Property specifying location of JDK source */
+    private static final String JDK_SOURCE_PATH_PROPERTY = "bluej.jdk.source";
     
     /* ------------------- end of static declarations ------------------ */
 
@@ -154,6 +154,7 @@ public class Project implements DebuggerListener, InspectorManager
         have a wrapper on the object bench. Inspectors of fields of
         object inspectors should be handled at the object wrapper level */
     private Map<Object,Inspector> inspectors;
+    
     private boolean inTestMode = false;
     private BPClassLoader currentClassLoader;
     
@@ -171,6 +172,12 @@ public class Project implements DebuggerListener, InspectorManager
     
     // Flag signalling whether this is a Java Micro Edition project
     private boolean isJavaMEproject = false;    
+    
+    /** Resolve javadoc for this project */
+    private JavadocResolver javadocResolver;
+    
+    /** Where to find JDK and other library sources (for extracting javadoc) */
+    private List<DocPathEntry> sourcePath;
 
     /* ------------------- end of field declarations ------------------- */
 
@@ -187,12 +194,43 @@ public class Project implements DebuggerListener, InspectorManager
 
         Debug.log("Opening project: " + projectDir.toString());
         
+        // Make JDK's javadoc available, if we can find the source
+        javadocResolver = new ProjectJavadocResolver(this);
+        sourcePath = new ArrayList<DocPathEntry>();
+        File javaHome = Boot.getInstance().getJavaHome();
+        File jdkSourceZip = new File(javaHome, "src.zip");
+        if (jdkSourceZip.isFile()) {
+            sourcePath.add(new DocPathEntry(jdkSourceZip, ""));
+        }
+        else {
+            File javaHomeParent = javaHome.getParentFile();
+            jdkSourceZip = new File(javaHomeParent, "src.zip");
+            if (jdkSourceZip.exists()) {
+                sourcePath.add(new DocPathEntry(jdkSourceZip, ""));
+            }
+            else {
+                // Mac OS X uses "src.jar" with a "src" prefix
+                jdkSourceZip = new File(javaHome, "src.jar");
+                if (jdkSourceZip.exists()) {
+                    sourcePath.add(new DocPathEntry(jdkSourceZip, "src"));
+                }
+            }
+        }
+        
+        String jdkSourcePath = Config.getPropString(JDK_SOURCE_PATH_PROPERTY, null);
+        if (jdkSourcePath != null) {
+            sourcePath.add(new DocPathEntry(new File(jdkSourcePath), ""));
+        }
+        
         this.projectDir = projectDir;
         inspectors = new HashMap<Object,Inspector>();
         packages = new TreeMap<String, Package>();
+        docuGenerator = new DocuGenerator(this);
 
         try {
-            packages.put("", new Package(this));
+            Package unnamed = new Package(this);
+            packages.put("", unnamed);
+            unnamed.refreshPackage();
         } catch (IOException exc) {
             Debug.reportError("could not read package file (unnamed package)");
         }
@@ -202,8 +240,6 @@ public class Project implements DebuggerListener, InspectorManager
         debugger.newClassLoader(getClassLoader());
         debugger.addDebuggerListener(this);
         debugger.launch();
-
-        docuGenerator = new DocuGenerator(this);
 
         // Check whether this is a shared project
         File ccfFile = new File(projectDir.getAbsoluteFile(), "team.defs");
@@ -340,22 +376,22 @@ public class Project implements DebuggerListener, InspectorManager
             proj.initialPackageName = startingPackageName;
         }
 
-        if(Config.isWinOSVista()) {
-        	WriteCapabilities capabilities = FileUtility.getVistaWriteCapabilities(projectDir);
-        	switch (capabilities) {
-			case VIRTUALIZED_WRITE:
-	        	DialogManager.showMessage(parent, "project-is-virtualized");
-				break;
-			case READ_ONLY:
-	            DialogManager.showMessage(parent, "project-is-readonly");
-				break;
-			case NORMAL_WRITE:
-				break;
-			default:
-				break;
-			}
+        if(Config.isModernWinOS()) {
+            WriteCapabilities capabilities = FileUtility.getVistaWriteCapabilities(projectDir);
+            switch (capabilities) {
+            case VIRTUALIZED_WRITE:
+                DialogManager.showMessage(parent, "project-is-virtualized");
+                break;
+            case READ_ONLY:
+                DialogManager.showMessage(parent, "project-is-readonly");
+                break;
+            case NORMAL_WRITE:
+                break;
+            default:
+                break;
+            }
         }
-    	else if (!projectDir.canWrite()) {
+        else if (!projectDir.canWrite()) {
             DialogManager.showMessage(parent, "project-is-readonly");
         }
         
@@ -716,19 +752,29 @@ public class Project implements DebuggerListener, InspectorManager
     }
 
     /**
+     * Return the source path for the project. The source path contains the JDK source,
+     * if available, and the source for any other libraries which have been explicitly
+     * added.
+     */
+    public List<DocPathEntry> getSourcePath()
+    {
+        return sourcePath;
+    }
+    
+    /**
      * Get the project repository. If the user cancels the credentials dialog,
      * or this is not a team project, returns null.
      */
     public Repository getRepository()
     {
-    	if (isSharedProject) {
-    	    return getTeamSettingsController().getRepository(true);
+        if (isSharedProject) {
+            return getTeamSettingsController().getRepository(true);
         }
         else {
             return null;
         }
     }      
-	
+        
     /**
      * A string which uniquely identifies this project
      */
@@ -747,11 +793,11 @@ public class Project implements DebuggerListener, InspectorManager
     }
 
     /**
-     * Get an existing package from the project. The package is opened (i.e an
-     * new Package is created) if it's not already open. All parent packages on
+     * Get an existing package from the project. The package is opened (i.e a new
+     * Package object is constructed) if it's not already open. All parent packages on
      * the way to the root of the package tree will also be constructed.
      * 
-     * @param qualifiedName package name ie java.util or "" for unnamed package
+     * @param qualifiedName package name i.e. java.util or "" for unnamed package
      * @returns  the package, or null if the package doesn't exist (directory
      *           doesn't exist, or doesn't contain bluej.pkg file)
      */
@@ -777,6 +823,7 @@ public class Project implements DebuggerListener, InspectorManager
                     pkg = new Package(this, JavaNames.getBase(qualifiedName),
                             parent);
                     packages.put(qualifiedName, pkg);
+                    pkg.refreshPackage();
                 } else { // parent package does not exist. How can it not exist ?
                     pkg = null;
                 }
@@ -875,7 +922,8 @@ public class Project implements DebuggerListener, InspectorManager
      * @return Project.NEW_PACKAGE_DONE, Project.NEW_PACKAGE_EXIST,
      *         Project.NEW_PACKAGE_BAD_NAME
      */
-    public int newPackage(String qualifiedName) {
+    public int newPackage(String qualifiedName)
+    {
         if (qualifiedName == null) {
             return NEW_PACKAGE_BAD_NAME;
         }
@@ -906,6 +954,7 @@ public class Project implements DebuggerListener, InspectorManager
             Package pkg = new Package(this, JavaNames.getBase(qualifiedName),
                     parent);
             packages.put(qualifiedName, pkg);
+            pkg.refreshPackage();
         } catch (IOException exc) {
             return NEW_PACKAGE_BAD_NAME;
         }
@@ -975,9 +1024,11 @@ public class Project implements DebuggerListener, InspectorManager
     }
 
     /**
-     * Save all open packages of this project.
+     * Save all open packages of this project. This doesn't save files open
+     * in editor windows - use saveAllEditors() for that.
      */
-    public void saveAll() {
+    public void saveAll()
+    {
         PkgMgrFrame[] frames = PkgMgrFrame.getAllProjectFrames(this);
 
         // Surely we do not want to stack trace if nothing exists. Damiano
@@ -987,12 +1038,18 @@ public class Project implements DebuggerListener, InspectorManager
 
         for (int i = 0; i < frames.length; i++) {
             frames[i].doSave();
+            frames[i].setStatus(Config.getString("pkgmgr.packageSaved"));
         }
     }
 
-    public void saveAllEditors()
+    /**
+     * Request all open editor windows for the current project to save their
+     * contents (if modified).
+     */
+    public void saveAllEditors() throws IOException
     {
-    	Iterator<Package> i = packages.values().iterator();
+        Iterator<Package> i = packages.values().iterator();
+        IOException exception = null;
 
         while(i.hasNext()) {
             Package pkg = (Package) i.next();
@@ -1000,20 +1057,14 @@ public class Project implements DebuggerListener, InspectorManager
                 pkg.saveFilesInEditors();
             }
             catch(IOException ioe) {
-                ioe.printStackTrace();
+                exception = ioe;
+                Debug.reportError("Error while trying to save editor file:", ioe);
             }
-        } 
-    }
-    
-    /**
-     * Make all the Packages in this project save their graphlayout
-     */
-    public void saveAllGraphLayout(){
-    	Iterator<Package> i = packages.values().iterator();
- 
-        while(i.hasNext()) {
-            Package pkg = (Package) i.next();
-				pkg.save(null);
+        }
+        
+        if (exception != null) {
+            // Propagate the exception - let the caller know that something went wrong.
+            throw exception;
         }
     }
     
@@ -1023,7 +1074,8 @@ public class Project implements DebuggerListener, InspectorManager
      * This function is used after a major change to the contents
      * of the project directory ie an import.
      */
-    public void reloadAll() {
+    public void reloadAll()
+    {
         Iterator<Package> i = packages.values().iterator();
 
         while (i.hasNext()) {
@@ -1039,13 +1091,13 @@ public class Project implements DebuggerListener, InspectorManager
      */
     public void clearAllSelections()
     {
-    	Iterator<Package> i = packages.values().iterator();
+        Iterator<Package> i = packages.values().iterator();
 
         while(i.hasNext()) {
             Package pkg = (Package) i.next();
             PackageEditor editor = pkg.getEditor();
             if (editor != null){
-            	editor.clearSelection();
+                editor.clearSelection();
             }
         }
     }
@@ -1099,7 +1151,6 @@ public class Project implements DebuggerListener, InspectorManager
     /**
      * Open the source editor for each target that is selected in its
      * package editor
-     *
      */
     public void openEditorsForSelectedTargets()
     {
@@ -1118,24 +1169,24 @@ public class Project implements DebuggerListener, InspectorManager
     }
     
     /**
-     * Returns a list of Targets that is seleceted in its package editor
-     * @return List list of targets that is selected
+     * Get a list of selected targets (in all packages)
+     * @return a list of the selected targets
      */
     private List<Target> getSelectedTargets()
     {
-    	List<Target> selectedTargets = new LinkedList<Target>();
-    	List<String> packageNames = getPackageNames();
-    	for (Iterator<String> i = packageNames.iterator(); i.hasNext();) {
-    	    String packageName = i.next();
-    	    Package p = getPackage(packageName);
-    	    selectedTargets.addAll(Arrays.asList(p.getSelectedTargets()));
-    	}
-    	return selectedTargets;
+        List<Target> selectedTargets = new LinkedList<Target>();
+        List<String> packageNames = getPackageNames();
+        for (Iterator<String> i = packageNames.iterator(); i.hasNext();) {
+            String packageName = i.next();
+            Package p = getPackage(packageName);
+            selectedTargets.addAll(Arrays.asList(p.getSelectedTargets()));
+        }
+        return selectedTargets;
     }
     
     /**
      * Explicitly restart the remote debug VM. The VM first gets shut down, and then
-     * freshly restarted.
+     * restarted.
      */
     public void restartVM()
     {
@@ -1194,13 +1245,7 @@ public class Project implements DebuggerListener, InspectorManager
             return;
         }
         
-        // remove bench objects for all frames in this project
-        PkgMgrFrame[] frames = PkgMgrFrame.getAllProjectFrames(this);
-
-        for (int i = 0; i < frames.length; i++) {
-            frames[i].getObjectBench().removeAllObjects(getUniqueId());
-            frames[i].clearTextEval();
-        }
+        clearObjectBenches();
 
         // get rid of any inspectors that are open that were not cleaned up
         // as part of removing objects from the bench
@@ -1220,6 +1265,20 @@ public class Project implements DebuggerListener, InspectorManager
         }
 
         currentClassLoader = null;
+    }
+
+    /**
+     * Clears the objects from all object benches belonging to this project.
+     */
+    public void clearObjectBenches()
+    {
+        // remove bench objects for all frames in this project
+        PkgMgrFrame[] frames = PkgMgrFrame.getAllProjectFrames(this);
+
+        for (int i = 0; i < frames.length; i++) {
+            frames[i].getObjectBench().removeAllObjects(getUniqueId());
+            frames[i].clearTextEval();
+        }
     }
 
     /**
@@ -1255,7 +1314,8 @@ public class Project implements DebuggerListener, InspectorManager
         return execControls != null;
     }
 
-    public ExecControls getExecControls() {
+    public ExecControls getExecControls()
+    {
         if (execControls == null) {
             execControls = new ExecControls(this, getDebugger());
         }
@@ -1263,11 +1323,13 @@ public class Project implements DebuggerListener, InspectorManager
         return execControls;
     }
 
-    public boolean hasTerminal() {
+    public boolean hasTerminal()
+    {
         return terminal != null;
     }
 
-    public Terminal getTerminal() {
+    public Terminal getTerminal()
+    {
         if (terminal == null) {
             terminal = new Terminal(this);
         }
@@ -1300,8 +1362,6 @@ public class Project implements DebuggerListener, InspectorManager
     {
         inTestMode = mode;
     }
-
-
   
     /**
      * Return a list of URL of the Java ME libraries specified in the 
@@ -1411,7 +1471,7 @@ public class Project implements DebuggerListener, InspectorManager
         // The userlib location may be specified in bluej.defs
         String userLibSetting = Config.getPropString("bluej.userlibLocation", null);
         if (userLibSetting == null) {
-            userLibDir = new File(Boot.getInstance().getBluejLibDir(), "userlib");
+            userLibDir = new File(Boot.getBluejLibDir(), "userlib");
         }
         else {
             userLibDir = new File(userLibSetting);
@@ -1448,7 +1508,7 @@ public class Project implements DebuggerListener, InspectorManager
 
         try {
             // Junit is always part of the project libraries, only Junit, not the core Bluej.
-			//   pathList.add( Boot.getInstance().getJunitLib().toURI().toURL());
+                        //   pathList.add( Boot.getInstance().getJunitLib().toURI().toURL());
             
             // Until the rest of BlueJ is clean we also need to add bluejcore
             // It should be possible to run BlueJ only with Junit
@@ -1488,34 +1548,30 @@ public class Project implements DebuggerListener, InspectorManager
         currentClassLoader = new BPClassLoader( newUrls,
                      Boot.getInstance().getBootClassLoader(), isJavaMEproject );
         
-        currentClassLoader.setJavaMEcoreLibs( toStringList( coreLibs ) );
-        currentClassLoader.setJavaMEoptLibs ( toStringList( optLibs  ) );
+        currentClassLoader.setJavaMEcoreLibs(coreLibs);
+        currentClassLoader.setJavaMEoptLibs (optLibs);
         
         return currentClassLoader;
     }
 
     /**
-     * Converts a list of URLs into a list of Strings.
-     * @param urlList List of URLs to convert to Strings.
-     * @return the parameter as a list of Strings or an empty list if parameter list is empty.
+     * Get an entity resolver which can be used to resolve symbols for this project.
+     * 
+     * @return an entity resolver which resolves symbols from classes in this project,
+     *         and from the classpath.
      */
-    private List<String> toStringList(List<URL> urlList)  
+    public EntityResolver getEntityResolver()
     {
-        List<String> risul = new ArrayList<String>();        
-        Iterator<URL> it = urlList.iterator( );
-        while ( it.hasNext( ) ) 
-        {
-            URL u = it.next( );
-            try {
-                File f = new File( u.toURI( ) );
-                risul.add( f.toString( ) );
-            } 
-            catch( URISyntaxException e ) { 
-                Debug.reportError("Bad syntax in URL " + u + ". Cannot do toURI().");
-            }
-        }
-        return risul;
-    }  
+        return new ProjectEntityResolver(this);
+    }
+    
+    /**
+     * Get a javadoc resolver, which can be used to retrieve comments for methods.
+     */
+    public JavadocResolver getJavadocResolver()
+    {
+        return javadocResolver;
+    }
     
     /**
      * Convert a filename into a fully qualified Java name.
@@ -1551,8 +1607,12 @@ public class Project implements DebuggerListener, InspectorManager
      * A debugger event was fired. Analyse which event it was, and take
      * appropriate action.
      */
-    public void debuggerEvent(final DebuggerEvent event)
+    public void processDebuggerEvent(final DebuggerEvent event, boolean skipUpdate)
     {
+        if (skipUpdate) {
+            return;
+        }
+        
         EventQueue.invokeLater(new Runnable() {
             public void run() {
                 if (event.getID() == DebuggerEvent.DEBUGGER_STATECHANGED) {
@@ -1577,6 +1637,7 @@ public class Project implements DebuggerListener, InspectorManager
                     // check whether a good VM just disappeared
                     if ((oldState == Debugger.IDLE) &&
                             (newState == Debugger.NOTREADY)) {
+                        removeStepMarks();
                         vmClosed();
                     }
 
@@ -1588,38 +1649,38 @@ public class Project implements DebuggerListener, InspectorManager
                     return;
                 }
 
-                if (event.getID() == DebuggerEvent.DEBUGGER_REMOVESTEPMARKS) {
-                    removeStepMarks();
-
-                    return;
-                }
-
                 DebuggerThread thr = event.getThread();
+                if (thr == null) {
+                    return; // Not a thread event
+                }
                 String packageName = JavaNames.getPrefix(thr.getClass(0));
                 Package pkg = getPackage(packageName);
 
                 if (pkg != null) {
                     switch (event.getID()) {
-                        case DebuggerEvent.THREAD_BREAKPOINT:
-                            pkg.hitBreakpoint(thr);
+                    case DebuggerEvent.THREAD_BREAKPOINT:
+                        pkg.hitBreakpoint(thr);
+                        break;
 
-                            break;
-
-                        case DebuggerEvent.THREAD_HALT:
-                            pkg.hitHalt(thr);
-
-                            break;
-
-                            //case DebuggerEvent.THREAD_CONTINUE:
-                            //	break;
-                        case DebuggerEvent.THREAD_SHOWSOURCE:
-                            pkg.showSourcePosition(thr);
-
-                            break;
+                    case DebuggerEvent.THREAD_HALT:
+                        pkg.hitHalt(thr);
+                        break;
                     }
                 }
             }
         });
+    }
+    
+    /**
+     * Show the source code corresponding to the top of the given thread stack.
+     */
+    public void showSource(DebuggerThread thread)
+    {
+        String packageName = JavaNames.getPrefix(thread.getClass(0));
+        Package pkg = getPackage(packageName);
+        if (pkg != null) {
+            pkg.showSourcePosition(thread);
+        }
     }
 
     // ---- end of DebuggerListener interface ----
@@ -1681,7 +1742,7 @@ public class Project implements DebuggerListener, InspectorManager
      */
     public Set<File> getFilesInProject(boolean includePkgFiles, boolean includeDirs)
     {
-        Set<File> files = new HashSet<File>();
+        Set<File> files = new LinkedHashSet<File>();
         if (includeDirs) {
             files.add(projectDir);
         }
@@ -1866,5 +1927,13 @@ public class Project implements DebuggerListener, InspectorManager
         if (tsc != null) {
             tsc.prepareCreateDir(dir);
         }
+    }
+
+    /*
+     * @see bluej.debugger.DebuggerListener#examineDebuggerEvent(bluej.debugger.DebuggerEvent)
+     */
+    public boolean examineDebuggerEvent(DebuggerEvent e)
+    {
+        return false;
     }
 }

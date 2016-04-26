@@ -21,7 +21,7 @@
  */
 package greenfoot.collision.ibsp;
 
-public class Rect
+final public class Rect
 {
     private int x, y, width, height;
     
@@ -31,6 +31,14 @@ public class Rect
         this.y = y;
         this.width = width;
         this.height = height;
+    }
+    
+    public void copyFrom(Rect other)
+    {
+        this.x = other.x;
+        this.y = other.y;
+        this.width = other.width;
+        this.height = other.height;
     }
     
     public String toString()
@@ -139,14 +147,14 @@ public class Rect
 
     public boolean intersects(Rect otherBounds)
     {        
-        if(x <= otherBounds.x && otherBounds.x >= getRight()) {
+        if (otherBounds.x >= getRight()) {
             return false;
-        } else if (otherBounds.x < x && x >= otherBounds.getRight()) {
+        } else if (x >= otherBounds.getRight()) {
             return false;
         }         
-        if(y <= otherBounds.y && otherBounds.y >= getTop()) {
+        if (otherBounds.y >= getTop()) {
             return false;
-        } else if (otherBounds.y < y && y >= otherBounds.getTop()) {
+        } else if (y >= otherBounds.getTop()) {
             return false;
         }
         return true;

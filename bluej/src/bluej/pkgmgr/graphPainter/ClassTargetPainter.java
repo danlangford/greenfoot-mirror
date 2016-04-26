@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -37,9 +37,7 @@ import bluej.utility.Utility;
  * Paints a ClassTarget
  * 
  * @author fisker
- * @version $Id: ClassTargetPainter.java 6215 2009-03-30 13:28:25Z polle $
  */
-
 public class ClassTargetPainter
 {
     private static final int HANDLE_SIZE = 20;
@@ -47,14 +45,12 @@ public class ClassTargetPainter
     private static final String STEREOTYPE_CLOSE = ">>";
     private static final Color textcolor = Config.getItemColour("colour.text.fg");
     private static final Color borderColor = Config.getItemColour("colour.target.border");
-    private static final Color compileColor = Config.getItemColour("colour.target.bg.compiling");
     private static final Color stripeColor = Config.getItemColour("colour.target.stripes");
-    private static final Image brokenImage = Config.getImageAsIcon("image.class.broken").getImage();
+    private static final Image brokenImage = Config.getFixedImageAsIcon("broken-symbol.png").getImage();
     private static final Font targetFont = PrefMgr.getTargetFont();
 
     private static final int TEXT_HEIGHT = GraphPainterStdImpl.TEXT_HEIGHT;
     private static final int TEXT_BORDER = GraphPainterStdImpl.TEXT_BORDER;
-    private static final Color[] shadowColours = GraphPainterStdImpl.shadowColours;
     private static final AlphaComposite alphaComposite = GraphPainterStdImpl.alphaComposite;
     private static Composite oldComposite;
 
@@ -73,8 +69,8 @@ public class ClassTargetPainter
         int height = classTarget.getHeight();
         
         // draw the stationary class
-        drawSkeleton(g, classTarget, width, height);
         drawShadow(g, width, height);
+        drawSkeleton(g, classTarget, width, height);
         drawUMLStyle(g, classTarget, hasFocus, width, height);
         // drawRole(g);  // currently, roles don't draw
         g.translate(-classTarget.getX(), -classTarget.getY());
@@ -102,7 +98,7 @@ public class ClassTargetPainter
      */
     private void drawSkeleton(Graphics2D g, ClassTarget classTarget, int width, int height)
     {
-        g.setColor(getBackgroundColour(classTarget));
+        g.setPaint(classTarget.getBackgroundPaint(width, height));
         g.fillRect(0, 0, width, height);
     }
 
@@ -195,33 +191,12 @@ public class ClassTargetPainter
      */
     private void drawShadow(Graphics2D g, int width, int height)
     {
-        // colorchange is expensive on mac, so draworder is by color, not position
-        g.setColor(shadowColours[3]);
-        g.drawLine(3, height + 1, width, height + 1);//bottom
-
-        g.setColor(shadowColours[2]);
-        g.drawLine(4, height + 2, width, height + 2);//bottom
-        g.drawLine(width + 1, height + 2, width + 1, 3);//left
-
-        g.setColor(shadowColours[1]);
-        g.drawLine(5, height + 3, width + 1, height + 3);//bottom
-        g.drawLine(width + 2, height + 3, width + 2, 4);//left
-
-        g.setColor(shadowColours[0]);
-        g.drawLine(6, height + 4, width + 2, height + 4); //bottom
-        g.drawLine(width + 3, height + 3, width + 3, 5); // left
-    }
-
-    /**
-     * Return the background colour for this target.
-     */
-    private Color getBackgroundColour(ClassTarget classTarget)
-    {
-        if (classTarget.getState() == ClassTarget.S_COMPILING) {
-            return compileColor;
-        }
-        else {
-            return classTarget.getRole().getBackgroundColour();
+        // A uniform tail-off would have equal values for each,
+        // as they all get drawn on top of each other:
+        final int shadowAlphas[] = {20, 15, 10, 5, 5};
+        for (int i = 0;i < 5;i++) {
+            g.setColor(new Color(0, 0, 0, shadowAlphas[i]));
+            g.fillRoundRect(2 - i, 4 - i, width + (2*i) - 1, height + (2*i) - 1, 8, 8);
         }
     }
 }

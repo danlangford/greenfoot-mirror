@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,6 +21,7 @@
  */
 package greenfoot.core;
 
+import greenfoot.World;
 import greenfoot.util.GreenfootUtil;
 
 import java.io.File;
@@ -31,13 +32,15 @@ import java.util.List;
 import java.util.Map;
 
 import rmiextension.wrappers.RClass;
-import rmiextension.wrappers.RObject;
+import rmiextension.wrappers.RJobQueue;
 import rmiextension.wrappers.RPackage;
-import bluej.extensions.BObject;
+import bluej.compiler.CompileObserver;
+import bluej.debugmgr.InvokerCompiler;
 import bluej.extensions.CompilationNotStartedException;
 import bluej.extensions.MissingJavaFileException;
 import bluej.extensions.PackageNotFoundException;
 import bluej.extensions.ProjectNotOpenException;
+import bluej.utility.Debug;
 
 /**
  * Represents a package in Greenfoot.
@@ -46,7 +49,6 @@ import bluej.extensions.ProjectNotOpenException;
  * with a pool of GClass objects representing the classes in the package. 
  * 
  * @author Poul Henriksen
- * 
  */
 public class GPackage
 {
@@ -56,11 +58,10 @@ public class GPackage
     private Map<RClass,GClass> classPool = new HashMap<RClass,GClass>();
     
     /**
-	 * Contructor for an unspecified package, but for which a project is known.
-	 * Used to allow a class to not be part of a package, but still being able
-	 * to get the project the class is part of.
-	 * 
-	 */
+     * Contructor for an unspecified package, but for which a project is known.
+     * Used to allow a class to not be part of a package, but still being able
+     * to get the project the class is part of.
+     */
     GPackage(GProject project) 
     {
         if(project == null) {
@@ -108,71 +109,73 @@ public class GPackage
         }
         return gClass;
     }
-    
-    public void compile(boolean waitCompileEnd)
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException, CompilationNotStartedException
-    {
-        pkg.compile(waitCompileEnd);
-    }
-    
 
-    public void compileAll() throws ProjectNotOpenException, PackageNotFoundException, RemoteException, CompilationNotStartedException
+    public void compileAll()
     {
-        pkg.compileAll();
+        try {
+            pkg.compileAll();
+        }
+        catch (ProjectNotOpenException pnoe) {
+            Debug.reportError("Could not start compilation", pnoe);
+        }
+        catch (CompilationNotStartedException cnse) {
+            Debug.reportError("Could not start compilation", cnse);
+        }
+        catch (RemoteException re) {
+            Debug.reportError("Could not start compilation", re);
+        }
+        catch (PackageNotFoundException pnfe) {
+            Debug.reportError("Could not start compilation", pnfe);
+        }
     }
 
     public File getDir()
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException
     {
-        return pkg.getDir();
-    }
-
-    public String getName()
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException
-    {
-        return pkg.getName();
-    }
-
-    public RObject getObject(String instanceName)
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException
-    {
-        return pkg.getObject(instanceName);
-    }
-
-    public BObject[] getObjects()
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException
-    {
-        return pkg.getObjects();
+        try {
+            return pkg.getDir();
+        }
+        catch (ProjectNotOpenException pnoe) {
+            Debug.reportError("Could not get package directory", pnoe);
+            throw new InternalGreenfootError(pnoe);
+        }
+        catch (PackageNotFoundException pnfe) {
+            Debug.reportError("Could not get package directory", pnfe);
+            throw new InternalGreenfootError(pnfe);
+        }
+        catch (RemoteException re) {
+            Debug.reportError("Could not get package directory", re);
+            throw new InternalGreenfootError(re);
+        }
     }
 
     public GProject getProject()
-        throws ProjectNotOpenException, RemoteException
     {
         return project;
     }
 
     public GClass[] getClasses()
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException
     {
-        RClass[] rClasses = pkg.getRClasses();
-        GClass[] gClasses = new GClass[rClasses.length];
-        for (int i = 0; i < rClasses.length; i++) {
-            RClass rClass = rClasses[i];
-            gClasses[i] = getGClass(rClass);
+        try {
+            RClass[] rClasses = pkg.getRClasses();
+            GClass[] gClasses = new GClass[rClasses.length];
+            for (int i = 0; i < rClasses.length; i++) {
+                RClass rClass = rClasses[i];
+                gClasses[i] = getGClass(rClass);
+            }
+            return gClasses;
         }
-        return gClasses;
-    }
-
-    public String invokeConstructor(String className, String[] argTypes, String[] args)
-        throws RemoteException
-    {
-        return pkg.invokeConstructor(className, argTypes, args);
-    }
-
-    public String invokeMethod(String className, String methodName, String[] argTypes, String[] args)
-        throws RemoteException
-    {
-        return pkg.invokeMethod(className, methodName, argTypes, args);
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Could not get package classes", e);
+            throw new InternalGreenfootError(e);
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Could not get package classes", e);
+            throw new InternalGreenfootError(e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Could not get package classes", e);
+            throw new InternalGreenfootError(e);
+        }
     }
 
     public GClass newClass(String className)
@@ -187,22 +190,22 @@ public class GPackage
             newClass.loadSavedSuperClass();
         }
         catch (RemoteException re) {
-            re.printStackTrace();
+            Debug.reportError("Creating new class", re);
         }
         catch (ProjectNotOpenException pnoe) {
-            pnoe.printStackTrace();
+            Debug.reportError("Creating new class", pnoe);
         }
         catch (PackageNotFoundException pnfe) {
-            pnfe.printStackTrace();
+            Debug.reportError("Creating new class", pnfe);
         }
         catch (MissingJavaFileException mjfe) {
-            mjfe.printStackTrace();
+            Debug.reportError("Creating new class", mjfe);
         }
         return newClass;
     }
     
     /**
-     * Get the named class.
+     * Get the named class (null if it cannot be found).
      */
     public GClass getClass(String className)
     {
@@ -211,92 +214,61 @@ public class GPackage
             return getGClass(rClass);
         }
         catch (RemoteException re) {
-            re.printStackTrace();
+            Debug.reportError("Getting class", re);
         }
         catch (ProjectNotOpenException pnoe) {
-            pnoe.printStackTrace();
+            Debug.reportError("Creating new class", pnoe);
         }
         catch (PackageNotFoundException pnfe) {
-            pnfe.printStackTrace();
+            Debug.reportError("Creating new class", pnfe);
         }
         
         return null;
     }
 
-    public void reload()
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException
-    {
-        pkg.reload();
-    }
-
-    /**
-     * Delete class files for all classes in the project.
-     *
-     */
-    public void deleteClassFiles()
-    {
-        try {
-            GClass[] classes = getClasses();
-            for (int i = 0; i < classes.length; i++) {
-                GClass cls = classes[i];
-                File classFile = new File(getDir(), cls.getName() + ".class");
-                classFile.delete();
-            }
-
-            this.reload();
-        }
-        catch (ProjectNotOpenException e) {
-        }
-        catch (PackageNotFoundException e) {
-        }
-        catch (RemoteException e) {
-        }
-    }
-
-    public void close()
-    {
-        try {
-            pkg.close();
-        }
-        catch (RemoteException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-    }
-
     /** 
      * Returns all the world sub-classes in this package that can be instantiated.
-     * 
-     * @return
      */
-    public List<Class<?>> getWorldClasses()
+    @SuppressWarnings("unchecked")
+    public List<Class<? extends World>> getWorldClasses()
     {
-        List<Class<?>> worldClasses= new LinkedList<Class<?>>();
-        try {
-            GClass[] classes = getClasses();
-            for (int i = 0; i < classes.length; i++) {
-                GClass cls = classes[i];
-                if(cls.isWorldSubclass()) {
-                    Class<?> realClass = cls.getJavaClass();   
-                    if (GreenfootUtil.canBeInstantiated(realClass)) {                  
-                        worldClasses.add(realClass);
-                    }                    
-                }
+        List<Class<? extends World>> worldClasses= new LinkedList<Class<? extends World>>();
+        GClass[] classes = getClasses();
+        for (int i = 0; i < classes.length; i++) {
+            GClass cls = classes[i];
+            if(cls.isWorldSubclass()) {
+                Class<? extends World> realClass = (Class<? extends World>) cls.getJavaClass();   
+                if (GreenfootUtil.canBeInstantiated(realClass)) {                  
+                    worldClasses.add(realClass);
+                }                    
             }
-        }
-        catch (ProjectNotOpenException e1) {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-        }
-        catch (PackageNotFoundException e1) {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-        }
-        catch (RemoteException e1) {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
         }
         return worldClasses;
     }
 
+    /**
+     * Get access to the remote compiler queue.
+     */
+    public InvokerCompiler getCompiler()
+    {
+        try {
+            final RJobQueue rqueue = pkg.getCompiler();
+            return new InvokerCompiler() {
+                @Override
+                public void compile(File[] files, CompileObserver observer)
+                {
+                    try {
+                        rqueue.compile(files, new LocalCompileObserverWrapper(observer));
+                    }
+                    catch (RemoteException re) {
+                        Debug.reportError("Error trying to compile on remote queue", re);
+                    }
+                }
+            };
+        }
+        catch (RemoteException re) {
+            Debug.reportError("Error getting remote compiler queue", re);
+            return null;
+        }
+    }
 }

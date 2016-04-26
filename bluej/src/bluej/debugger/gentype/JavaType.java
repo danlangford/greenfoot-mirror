@@ -30,10 +30,9 @@ import java.util.Map;
  * methods are provided.
  * 
  * @author Davin McCall
- * @version $Id: JavaType.java 6215 2009-03-30 13:28:25Z polle $
  */
 
-public abstract class JavaType
+public abstract class JavaType extends GenTypeParameter
 {
     public static int JT_VOID = 0;
     public static int JT_NULL = 1;
@@ -50,20 +49,6 @@ public abstract class JavaType
     
     public static int JT_LOWEST_NUMERIC = JT_CHAR; // all above are numeric
     public static int JT_LOWEST_FLOAT = JT_FLOAT; // all above are float point
-    
-    /**
-     * Get a string representation of a type, optionally stripping pacakge
-     * prefixes from all class names.<p>
-     * 
-     * See toString().
-     * 
-     * @param stripPrefix  true to strip package prefixes; false otherwise.
-     * @return  A string representation of this type.
-     */
-    public String toString(boolean stripPrefix)
-    {
-        return toString();
-    }
     
     /**
      * Get a string representation of a type, using the specified name
@@ -165,10 +150,23 @@ public abstract class JavaType
     }
     
     /**
-     * Get the erased type of this type.
+     * If this type represents a "solid" (reference) type, get it. Otherwise return null.
      */
-    abstract public JavaType getErasedType();
+    public GenTypeSolid asSolid()
+    {
+        return null;
+    }
+
+    abstract public boolean equals(JavaType other);
     
+    public boolean equals(GenTypeParameter other)
+    {
+        if (other instanceof JavaType) {
+            return equals((JavaType) other);
+        }
+        return false;
+    }
+
     /**
      * Determine whether a variable of this type could legally be assigned
      * (without casting, boxing, unchecked conversion etc) a value of the given type.
@@ -193,11 +191,12 @@ public abstract class JavaType
      * an actual type. Type parameters not present in the map are instead
      * mapped to their bound (as a wildcard, ? extends X).
      * 
-     * @param tparams A map (String->GenType) mapping the name of the type
-     *                parameter to the corresponding type
+     * @param tparams A map (String->JavaType) mapping the name of the type
+     *                parameter to the corresponding type. May be null, to map
+     *                to the raw type.
      * @return A type with parameters mapped
      */
-    abstract public JavaType mapTparsToTypes(Map tparams);
+    abstract public GenTypeParameter mapTparsToTypes(Map<String, ? extends GenTypeParameter> tparams);
     
     /**
      * If this is an array type, get the component type. If this is not an
@@ -207,4 +206,9 @@ public abstract class JavaType
     {
         return null;
     }
+    
+    /**
+     * Get an array type whose component type is this type.
+     */
+    abstract public GenTypeSolid getArray();
 }

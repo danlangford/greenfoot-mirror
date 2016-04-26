@@ -25,10 +25,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.net.URL;
 
-import antlr.RecognitionException;
-import antlr.TokenStreamException;
-import bluej.parser.ClassParser;
-
 /**
  * Run a whole directory of sample source files through our parser.
  *
@@ -73,13 +69,10 @@ public class Java14ParseTest extends junit.framework.TestCase
 
     /**
      * A sample test case method
-     * @throws RecognitionException
-     * @throws TokenStreamException
-     * @throws FileNotFoundException
      */
     public void testStandardAssertion()
-        throws RecognitionException, TokenStreamException, FileNotFoundException
+        throws FileNotFoundException
     {
-        ClassParser.parse(getFile("14_assertion.dat"), null);
+        assertNotNull(InfoParser.parse(getFile("14_assertion.dat")));
     } 
 }

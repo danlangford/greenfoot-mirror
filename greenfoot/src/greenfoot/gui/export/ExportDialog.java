@@ -27,6 +27,7 @@ import greenfoot.export.Exporter;
 import greenfoot.gui.GreenfootFrame;
 import greenfoot.gui.MessageDialog;
 
+import java.awt.Color;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -35,7 +36,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.rmi.RemoteException;
 import java.util.HashMap;
 
 import javax.swing.JButton;
@@ -46,7 +46,6 @@ import javax.swing.SwingUtilities;
 
 import bluej.BlueJTheme;
 import bluej.Config;
-import bluej.extensions.ProjectNotOpenException;
 import bluej.utility.DialogManager;
 import bluej.utility.EscapeDialog;
 
@@ -78,18 +77,7 @@ public class ExportDialog extends EscapeDialog
         
         project = parent.getProject();
         
-        File projectDir = null;
-        try {
-            projectDir = project.getDir();
-        }
-        catch (ProjectNotOpenException e1) {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-        }
-        catch (RemoteException e1) {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-        }
+        File projectDir = project.getDir();
         
         createPanes(project, projectDir.getParentFile());
         makeDialog();
@@ -314,6 +302,7 @@ public class ExportDialog extends EscapeDialog
         
         contentPane.setLayout(new BorderLayout());
         contentPane.setBorder(null);
+        contentPane.setBackground(new Color(220, 220, 220));
         
         TabbedIconPane tabbedPane = new TabbedIconPane(preferredPane);
         tabbedPane.setListener(this);
@@ -322,7 +311,8 @@ public class ExportDialog extends EscapeDialog
         JPanel bottomPanel = new JPanel(new BorderLayout(12, 12));
         {
             bottomPanel.setBorder(BlueJTheme.dialogBorder);
-            
+            //bottomPanel.setBackground(backgroundColor);
+
             progressBar.setIndeterminate(true);
             progressBar.setVisible(false);
             Dimension size = progressBar.getPreferredSize();
@@ -335,6 +325,7 @@ public class ExportDialog extends EscapeDialog
             
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
             {
+                //buttonPanel.setBackground(backgroundColor);
                 buttonPanel.setAlignmentX(LEFT_ALIGNMENT);
 
                 continueButton = new JButton(Config.getString("export.dialog.continue"));
@@ -347,8 +338,14 @@ public class ExportDialog extends EscapeDialog
                     public void actionPerformed(ActionEvent evt) { doClose(); }                
                 });
 
-                buttonPanel.add(continueButton);
-                buttonPanel.add(closeButton);
+                if (Config.isMacOS()) {
+                    buttonPanel.add(closeButton);
+                    buttonPanel.add(continueButton);
+                }
+                else {
+                    buttonPanel.add(continueButton);
+                    buttonPanel.add(closeButton);
+                }
 
                 getRootPane().setDefaultButton(continueButton);
             }

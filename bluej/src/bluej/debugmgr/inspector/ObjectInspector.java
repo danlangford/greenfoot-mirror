@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,21 +21,51 @@
  */
 package bluej.debugmgr.inspector;
 
-import java.awt.*;
+import java.awt.AlphaComposite;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.EventQueue;
+import java.awt.GradientPaint;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GraphicsConfiguration;
+import java.awt.Insets;
+import java.awt.RenderingHints;
+import java.awt.Transparency;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.*;
+import java.awt.geom.Ellipse2D;
+import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
-import javax.swing.*;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSeparator;
 import javax.swing.border.EmptyBorder;
 
 import bluej.BlueJTheme;
 import bluej.Config;
 import bluej.debugger.DebuggerObject;
 import bluej.pkgmgr.Package;
+import bluej.pkgmgr.PackageEditor;
+import bluej.prefmgr.PrefMgr;
+import bluej.testmgr.record.ArrayElementGetRecord;
+import bluej.testmgr.record.ArrayElementInspectorRecord;
+import bluej.testmgr.record.GetInvokerRecord;
 import bluej.testmgr.record.InvokerRecord;
+import bluej.testmgr.record.ObjectInspectInvokerRecord;
 import bluej.utility.DialogManager;
+import java.awt.Dimension;
+import java.awt.Font;
 
 /**
  * A window that displays the fields in an object or a method return value.
@@ -43,13 +73,13 @@ import bluej.utility.DialogManager;
  * @author Michael Kolling
  * @author Poul Henriksen
  * @author Bruce Quig
- * @version $Id: ObjectInspector.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class ObjectInspector extends Inspector
 {
     // === static variables ===
 
     protected final static String inspectTitle = Config.getString("debugger.inspector.object.title");
+    protected final static String noFieldsMsg = Config.getString("debugger.inspector.object.noFields");
 
     // === instance variables ===
     
@@ -63,6 +93,7 @@ public class ObjectInspector extends Inspector
     protected String objName;
 
     protected boolean queryArrayElementSelected = false;
+    private int selectedIndex;
 
     /**
      * array of Integers representing the array indexes from a large array that
@@ -93,7 +124,7 @@ public class ObjectInspector extends Inspector
      */
     public ObjectInspector(DebuggerObject obj, InspectorManager inspectorManager, String name, Package pkg, InvokerRecord ir, final JFrame parent)
     {
-        super(inspectorManager, pkg, ir);
+        super(inspectorManager, pkg, ir, new Color(244, 158, 158));
 
         this.obj = obj;
         this.objName = name;
@@ -110,23 +141,38 @@ public class ObjectInspector extends Inspector
                 else {
                     DialogManager.centreWindow(thisInspector, parent);
                 }
+
+                if (Config.isMacOS() || Config.isWinOS()) {
+                    // Window translucency doesn't seem to work on linux.
+                    // We'll assume that it might not work on any OS other
+                    // than those on which it's known to work: MacOS and Windows.
+                    thisInspector.setWindowOpaque(false);
+                }
+                if (!Config.isMacOS()) {
+                    // MacOS automatically makes tranparent windows draggable by their
+                    // content - no need to do it ourselves.
+                    thisInspector.installListenersForMoveDrag();
+                }
             }
         });
     }
 
     /**
      * Build the GUI
-     *  
      */
     protected void makeFrame()
     {
         setTitle(inspectTitle);
-        setBorder(BlueJTheme.getRoundedShadowBorder());
+        setUndecorated(true);
+        setLayout(new BorderLayout());
+        setBackground(new Color(232,230,218));
 
         // Create the header
 
         JComponent header = new JPanel();
         header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.setOpaque(false);
+        header.setDoubleBuffered(false);
         String className = obj.getStrippedGenClassName();
 
         String fullTitle = null;
@@ -136,26 +182,35 @@ public class ObjectInspector extends Inspector
         else {
             fullTitle = " : " + className;
         }
-        JLabel headerLabel = new JLabel(fullTitle, JLabel.CENTER) {
-            public void paintComponent(Graphics g)
-            {
-                super.paintComponent(g);
-                int ascent = g.getFontMetrics().getAscent() + 1;
-                g.drawLine(0, ascent, this.getWidth(), ascent);
-            }
-        };
+        JLabel headerLabel = new JLabel(fullTitle, JLabel.CENTER);
+        Font font = headerLabel.getFont();
+        headerLabel.setFont(font.deriveFont(Font.BOLD));
+        headerLabel.setOpaque(false);
         headerLabel.setAlignmentX(0.5f);
+        headerLabel.setForeground(Color.white);
         header.add(headerLabel);
         header.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth));
-        header.add(new JSeparator());
+        JSeparator sep = new JSeparator();
+        sep.setForeground(new Color(214, 92, 92));
+        sep.setBackground(new Color(0, 0, 0, 0));
+        header.add(sep);
 
         // Create the main panel (field list, Get/Inspect buttons)
 
         JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
         mainPanel.setOpaque(false);
+        mainPanel.setDoubleBuffered(false);
 
-        JScrollPane scrollPane = createFieldListScrollPane();
-        mainPanel.add(scrollPane, BorderLayout.CENTER);
+        if (getListData().length != 0) {
+            JScrollPane scrollPane = createFieldListScrollPane();
+            mainPanel.add(scrollPane, BorderLayout.CENTER);
+        } else {
+            JLabel lab = new JLabel("  " + noFieldsMsg);
+            lab.setPreferredSize(new Dimension(200, 30));
+            lab.setFont(PrefMgr.getStandardFont().deriveFont(20.0f));
+            lab.setForeground(new Color(250, 160, 160));
+            mainPanel.add(lab);
+        }
 
         JPanel inspectAndGetButtons = createInspectAndGetButtons();
         mainPanel.add(inspectAndGetButtons, BorderLayout.EAST);
@@ -183,12 +238,59 @@ public class ObjectInspector extends Inspector
             }
         });
         buttonPanel.add(classButton, BorderLayout.WEST);
+        buttonPanel.setDoubleBuffered(false);
 
         bottomPanel.add(buttonPanel);
+        bottomPanel.setDoubleBuffered(false);
 
         // add the components
 
-        Container contentPane = getContentPane();
+        JPanel contentPane = new JPanel() {
+
+            @Override
+            protected void paintComponent(Graphics g)
+            {               
+                Graphics2D g2d = (Graphics2D)g.create();
+                {
+                    GraphicsConfiguration gc = g2d.getDeviceConfiguration();
+                    BufferedImage img = gc.createCompatibleImage(getWidth(),
+                                    getHeight(),
+                                    Transparency.TRANSLUCENT);
+                    Graphics2D imgG = img.createGraphics();
+
+                    imgG.setComposite(AlphaComposite.Clear);
+                    imgG.fillRect(0, 0, getWidth(), getHeight());
+    
+                    imgG.setComposite(AlphaComposite.Src);
+                    imgG.setRenderingHint(
+                            RenderingHints.KEY_ANTIALIASING,
+                            RenderingHints.VALUE_ANTIALIAS_ON);
+                    imgG.setColor(Color.WHITE);
+                    imgG.fillRoundRect(0, 0, getWidth(), getHeight(), 30, 30);
+    
+                    imgG.setComposite(AlphaComposite.SrcAtop);
+                    imgG.setPaint(new GradientPaint(getWidth() / 2, getHeight() / 2, new Color(227, 71, 71)
+                                                   ,getWidth() / 2, getHeight(), new Color(205, 39, 39)));
+                    imgG.fillRect(0, 0, getWidth(), getHeight());
+                    
+                    imgG.setPaint(new GradientPaint(getWidth() / 2, 0, new Color(248, 120, 120)
+                                                   ,getWidth() / 2, getHeight() / 2, new Color(231, 96, 96)));
+                    imgG.fill(new Ellipse2D.Float(-2*getWidth(),-5*getHeight()/2,5*getWidth(),3*getHeight()));
+
+                    imgG.setColor(Color.BLACK);
+                    imgG.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 30, 30);                    
+                    
+                    imgG.dispose();
+                    g2d.drawImage(img, 0, 0, this);
+                }
+                g2d.dispose();
+            }
+        };
+        add(contentPane);
+
+        contentPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        contentPane.setOpaque(false);
+        contentPane.setDoubleBuffered(false);
         contentPane.setLayout(new BorderLayout());
         contentPane.add(header, BorderLayout.NORTH);
         contentPane.add(mainPanel, BorderLayout.CENTER);
@@ -205,7 +307,7 @@ public class ObjectInspector extends Inspector
         // if is an array (we potentially will compress the array if it is
         // large)
         if (obj.isArray()) {
-            return compressArrayList(obj.getInstanceFields(true)).toArray(new Object[0]);
+            return compressArrayList(obj).toArray(new Object[0]);
         }
         else {
             return obj.getInstanceFields(true).toArray(new Object[0]);
@@ -220,6 +322,9 @@ public class ObjectInspector extends Inspector
         // add index to slot method for truncated arrays
         if (obj.isArray()) {
             slot = indexToSlot(slot);
+            if (slot >= 0) {
+                selectedIndex = slot;
+            }
             // if selection is the first field containing array length
             // we treat as special case and do nothing more
             if (slot == ARRAY_LENGTH_SLOT_VALUE) {
@@ -267,17 +372,44 @@ public class ObjectInspector extends Inspector
         inspectorManager.getClassInspectorInstance(obj.getClassRef(), pkg, this);
     }
 
-    /**
-     * We are about to inspect an object - prepare.
-     */
-    protected void prepareInspection()
+    @Override
+    protected void doInspect()
     {
-        // if need to query array element
         if (queryArrayElementSelected) {
             selectArrayElement();
         }
-    } 
-
+        else if (selectedField != null) {
+            boolean isPublic = getButton.isEnabled();
+            
+            if (! obj.isArray()) {
+                InvokerRecord newIr = new ObjectInspectInvokerRecord(selectedFieldName, ir);
+                inspectorManager.getInspectorInstance(selectedField, selectedFieldName, pkg, isPublic ? newIr : null, this);
+            }
+            else {
+                InvokerRecord newIr = new ArrayElementInspectorRecord(ir, selectedIndex);
+                inspectorManager.getInspectorInstance(selectedField, selectedFieldName, pkg, isPublic ? newIr : null, this);
+            }
+        }
+    }
+    
+    @Override
+    protected void doGet()
+    {
+        if (selectedField != null) {
+            InvokerRecord getIr;
+            if (! obj.isArray()) {
+                getIr = new GetInvokerRecord(selectedFieldType, selectedFieldName, ir);
+            }
+            else {
+                getIr = new ArrayElementGetRecord(selectedFieldType, selectedIndex, ir);
+            }
+                
+            PackageEditor pkgEd = pkg.getEditor();
+            pkgEd.recordInteraction(getIr);
+            pkgEd.raisePutOnBenchEvent(this, selectedField, selectedField.getGenType(), getIr);
+        }
+    }
+    
     /**
      * Remove this inspector.
      */
@@ -298,19 +430,22 @@ public class ObjectInspector extends Inspector
         if (response != null) {
             try {
                 int slot = Integer.parseInt(response);
-
                 // check if within bounds of array
                 if (slot >= 0 && slot < obj.getInstanceFieldCount()) {
                     // if its an object set as current object
                     if (obj.instanceFieldIsObject(slot)) {
+                        boolean isPublic = getButton.isEnabled();
+                        InvokerRecord newIr = new ArrayElementInspectorRecord(ir, slot);
                         setCurrentObj(obj.getInstanceFieldObject(slot), obj.getInstanceFieldName(slot), obj.getInstanceFieldType(slot));
-                        setButtonsEnabled(true, false);
+                        inspectorManager.getInspectorInstance(selectedField, selectedFieldName, pkg, isPublic ? newIr : null, this);
                     }
                     else {
                         // it is not an object - a primitive, so lets
                         // just display it in the array list display
                         setButtonsEnabled(false, false);
                         //arraySet.add(new Integer(slot));
+                        // TODO: this is currently broken. Primitive array elements re just
+                        //       not displayed right now. Would need to be added to display list.
                         update();
                     }
                 }
@@ -358,11 +493,10 @@ public class ObjectInspector extends Inspector
      *            the full field list for an array
      * @return the compressed array
      */
-    private List<String> compressArrayList(List<String> fullArrayFieldList)
+    private List<String> compressArrayList(DebuggerObject arrayObject)
     {
         // mimic the public length field that arrays possess
         // according to the java spec...
-        fullArrayFieldList.add(0, ("int length = " + fullArrayFieldList.size()));
         indexToSlotList = new LinkedList<Integer>();
         indexToSlotList.add(0, new Integer(ARRAY_LENGTH_SLOT_VALUE));
 
@@ -372,15 +506,15 @@ public class ObjectInspector extends Inspector
         // in displaying
         // the ... elements because there would be no elements for them to
         // reveal
-        if (fullArrayFieldList.size() > (VISIBLE_ARRAY_START + VISIBLE_ARRAY_TAIL + 2)) {
+        if (arrayObject.getInstanceFieldCount() > (VISIBLE_ARRAY_START + VISIBLE_ARRAY_TAIL + 2)) {
 
             // the destination list
-            List<String> newArray = new ArrayList<String>();
+            List<String> newArray = new ArrayList<String>(2 + VISIBLE_ARRAY_START + VISIBLE_ARRAY_TAIL);
+            newArray.add(0, ("int length = " + arrayObject.getInstanceFieldCount()));
             for (int i = 0; i <= VISIBLE_ARRAY_START; i++) {
                 // first 40 elements are displayed as per normal
-                newArray.add(fullArrayFieldList.get(i));
-                if (i < VISIBLE_ARRAY_START)
-                    indexToSlotList.add(new Integer(i));
+                newArray.add(arrayObject.getInstanceField(i, true));
+                indexToSlotList.add(new Integer(i));
             }
 
             // now the first of our expansion slots
@@ -389,14 +523,17 @@ public class ObjectInspector extends Inspector
 
             for (int i = VISIBLE_ARRAY_TAIL; i > 0; i--) {
                 // last 5 elements are displayed
-                newArray.add(fullArrayFieldList.get(fullArrayFieldList.size() - i));
+                newArray.add(arrayObject.getInstanceField(arrayObject.getInstanceFieldCount() - i, true));
                 // slot is offset by one due to length field being included in
                 // fullArrayFieldList therefore we add 1 to compensate
-                indexToSlotList.add(new Integer(fullArrayFieldList.size() - (i + 1)));
+                indexToSlotList.add(new Integer(arrayObject.getInstanceFieldCount() - (i + 1)));
             }
             return newArray;
         }
         else {
+            List<String> fullArrayFieldList = arrayObject.getInstanceFields(true);
+            fullArrayFieldList.add(0, ("int length = " + arrayObject.getInstanceFieldCount()));
+            
             for (int i = 0; i < fullArrayFieldList.size(); i++) {
                 indexToSlotList.add(new Integer(i));
             }

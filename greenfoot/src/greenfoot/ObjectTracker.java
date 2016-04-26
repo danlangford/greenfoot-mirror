@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,141 +21,140 @@
  */
 package greenfoot;
 
+import greenfoot.core.GNamedValue;
+import greenfoot.core.GreenfootLauncherDebugVM;
 import greenfoot.core.GreenfootMain;
 
 import java.rmi.RemoteException;
-import java.util.Hashtable;
+import java.util.HashMap;
+import java.util.Iterator;
 
-import rmiextension.wrappers.RClass;
-import rmiextension.wrappers.RField;
 import rmiextension.wrappers.RObject;
-import bluej.extensions.ClassNotFoundException;
-import bluej.extensions.PackageNotFoundException;
-import bluej.extensions.ProjectNotOpenException;
+import bluej.debugger.gentype.JavaType;
+import bluej.debugmgr.NamedValue;
+import bluej.debugmgr.ValueCollection;
+import bluej.runtime.BJMap;
 import bluej.runtime.ExecServer;
 import bluej.utility.Debug;
+import bluej.utility.JavaUtils;
 
 /**
  * Class that can be used to get the remote version of an object and vice versa.
  * 
  * @author Poul Henriksen
- * @version $Id$
  */
 public class ObjectTracker
 {
-    /** Lock to ensure that we only have one remoteObjectTracker */
-    private static  Object lock = new Object();
-    //TODO The cached objects should be cleared at recompile.
-    private  static Hashtable<Object,RObject> cachedObjects = new Hashtable<Object,RObject>();
+    private static HashMap<Object,RObject> cachedObjects = new HashMap<Object,RObject>();
 
     /**
-     * Gets the remote reference to the obj.
-     * <p>
+     * Gets the remote reference to an object. If there is currently no remote reference,
+     * one is created.
      *  
-     *  
-     * @throws ClassNotFoundException 
-     * @throws RemoteException 
-     * @throws PackageNotFoundException 
-     * @throws ProjectNotOpenException 
-     * 
+     * @throws RemoteException  if an exception occurred in the remote VM
      */
-    public static RObject getRObject(Object obj) throws ProjectNotOpenException, PackageNotFoundException, RemoteException, ClassNotFoundException
+    public static RObject getRObject(Object obj) throws RemoteException
     {
-        synchronized (lock) {
+        synchronized (cachedObjects) {
             RObject rObject = cachedObjects.get(obj);
             if (rObject != null) {
                 return rObject;
             }
             
-            World.setTransportField(obj);
-            RClass remoteObjectTracker = null;
-            //This can be the same for world and actor apart from above lines.
-            if(obj instanceof Actor) {
-                Actor.setTransportField(obj);
-                remoteObjectTracker = (RClass) ((Actor) obj).getRemoteObjectTracker();
-            } else  if( obj instanceof World) {
-                World.setTransportField(obj);
-                remoteObjectTracker = (RClass) ((World) obj).getRemoteObjectTracker();
-            } else {
-                Debug.reportError("Could not get remote version of object: " + obj, new Exception());
-                return null;
+            GreenfootLauncherDebugVM.getInstance().setTransportField(obj);
+            RObject rObj = GreenfootMain.getInstance().getProject().getRProject().getRemoteObject();
+            
+            if (rObj != null) {
+                cachedObjects.put(obj,rObj);
             }
             
-
-            RClass rClass = getRemoteClass(obj, remoteObjectTracker);
-            
-            RField rField = rClass.getField("transportField");
-            rObject = rField.getValue(null);
-            cachedObjects.put(obj, rObject);
-            return rObject;
+            return rObj;
         }
     }    
 
     /**
-     * This method ensures that we have the remote (RClass) representation of
-     * this class.
-     * <p>
-     *  
-     * @param obj
-     * @param remoteObjectTracker 
-     * 
+     * Get the complete set of registered objects as a ValueCollection.
      */
-    static private RClass getRemoteClass(Object obj, RClass remoteObjectTracker)
+    public static ValueCollection getObjects()
     {
-        if (remoteObjectTracker == null) {
-            String rclassName = obj.getClass().getName();
-            remoteObjectTracker = GreenfootMain.getInstance().getProject().getRClass(rclassName);
-        }
-        return remoteObjectTracker;
+        return new ValueCollection()
+        {
+            BJMap<String,Object> map;
+            String [] names;
+            
+            private void initNames()
+            {
+                if (names == null) {
+                    map = ExecServer.getObjectMap();
+                    synchronized (map) {
+                        Object [] keys = map.getKeys();
+                        names = new String[keys.length];
+                        System.arraycopy(keys, 0, names, 0, keys.length);
+                    }
+                }
+            }
+            
+            @Override
+            public GNamedValue getNamedValue(String name)
+            {
+                initNames();
+                synchronized (map) {
+                    Object o = map.get(name);
+                    if (o != null) {
+                        JavaType type = JavaUtils.genTypeFromClass(o.getClass());
+                        return new GNamedValue(name, type);
+                    }
+                    return new GNamedValue(name, JavaUtils.genTypeFromClass(Object.class));
+                }
+            }
+            
+            @Override
+            public Iterator<? extends NamedValue> getValueIterator()
+            {
+                initNames();
+                return new Iterator<GNamedValue>() {
+                    int index = 0;
+                    
+                    @Override
+                    public boolean hasNext()
+                    {
+                        return index < names.length;
+                    }
+                    @Override
+                    public GNamedValue next()
+                    {
+                        return getNamedValue(names[index++]);
+                    }
+                    @Override
+                    public void remove()
+                    {
+                        throw new UnsupportedOperationException();
+                    }
+                };
+            }
+        };
     }
     
-    
-
+    /**
+     * Get the local object corresponding to a remote object.
+     */
     public static Object getRealObject(RObject remoteObj)
     {
         try {
             return ExecServer.getObject(remoteObj.getInstanceName());
         }
         catch (RemoteException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+           Debug.reportError("Unexpected exception getting remote object name", e);
         }
         return null;
     }
 
-    
-    /**
-     * "Forget" about a remote object reference. This is needed to avoid memory
-     * leaks (worlds are otherwise never forgotten).
-     * @param obj  The object to forget
-     */
-    public static void forgetRObject(Object obj)
-    {
-        synchronized (lock) {
-            RObject rObject = cachedObjects.remove(obj);
-            if (rObject != null) {
-                try {
-                    rObject.removeFromBench();
-                }
-                catch (RemoteException re) {
-                    throw new Error(re);
-                }
-                catch (ProjectNotOpenException pnoe) {
-                    // shouldn't happen
-                }
-                catch (PackageNotFoundException pnfe) {
-                    // shouldn't happen
-                }
-            }
-        }
-    }
-    
     /**
      * Clear the cache of remote objects.
      */
     public static void clearRObjectCache()
     {
-        synchronized (lock) {
+        synchronized (cachedObjects) {
             cachedObjects.clear();
         }
     }

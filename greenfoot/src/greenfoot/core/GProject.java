@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -24,7 +24,6 @@ package greenfoot.core;
 import greenfoot.event.CompileListener;
 
 import java.io.File;
-import java.io.IOException;
 import java.rmi.RemoteException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,12 +32,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import rmiextension.wrappers.RClass;
 import rmiextension.wrappers.RPackage;
 import rmiextension.wrappers.RProject;
 import rmiextension.wrappers.event.RCompileEvent;
 import rmiextension.wrappers.event.RProjectListenerImpl;
-import bluej.extensions.PackageNotFoundException;
 import bluej.extensions.ProjectNotOpenException;
 import bluej.extensions.event.CompileEvent;
 import bluej.utility.Debug;
@@ -61,6 +58,20 @@ public class GProject extends RProjectListenerImpl
     
     private List<CompileListener> compileListeners = new LinkedList<CompileListener>();
     
+    /**
+     * Factor method for creating GProjects. The caller is responsible for
+     * setting up the returned project as a compile listener.
+     */
+    public static GProject newGProject(RProject rmiProject)
+    {
+        try {
+            return new GProject(rmiProject);
+        }
+        catch (RemoteException re) {
+            Debug.reportError("Error constructing Greenfoot Project", re);
+            throw new InternalGreenfootError(re);
+        }
+    }
     
     /**
      * Create a G(reenfoot)Project object. This is a singleton for every
@@ -68,16 +79,16 @@ public class GProject extends RProjectListenerImpl
      * 
      * <p>The creator is responsible for setting up the GProject as a compile listener.
      */
-    public GProject(RProject rmiProject) throws RemoteException
+    private GProject(RProject rmiProject) throws RemoteException
     {
         this.rProject = rmiProject;
-        rmiProject.addListener(this);
         try {
+            rmiProject.addListener(this);
             projectProperties = new ProjectProperties(getDir());
         }
-        catch (Exception exc) {
-            Debug.reportError("Could not open greenfoot scenario properties");
-            exc.printStackTrace();
+        catch (RemoteException re) {
+            Debug.reportError("Could not instantiate Greenfoot project", re);
+            throw new InternalGreenfootError(re);
         }
     }
     
@@ -105,23 +116,32 @@ public class GProject extends RProjectListenerImpl
     /**
      * Returns the default package. This method is thread-safe.
      */
-    public GPackage getDefaultPackage() throws ProjectNotOpenException, RemoteException
+    public GPackage getDefaultPackage()
     {
-    	return getPackage("");
+        return getPackage("");
     }
     
     /**
      * Returns the named package. This method is thread-safe.
      */
-    public GPackage getPackage(String packageName) throws ProjectNotOpenException, RemoteException
+    public GPackage getPackage(String packageName)
     {
-        RPackage rPkg = rProject.getPackage(packageName);
-        if (rPkg == null) {
-            return null;
+        try {
+            RPackage rPkg = rProject.getPackage(packageName);
+            if (rPkg == null) {
+                return null;
+            }
+            else {
+                return getPackage(rPkg);
+            }
         }
-        else {
-            return getPackage(rPkg);
+        catch (ProjectNotOpenException pnoe) {
+            Debug.reportError("Error retrieving remote package", pnoe);
         }
+        catch (RemoteException re) {
+            Debug.reportError("Error retrieving remote package", re);
+        }
+        return null;
     }
 
     /**
@@ -139,61 +159,21 @@ public class GProject extends RProjectListenerImpl
             return ret;
         }
     }
-    
-    /**
-     * Get the packages in this project. This method is thread-safe.
-     * 
-     * @throws ProjectNotOpenException
-     * @throws RemoteException
-     */
-    public RPackage[] getPackages()
-        throws ProjectNotOpenException, RemoteException
-    {
-        return rProject.getPackages();
-    }
-
-    /**
-     * Get a remote reference to a class in this project. Thread-safe.
-     * 
-     * @param fullyQualifiedName  The fully-qualified class name
-     * @return  A remote reference to the class
-     */
-    public RClass getRClass(String fullyQualifiedName)
-    {
-        try {
-            int lastDotIndex = fullyQualifiedName.lastIndexOf('.');
-            RPackage pkg;
-            String className;
-            if (lastDotIndex == -1) {
-                pkg = rProject.getPackage("");
-                className = fullyQualifiedName;
-            }
-            else {
-                pkg = rProject.getPackage(fullyQualifiedName.substring(0, lastDotIndex));
-                className = fullyQualifiedName.substring(lastDotIndex + 1);
-            }
-            if (pkg == null) {
-                return null;
-            }
-            return pkg.getRClass(className);
-        }
-        catch (RemoteException re) {
-            throw new InternalGreenfootError(re);
-        }
-        catch (ProjectNotOpenException pnoe) {
-            throw new InternalGreenfootError(pnoe);
-        }
-        catch (PackageNotFoundException pnfe) {
-            throw new InternalGreenfootError(pnfe);
-        }
-    }
 
     public File getDir()
-        throws ProjectNotOpenException,RemoteException
     {
-        return rProject.getDir();
+        try { 
+            return rProject.getDir();
+        }
+        catch (ProjectNotOpenException pnoe) {
+            Debug.reportError("Couldn't get project directory", pnoe);
+            throw new InternalGreenfootError(pnoe);
+        }
+        catch (RemoteException re) {
+            Debug.reportError("Couldn't get project directory", re);
+            throw new InternalGreenfootError(re);
+        }
     }
-
     
     /**
      * Get the project name (the name of the directory containing it).
@@ -206,43 +186,21 @@ public class GProject extends RProjectListenerImpl
         }
         catch (ProjectNotOpenException pnoe) {
             // this exception should never happen
-            pnoe.printStackTrace();
+            Debug.reportError("Getting project name", pnoe);
         }
         catch (RemoteException re) {
             // this should also not happen
-            re.printStackTrace();
+            Debug.reportError("Getting project name", re);
         }
         return null;
     }
         
-    public boolean inTestMode()
-    {
-        //Greenfoot does not support testing:
-        return false;
-    }
-    
     /**
      * Retrieve the properties for a package. Loads the properties if necessary.
      */
     public ProjectProperties getProjectProperties()
     {
         return projectProperties;
-    }
-    
-    /**
-     * Set the name of the most recently instantiated world class.
-     */
-    public void setLastWorldClassName(String name)
-    {
-        projectProperties.setString("world.lastInstantiated", name);
-    }
-    
-    /**
-     * Get the name of the most recently instantiated world class.
-     */
-    public String getLastWorldClassName()
-    {
-        return projectProperties.getString("world.lastInstantiated");
     }
     
     /**
@@ -254,10 +212,12 @@ public class GProject extends RProjectListenerImpl
             rProject.openReadmeEditor();
         }
         catch (RemoteException re) {
-            re.printStackTrace();
+            Debug.reportError("Opening Readme", re);
+            throw new InternalGreenfootError(re);
         }
         catch (ProjectNotOpenException pnoe) {
-            pnoe.printStackTrace();
+            Debug.reportError("Opening Readme", pnoe);
+            throw new InternalGreenfootError(pnoe);
         }
     }
     
@@ -269,12 +229,30 @@ public class GProject extends RProjectListenerImpl
         return rProject;
     }
     
-    /* (non-Javadoc)
+    /*
      * @see rmiextension.wrappers.event.RProjectListener#projectClosing()
      */
     public void projectClosing()
     {
         GreenfootMain.getInstance().projectClosing();
+    }
+    
+    /**
+     * Get the name of the last world class which was instantiated in
+     * this project. May return null. This method is thread-safe.
+     */
+    public String getLastWorldClassName()
+    {
+        return projectProperties.getString("world.lastInstantiated");
+    }
+    
+    /**
+     * Set the name of the last world class which was instantiated in
+     * this project.
+     */
+    public void setLastWorldClassName(String name)
+    {
+        projectProperties.setString("world.lastInstantiated", name);
     }
     
     /**
@@ -292,11 +270,29 @@ public class GProject extends RProjectListenerImpl
                 }
             }
         }
-        catch (Exception e2) {
-            e2.printStackTrace();
-            return false;
+        catch (Exception e) {
+            Debug.reportError("Checking class compiled state", e);
+            throw new InternalGreenfootError(e);
         }
         return true;
+    }
+    
+    
+    /**
+     * Closes classes in this project
+     */
+    public void closeEditors()
+    {
+        try {
+            GClass[] classes = getDefaultPackage().getClasses();
+            for (int i = 0; i < classes.length; i++) {
+                GClass cls = classes[i];
+                cls.closeEditor();
+            }
+        }
+        catch (Exception e) {
+            Debug.reportError("Closing all editors", e);
+        }
     }
     
     public void addCompileListener(CompileListener listener)
@@ -309,7 +305,7 @@ public class GProject extends RProjectListenerImpl
     public void removeCompileListener(CompileListener listener)
     {
         synchronized (compileListeners) {
-    	    compileListeners.remove(listener);
+            compileListeners.remove(listener);
         }
     }
     
@@ -317,52 +313,42 @@ public class GProject extends RProjectListenerImpl
     
     public void compileError(RCompileEvent event)
     {
-    	delegateCompileEvent(event);
+        delegateCompileEvent(event);
     }
     
     public void compileFailed(RCompileEvent event)
     {
-    	reloadClasses();
-    	
-    	delegateCompileEvent(event);
+        reloadClasses();
+        
+        delegateCompileEvent(event);
     }
     
     public void compileStarted(RCompileEvent event)
     {
-    	delegateCompileEvent(event);
+        delegateCompileEvent(event);
     }
     
     public void compileSucceeded(RCompileEvent event)
     {
-    	reloadClasses();
-    	
-    	delegateCompileEvent(event);
+        reloadClasses();
+        
+        delegateCompileEvent(event);
     }
     
     public void compileWarning(RCompileEvent event)
     {
-    	delegateCompileEvent(event);
+        delegateCompileEvent(event);
     }
     
     // ----------- End of CompileListener interface ------
     
     private void reloadClasses()
     {
-        try {
-            GPackage pkg = getDefaultPackage();  
-            GClass[] classes = pkg.getClasses();
-            for (GClass cls : classes) {
-                cls.reload();
-            }
+        GPackage pkg = getDefaultPackage();  
+        GClass[] classes = pkg.getClasses();
+        for (GClass cls : classes) {
+            cls.reload();
         }
-        catch (ProjectNotOpenException e) {
-        }
-        catch (RemoteException e) {
-            e.printStackTrace();
-        }
-        catch (PackageNotFoundException e) {
-        }
-        
     }
     
     private void delegateCompileEvent(RCompileEvent event)
@@ -393,7 +379,7 @@ public class GProject extends RProjectListenerImpl
                     }
                 }
                 catch (RemoteException re) {
-                    re.printStackTrace();
+                    Debug.reportError("Determining compilation event type", re);
                 }
             }
         }
@@ -405,20 +391,10 @@ public class GProject extends RProjectListenerImpl
      */
     public File getImageDir()
     {
-        File projDir;
-        try {
-            projDir = getDir().getAbsoluteFile();
-            File projImagesDir = new File(projDir, "images");
-            projImagesDir.mkdir();
-            return projImagesDir;
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ProjectNotOpenException e) {
-            e.printStackTrace();
-        }
-        return null;
+        File projDir = getDir().getAbsoluteFile();
+        File projImagesDir = new File(projDir, "images");
+        projImagesDir.mkdir();
+        return projImagesDir;
     }
 
     /**
@@ -427,19 +403,37 @@ public class GProject extends RProjectListenerImpl
      */
     public File getSoundDir()
     {
-        File projDir;
+        File projDir = getDir().getAbsoluteFile();
+        File projSoundsDir = new File(projDir, "sounds");
+        projSoundsDir.mkdir();
+        return projSoundsDir;
+    }
+
+    /**
+     * Tries to toggle the debugger window to either set it to
+     * visible or not.
+     */
+    public void toggleExecControls()
+    {
         try {
-            projDir = getDir().getAbsoluteFile();
-            File projSoundsDir = new File(projDir, "sounds");
-            projSoundsDir.mkdir();
-            return projSoundsDir;
+            rProject.toggleExecControls();
+        } catch (RemoteException ex) {
+            Debug.reportError("RemoteException showing debugger", ex);
         }
-        catch (IOException e) {
-            e.printStackTrace();
+    }
+
+    /**
+     * @return	Whether or not the debugger window is currently visible.
+     */
+    public boolean isExecControlVisible() 
+    {
+        try {
+            return rProject.isExecControlVisible();
+        } catch (RemoteException ex) {
+            Debug.reportError("RemoteException checking ExecControl state", ex);
+        } catch (ProjectNotOpenException ex) {
+            Debug.reportError("ProjectNotOpenException checking ExecControl state", ex);
         }
-        catch (ProjectNotOpenException e) {
-            e.printStackTrace();
-        }
-        return null;
+        return false;
     }
 }

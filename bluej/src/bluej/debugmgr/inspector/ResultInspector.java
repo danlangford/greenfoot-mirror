@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,21 +23,33 @@ package bluej.debugmgr.inspector;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Container;
+import java.awt.GradientPaint;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import javax.swing.*;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSeparator;
 import javax.swing.border.EmptyBorder;
 
 import bluej.BlueJTheme;
 import bluej.Config;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.gentype.GenTypeClass;
-import bluej.debugger.gentype.GenTypeParameterizable;
+import bluej.debugger.gentype.GenTypeDeclTpar;
+import bluej.debugger.gentype.GenTypeParameter;
 import bluej.debugger.gentype.JavaType;
 import bluej.debugmgr.ExpressionInformation;
 import bluej.pkgmgr.Package;
@@ -54,7 +66,6 @@ import bluej.views.MethodView;
  * A window that displays a method return value.
  * 
  * @author Poul Henriksen
- * @version $Id: ResultInspector.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class ResultInspector extends Inspector
 {
@@ -95,7 +106,7 @@ public class ResultInspector extends Inspector
     public ResultInspector(DebuggerObject obj, InspectorManager inspectorManager, String name, Package pkg, InvokerRecord ir, ExpressionInformation info,
             final JFrame parent)
     {
-        super(inspectorManager, pkg, ir);
+        super(inspectorManager, pkg, ir, new Color(226, 224, 220));
 
         expressionInformation = info;
         this.obj = obj;
@@ -125,15 +136,15 @@ public class ResultInspector extends Inspector
         // TODO: infer type of generic parameters based on the actual
         // arguments passed to the method.
         // For now, use the base type of the any generic type parameters
-        if (methodReturnType instanceof GenTypeParameterizable) {
+        if (methodReturnType instanceof GenTypeParameter) {
             
             // The return type may contain type parameters. First, get the
             // type parameters of the object:
-            Map tparmap;
+            Map<String,GenTypeParameter> tparmap;
             if (instanceType != null)
                 tparmap = instanceType.mapToSuper(m.getDeclaringClass().getName()).getMap();
             else
-                tparmap = new HashMap();
+                tparmap = new HashMap<String,GenTypeParameter>();
             
             // It's possible the mapping result is a raw type.
             if (tparmap == null) {
@@ -144,11 +155,12 @@ public class ResultInspector extends Inspector
             // Then put in the type parameters from the method itself,
             // if there are any (ie. if the method is a generic method).
             // Tpars from the method override those from the instance.
-            List tpars = JavaUtils.getJavaUtils().getTypeParams(m);
-            if (tparmap != null)
+            List<GenTypeDeclTpar> tpars = JavaUtils.getJavaUtils().getTypeParams(m);
+            if (tparmap != null) {
                 tparmap.putAll(JavaUtils.TParamsToMap(tpars));
+            }
             
-            methodReturnType = ((GenTypeParameterizable) methodReturnType).mapTparsToTypes(tparmap);
+            methodReturnType = methodReturnType.mapTparsToTypes(tparmap).getUpperBound();
         }
 
         resultType = methodReturnType;
@@ -183,25 +195,28 @@ public class ResultInspector extends Inspector
     protected void makeFrame()
     {
         setTitle(resultTitle);
-        setBorder(BlueJTheme.dialogBorder);
 
         // Create the header
 
         JComponent header = new JPanel();
+        header.setOpaque(false);
         header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
 
         Comment comment = expressionInformation.getComment();
         LabelPrintWriter commentLabelPrintWriter = new LabelPrintWriter();
         comment.print(commentLabelPrintWriter);
         MultiLineLabel commentLabel = commentLabelPrintWriter.getLabel();
-        commentLabel.setForeground(Color.GRAY);
+        commentLabel.setOpaque(false);
         header.add(commentLabel);
         JLabel sig = new JLabel(expressionInformation.getSignature());
-        sig.setForeground(Color.GRAY);
+        sig.setForeground(Color.BLACK);
 
         header.add(sig);
         header.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth));
-        header.add(new JSeparator());
+        JSeparator sep = new JSeparator();
+        sep.setForeground(new Color(191,190,187));
+        sep.setBackground(new Color(0,0,0,0));
+        header.add(sep);
 
         //Create the main part that shows the expression and the result
 
@@ -209,6 +224,7 @@ public class ResultInspector extends Inspector
         mainPanel.setOpaque(false);
 
         Box result = Box.createVerticalBox();
+        result.setOpaque(false);
 
         JLabel expression = new JLabel(expressionInformation.getExpression(), JLabel.LEFT);
         expression.setAlignmentX(JComponent.LEFT_ALIGNMENT);
@@ -227,7 +243,23 @@ public class ResultInspector extends Inspector
         result.add(scrollPane);
         result.add(Box.createVerticalStrut(5));
 
-        mainPanel.add(result, BorderLayout.CENTER);
+        JPanel resultPanel = new JPanel () {
+            protected void paintComponent(Graphics g)
+            {
+                super.paintComponent(g);
+                
+                Graphics2D g2d = (Graphics2D)g;
+                int width = getWidth();
+                int height = getHeight();
+                
+                g2d.setPaint(new GradientPaint(width/4, 0, new Color(236,235,234),
+                                               width*3/4, height, new Color(220,218,214)));
+                g2d.fillRect(0, 0, width, height);
+            }
+        };
+        resultPanel.add(result);
+        resultPanel.setBorder(BorderFactory.createLineBorder(new Color(101, 101, 101), 1));
+        mainPanel.add(resultPanel, BorderLayout.CENTER);
 
         JPanel inspectAndGetButtons = createInspectAndGetButtons();
         mainPanel.add(inspectAndGetButtons, BorderLayout.EAST);
@@ -259,7 +291,22 @@ public class ResultInspector extends Inspector
         bottomPanel.add(buttonPanel);
         
         // add the components
-        Container contentPane = getContentPane();
+        JPanel contentPane = new JPanel() {
+            protected void paintComponent(Graphics g)
+            {
+                super.paintComponent(g);
+                
+                Graphics2D g2d = (Graphics2D)g;
+                int width = getWidth();
+                int height = getHeight();
+                
+                g2d.setPaint(new GradientPaint(width/4, 0, new Color(230,229,228),
+                                               width*3/4, height, new Color(191,186,178)));
+                g2d.fillRect(0, 0, width, height);
+            }
+        };
+        setContentPane(contentPane);
+        contentPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         contentPane.setLayout(new BorderLayout());
         contentPane.add(header, BorderLayout.NORTH);
         contentPane.add(mainPanel, BorderLayout.CENTER);
@@ -273,16 +320,7 @@ public class ResultInspector extends Inspector
      */
     protected void listElementSelected(int slot)
     {
-
         if (obj.instanceFieldIsObject(slot)) {
-            String newInspectedName;
-
-            if (objName != null) {
-                newInspectedName = objName + "." + obj.getInstanceFieldName(slot);
-            }
-            else {
-                newInspectedName = obj.getInstanceFieldName(slot);
-            }
 
             // Don't use the name, since it is meaningless anyway (it is always "result")
             setCurrentObj(obj.getInstanceFieldObject(slot, resultType), null, resultType.toString(false));
@@ -308,12 +346,15 @@ public class ResultInspector extends Inspector
         inspectorManager.getClassInspectorInstance(obj.getClassRef(), pkg, this);
     }
 
-    /**
-     * We are about to inspect an object - prepare.
-     */
-    protected void prepareInspection()
-    {}
-
+    @Override
+    protected void doInspect()
+    {
+        if (selectedField != null) {
+            boolean isPublic = getButton.isEnabled();
+            inspectorManager.getInspectorInstance(selectedField, selectedFieldName, pkg, isPublic ? ir : null, this);
+        }
+    }
+    
     /**
      * Remove this inspector.
      */

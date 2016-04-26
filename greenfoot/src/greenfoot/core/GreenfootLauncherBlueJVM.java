@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -40,10 +40,9 @@ import bluej.utility.FileUtility;
 import bluej.utility.Utility;
 
 /**
- * This singleton is responsible for starting up greenfoot from the BlueJ VM.
+ * This singleton is responsible for starting up Greenfoot from the BlueJ VM.
  * 
  * @author Poul Henriksen
- * @version $id:$
  */
 public class GreenfootLauncherBlueJVM
 {
@@ -202,8 +201,7 @@ public class GreenfootLauncherBlueJVM
      */    
     private void createScenario()
     {
-        String newName = FileUtility.getFileName(null, "New Scenario", Config.getString("pkgmgr.newPkg.buttonLabel"), false, null, true);
-        File newDir = new File(newName);
+        File newDir = FileUtility.getDirName(null, "New Scenario", Config.getString("pkgmgr.newPkg.buttonLabel"), false, true);
         extension.newProject(newDir);
     }
 
@@ -222,9 +220,6 @@ public class GreenfootLauncherBlueJVM
     /**
      * Sets the directory containing the scenarios to be the directory that the
      * file browser will open up in.
-     * <p>
-     * If it can't find the scenarios dir, it will do nothing.
-     * 
      */
     private void setScenariosAsDefaultDir()
     {

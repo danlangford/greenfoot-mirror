@@ -23,6 +23,8 @@ package bluej.debugger.gentype;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * A "reflective" is an object representing a java type. This interface
@@ -30,10 +32,9 @@ import java.util.List;
  * determine the generic type parameters, etc.
  *  
  * @author Davin McCall
- * @version $Id: Reflective.java 6215 2009-03-30 13:28:25Z polle $
  */
-public abstract class Reflective {
-
+public abstract class Reflective
+{
     /**
      * Get the name of the class or interface represented by the reflective.
      * The name is such that it can be passed to ClassLoader's loadClass
@@ -44,13 +45,22 @@ public abstract class Reflective {
     public abstract String getName();
     
     /**
+     * Get the name of the class or interface represented by the reflective.
+     * The name is in a form that can be presented nicely to the user.
+     */
+    public String getSimpleName()
+    {
+        return getName();
+    }
+    
+    /**
      * Get the formal type parameters of the class/interface this reflective
      * represents. Note that this does not give the type parameters from
      * outer classes which may still parameterize this reflective's class.
      * 
      * @return  The parameters as a List of GenTypeDeclTpar
      */
-    public abstract List getTypeParams();
+    public abstract List<GenTypeDeclTpar> getTypeParams();
     
     /**
      * Get the (direct) supertypes of this reflective, as a list of reflectives.
@@ -58,14 +68,14 @@ public abstract class Reflective {
      * component type is a supertype of this array's component type.
      * @return A List of Reflectives
      */
-    public abstract List getSuperTypesR();
+    public abstract List<Reflective> getSuperTypesR();
     
     /**
      * Get the supertypes of this reflective, as a list of GenTypes. The type
      * parameter names will refer to the type parameters in the parent type.
      * @return A List of GenTypeClass.
      */
-    public abstract List getSuperTypes();
+    public abstract List<GenTypeClass> getSuperTypes();
     
     /**
      * Get a reflective which represents an array, whose element type is
@@ -101,11 +111,11 @@ public abstract class Reflective {
      */
     public GenTypeClass superTypeByName(String rawName)
     {
-        List superTypes = getSuperTypes();
-        Iterator i = superTypes.iterator();
+        List<GenTypeClass> superTypes = getSuperTypes();
+        Iterator<GenTypeClass> i = superTypes.iterator();
         while( i.hasNext() ) {
-            GenTypeClass next = (GenTypeClass)i.next();
-            if( next.rawName().equals(rawName) )
+            GenTypeClass next = i.next();
+            if( next.classloaderName().equals(rawName) )
                 return next;
         }
         return null;
@@ -116,12 +126,50 @@ public abstract class Reflective {
      * class's classloader.
      * 
      * @param name  The name of the class to locate
-     * @return
      */
     abstract public Reflective getRelativeClass(String name);
+    
+    /**
+     * Get the outer class of this one, if there is one.
+     */
+    public Reflective getOuterClass()
+    {
+        int dollarIndex = getName().indexOf('$');
+        if (dollarIndex != -1) {
+            String outerName = getName().substring(0, dollarIndex);
+            return getRelativeClass(outerName);
+        }
+        return null;
+    }
     
     /**
      * Determine whether this class is a static inner class.
      */
     abstract public boolean isStatic();
+    
+    /**
+     * Determine whether this class is declared public.
+     */
+    abstract public boolean isPublic();
+    
+    /**
+     * Get the methods declared in the type represented by this Reflective.
+     * This does not include methods declared in the superclass(es), nor does
+     * it include synthetic methods.
+     * 
+     * @return a map which maps method names to a set of methods
+     *    (represented by MethodReflective objects) 
+     */
+    abstract public Map<String,Set<MethodReflective>> getDeclaredMethods();
+    
+    /**
+     * Get the fields declared in the type represented by this Reflective.
+     * This does not include fields declared in the superclass(es).
+     */
+    abstract public Map<String,FieldReflective> getDeclaredFields();
+    
+    /**
+     * Get the inner classes of the type represented by this Reflective.
+     */
+    abstract public List<Reflective> getInners();
 }

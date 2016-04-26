@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,6 +22,7 @@
 package bluej.debugmgr;
 
 import bluej.debugger.DebuggerObject;
+import bluej.debugger.ExceptionDescription;
 import bluej.debugger.gentype.JavaType;
 import bluej.pkgmgr.Package;
 
@@ -30,20 +31,13 @@ import bluej.pkgmgr.Package;
  * an execution.
  *
  * @author  Clive Miller
- * @version $Id: ExecutionEvent.java 6421 2009-07-08 04:47:39Z davmac $
  */
-
 public class ExecutionEvent
 {
     /**
      * The execution has finished normally;
      */
     public static final String NORMAL_EXIT = "Normal exit";
-
-    /**
-     * The execution has finished through a call to System.exit();
-     */
-    public static final String FORCED_EXIT = "Forced exit";
 
     /**
      * The execution has finished due to an exception
@@ -63,12 +57,13 @@ public class ExecutionEvent
     private String command;
     private Package pkg;
     private DebuggerObject resultObject;   // If there is a result object it goes here.
+    private ExceptionDescription exception;  // If an exception occurred, this is it.
 
     /**
      * Constructs an ExecutionEvent where className and objName are null and only the package is set.
      * @param pkg The package this event is bound to.
      */
-    ExecutionEvent(Package pkg)
+    public ExecutionEvent(Package pkg)
     {
         this.pkg = pkg;
     }
@@ -79,24 +74,30 @@ public class ExecutionEvent
      * @param className  The className of the event.
      * @param objectName The object name, as in the object bench, of the event, can be null.
      */
-    ExecutionEvent(Package pkg, String className, String objectName)
+    public ExecutionEvent(Package pkg, String className, String objectName)
     {
     	this.pkg = pkg;
         this.className = className;
         this.objectName = objectName;
     }
 
-    void setObjectName (String objectName)
+    public void setObjectName (String objectName)
     {
         this.objectName = objectName;
     }
     
-    void setMethodName (String methodName)
+    /**
+     * Set the name of the called method. For a constructor call, this should be left null.
+     */
+    public void setMethodName (String methodName)
     {
         this.methodName = methodName;
     }
     
-    void setParameters (JavaType[] signature, String[] parameters)
+    /**
+     * Set the types and values (Java expressions) of the method/constructor arguments.
+     */
+    public void setParameters (JavaType[] signature, String[] parameters)
     {
         this.signature = signature;
         this.parameters = parameters;
@@ -109,20 +110,32 @@ public class ExecutionEvent
      * EXCEPTION_EXIT - the execution failed due to an exception
      * TERMINATED_EXIT - the user terminated the VM before execution completed
      */
-    void setResult (String result)
+    public void setResult (String result)
     {
         this.result = result;
     }
 
     /**
      * When an invocation has some valid result it can pass it on using this method.
+     * 
+     * <p>For a constructor call (class name is set but method name is not), the created
+     * instance itself should be set as the result object. For any other invocation, the
+     * result should be a wrapper with a single "result" field containing the actual result.
      */
-    void setResultObject (DebuggerObject resultObject)
+    public void setResultObject (DebuggerObject resultObject)
     {
         this.resultObject = resultObject;
     }
-
-    void setCommand (String cmd)
+    
+    /**
+     * Set the exception which occurred (if one did).
+     */
+    public void setException(ExceptionDescription exception)
+    {
+        this.exception = exception;
+    }
+    
+    public void setCommand (String cmd)
     {
         this.command = cmd;
     }
@@ -179,7 +192,6 @@ public class ExecutionEvent
     /**
      * Get the result of the execution. This will be one of:
      * NORMAL_EXIT - the execution terminated successfully
-     * FORCED_EXIT - System.exit() was called
      * EXCEPTION_EXIT - the execution failed due to an exception
      * TERMINATED_EXIT - the user terminated the VM before execution completed
      */
@@ -190,12 +202,24 @@ public class ExecutionEvent
 
     /**
      * This is the Object resulting from the invocation.
+     * 
+     * <p>For a constructor call (class name is set but method name is not), the created
+     * instance itself is the result object. For any other invocation, the result object is 
+     * a wrapper with a single "result" field containing the actual invocation result.
      */
     public DebuggerObject getResultObject()
     {
         return resultObject;
     }
 
+    /**
+     * Get the exception which occurred (valid if the result is EXCEPTION_EXIT).
+     */
+    public ExceptionDescription getException()
+    {
+        return exception;
+    }
+    
     public Package getPackage()
     {
         return pkg;

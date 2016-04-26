@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -26,7 +26,6 @@
  * The exporter is a singleton
  *
  * @author Michael Kolling
- * @version $Id: Exporter.java 6789 2009-10-13 07:04:57Z davmac $
  */
 
 package greenfoot.export;
@@ -49,14 +48,13 @@ import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.UnknownHostException;
-import java.rmi.RemoteException;
+import java.util.Set;
 
 import javax.imageio.ImageIO;
 import javax.swing.SwingUtilities;
 
 import bluej.Boot;
 import bluej.Config;
-import bluej.extensions.ProjectNotOpenException;
 import bluej.pkgmgr.Project;
 
 public class Exporter 
@@ -113,7 +111,7 @@ public class Exporter
         
         boolean  lockScenario = pane.lockScenario();
         
-        JarCreator jarCreator = new JarCreator(project, exportDir, jarName, worldClass, lockScenario);            
+        JarCreator jarCreator = new JarCreator(project, exportDir, jarName, worldClass, lockScenario, true);            
         
         // do not include source
         jarCreator.includeSource(false);
@@ -122,9 +120,9 @@ public class Exporter
         jarCreator.addToClassPath(GALLERY_SHARED_JARS + GREENFOOT_CORE_JAR);   
        
         // Add 3rd party libraries used by Greenfoot.      
-        String[] thirdPartyLibs = Boot.GREENFOOT_EXPORT_JARS;
-        for (String lib : thirdPartyLibs) {
-            jarCreator.addToClassPath(GALLERY_SHARED_JARS + lib);  
+        Set<File> thirdPartyLibs = GreenfootUtil.get3rdPartyLibs();
+        for (File lib : thirdPartyLibs) {
+            jarCreator.addToClassPath(GALLERY_SHARED_JARS + lib.getName());  
         }
         
         // Extra entries for the manifest
@@ -169,21 +167,22 @@ public class Exporter
             JarCreator zipCreator = new JarCreator(project, exportDir, zipName);            
             zipCreator.create();
         }
-            
-        
-        // Create image file      
-        String formatName = "png";
-        try {
-            tmpImgFile = File.createTempFile("greenfoot", "." + formatName, null);
-            BufferedImage img = pane.getImage();
-            ImageIO.write(img, formatName, tmpImgFile);
-            // make sure it is deleted on exit (should be deleted right after
-            // the publish finish - but just in case...)
-            tmpImgFile.deleteOnExit();              
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-            return;
+                  
+        // Create image file     
+        if (!pane.keepSavedScenarioScreenshot()){
+            String formatName = "png";
+            try {
+                tmpImgFile = File.createTempFile("greenfoot", "." + formatName, null);
+                BufferedImage img = pane.getImage();
+                ImageIO.write(img, formatName, tmpImgFile);
+                // make sure it is deleted on exit (should be deleted right after
+                // the publish finish - but just in case...)
+                tmpImgFile.deleteOnExit();              
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+                return;
+            }
         }
         
         String login = pane.getUserName();
@@ -208,6 +207,7 @@ public class Exporter
             info.setTitle(scenarioName);
             info.setShortDescription(pane.getShortDescription());
             info.setLongDescription(pane.getDescription());
+            info.setUpdateDescription(pane.getUpdateDescription());
             info.setTags(pane.getTags());
             info.setUrl(pane.getURL());
             
@@ -248,7 +248,7 @@ public class Exporter
         
         boolean  includeControls = pane.lockScenario();
         String jarName = project.getName() + ".jar";
-        JarCreator jarCreator = new JarCreator(project, exportDir, jarName, worldClass, includeControls);            
+        JarCreator jarCreator = new JarCreator(project, exportDir, jarName, worldClass, includeControls, true);            
         
         // do not include source
         jarCreator.includeSource(false);        
@@ -258,12 +258,10 @@ public class Exporter
         File greenfootDir = new File(greenfootLibDir, "standalone");        
         jarCreator.addFile(greenfootDir);   
         
-        // Add 3rd party libraries used by Greenfoot.
-        File bluejLibDir = Config.getBlueJLibDir();        
-        String[] thirdPartyLibs = Boot.GREENFOOT_EXPORT_JARS;
-        for (int i = 0; i < thirdPartyLibs.length; i++) {
-            String lib = thirdPartyLibs[i];
-            jarCreator.addJar(new File(bluejLibDir,lib));
+        // Add 3rd party libraries used by Greenfoot.      
+        Set<File> thirdPartyLibs = GreenfootUtil.get3rdPartyLibs();
+        for (File lib : thirdPartyLibs) {
+            jarCreator.addJar(lib);
         }
         
         // Add jars in +libs dir in project directory
@@ -291,17 +289,13 @@ public class Exporter
     private File[] getJarsInPlusLib(GProject project)
     {
         File[] jarFiles = null;
-        try {
-            File plusLibsDir = new File(project.getDir(), Project.projectLibDirName);
-            jarFiles = plusLibsDir.listFiles(new FilenameFilter() {
-                public boolean accept(File dir, String name)
-                {
-                    return name.toLowerCase().endsWith(".jar");
-                }
-            });
-        }
-        catch (ProjectNotOpenException e) {}
-        catch (RemoteException e) {}
+        File plusLibsDir = new File(project.getDir(), Project.projectLibDirName);
+        jarFiles = plusLibsDir.listFiles(new FilenameFilter() {
+            public boolean accept(File dir, String name)
+            {
+                return name.toLowerCase().endsWith(".jar");
+            }
+        });
         return jarFiles;
     }
         
@@ -319,7 +313,7 @@ public class Exporter
         
         boolean  includeControls = pane.lockScenario();
         
-        JarCreator jarCreator = new JarCreator(project, exportDir, jarName, worldClass, includeControls); 
+        JarCreator jarCreator = new JarCreator(project, exportDir, jarName, worldClass, includeControls, false); 
         // do not include source
         jarCreator.includeSource(false);  
         
@@ -328,12 +322,10 @@ public class Exporter
         File greenfootDir = new File(greenfootLibDir, "standalone");        
         jarCreator.addFile(greenfootDir);     
         
-        // Add 3rd party libraries used by Greenfoot.
-        File bluejLibDir = Config.getBlueJLibDir();        
-        String[] thirdPartyLibs = Boot.GREENFOOT_EXPORT_JARS;
-        for (int i = 0; i < thirdPartyLibs.length; i++) {
-            String lib = thirdPartyLibs[i];
-            jarCreator.addJarToJar(new File(bluejLibDir,lib));
+        // Add 3rd party libraries used by Greenfoot.      
+        Set<File> thirdPartyLibs = GreenfootUtil.get3rdPartyLibs();
+        for (File lib : thirdPartyLibs) {
+            jarCreator.addJarToJar(lib);
         }
 
         // Add jars in +libs dir in project directory

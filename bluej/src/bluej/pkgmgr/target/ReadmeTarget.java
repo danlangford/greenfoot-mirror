@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,25 +27,24 @@ import java.io.*;
 import java.util.Properties;
 
 import javax.swing.*;
-import javax.swing.JPopupMenu;
 
 import bluej.Config;
 import bluej.editor.*;
 import bluej.graph.GraphEditor;
 import bluej.pkgmgr.Package;
+import bluej.pkgmgr.graphPainter.ReadmeTargetPainter;
 import bluej.prefmgr.PrefMgr;
 
 /**
  * A parent package
  *
  * @author  Andrew Patterson
- * @version $Id: ReadmeTarget.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class ReadmeTarget extends EditableTarget
-    implements ActionListener
+    implements ActionListener 
 {
-    static final int WIDTH = 40;
-    static final int HEIGHT = 50;
+    static final int WIDTH = ReadmeTargetPainter.getMaxImageWidth();
+    static final int HEIGHT = ReadmeTargetPainter.getMaxImageHeight();
     static final Color defaultbg = Config.getItemColour("colour.class.bg.default");
     static final Color colBorder = Config.getItemColour("colour.target.border");
     static final Color textfg = Config.getItemColour("colour.text.fg");
@@ -214,7 +213,7 @@ public class ReadmeTarget extends EditableTarget
     /**
      * Construct a popup menu which displays all our parent packages.
      */
-    private JPopupMenu createMenu(Class cl)
+    private JPopupMenu createMenu(Class<?> cl)
     {
         JPopupMenu menu = new JPopupMenu();
         JMenuItem item;
@@ -225,11 +224,10 @@ public class ReadmeTarget extends EditableTarget
         item.setFont(PrefMgr.getPopupMenuFont());
         item.setForeground(envOpColour);
         return menu;
-       }
+    }
 
     private class OpenAction extends AbstractAction
     {
-
         public OpenAction(String menu)
         {
             super(menu);
@@ -251,4 +249,13 @@ public class ReadmeTarget extends EditableTarget
         // meaningless
     }
 
+    public String getProperty(String key) 
+    {
+        return null;
+    }
+
+    public void setProperty(String key, String value) 
+    {
+        
+    }
 }

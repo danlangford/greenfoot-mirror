@@ -19,54 +19,248 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-// Copyright (c) 2000, 2005 BlueJ Group, Deakin University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html 
-// Any queries should be directed to Michael Kolling mik@bluej.org
-
-
 package bluej.editor.moe;
 
-import javax.swing.text.*;
-
 import java.awt.Color;
-import bluej.Config;
 
-import org.syntax.jedit.*;
-import org.syntax.jedit.tokenmarker.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentEvent.EventType;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.Element;
+import javax.swing.text.MutableAttributeSet;
+import javax.swing.text.PlainDocument;
+
+import bluej.Config;
+import bluej.parser.entity.EntityResolver;
+import bluej.parser.nodes.NodeStructureListener;
+import bluej.parser.nodes.NodeTree;
+import bluej.parser.nodes.ParsedCUNode;
+import bluej.parser.nodes.ParsedNode;
+import bluej.parser.nodes.NodeTree.NodeAndPosition;
 
 
 /**
- * A simple implementation of <code>SyntaxDocument</code> that 
- * inherits from SyntaxDocument. It takes
- * care of inserting and deleting lines from the token marker's state.
- * It adds the ability to handle paragraph attributes on a per line basis.
+ * An implementation of PlainDocument, with an optional added parser to provide
+ * syntax highlighting, scope highlighting, and other advanced functionality.
  *
  * @author Bruce Quig
  * @author Jo Wood (Modified to allow user-defined colours, March 2001)
- *
  */
-public class MoeSyntaxDocument extends SyntaxDocument
+public class MoeSyntaxDocument extends PlainDocument
 {
-    public static final String OUTPUT = "output";
-    public static final String ERROR = "error";
-
-	private static Color[] colors = null;
+    private static Color[] colors = null;
 	
-	private static Color defaultColour = null;
+    private static Color defaultColour = null;
     private static Color backgroundColour = null;
+    
+    /** Maximum amount of document to reparse in one hit (advisory) */
+    private final static int MAX_PARSE_PIECE = 8000;
 	
+    private ParsedCUNode parsedNode;
+    private EntityResolver parentResolver;
+    private NodeTree<ReparseRecord> reparseRecordTree;
+    
+    /**
+     * Create an empty MoeSyntaxDocument.
+     */
     public MoeSyntaxDocument()
     {
-        super(getUserColors());
-         // defaults to 4 if cannot read property
-         int tabSize = Config.getPropInteger("bluej.editor.tabsize", 4);
-         putProperty(tabSizeAttribute, new Integer(tabSize));
+        getUserColors();
+        // defaults to 4 if cannot read property
+        int tabSize = Config.getPropInteger("bluej.editor.tabsize", 4);
+        putProperty(tabSizeAttribute, Integer.valueOf(tabSize));
+    }
+    
+    /**
+     * Create an empty MoeSyntaxDocument, which uses the given entity resolver
+     * to resolve symbols.
+     */
+    public MoeSyntaxDocument(EntityResolver parentResolver)
+    {
+        this();
+        // parsedNode = new ParsedCUNode(this);
+        this.parentResolver = parentResolver;
+        if (parentResolver != null) {
+            reparseRecordTree = new NodeTree<ReparseRecord>();
+        }
     }
 
+    /**
+     * Access the parsed node structure of this document.
+     */
+    public ParsedCUNode getParser()
+    {
+        flushReparseQueue();
+        return parsedNode;
+    }
+    
+    /**
+     * Get the current parsed node structure of the document, without processing any
+     * pending re-parse operations first.
+     */
+    public ParsedCUNode getParsedNode()
+    {
+        return parsedNode;
+    }
+    
+    /**
+     * Enable the parser. This should be called after loading a document.
+     * @param force  whether to force-enable the parser. If false, the parser will only
+     *                be enabled if an entity resolver is available.
+     */
+    public void enableParser(boolean force)
+    {
+        if (parentResolver != null || force) {
+            parsedNode = new ParsedCUNode(this);
+            parsedNode.setParentResolver(parentResolver);
+            reparseRecordTree = new NodeTree<ReparseRecord>();
+            parsedNode.textInserted(this, 0, 0, getLength(), new NodeStructureListener() {
+                public void nodeRemoved(NodeAndPosition<ParsedNode> node) { }
+                public void nodeChangedLength(NodeAndPosition<ParsedNode> node,
+                        int oldPos, int oldSize) { }
+            });
+        }
+    }
+
+    /**
+     * Run an item from the re-parse queue, if there are any. Return true if
+     * a queued re-parse was processed or false if the queue was empty.
+     */
+    public boolean pollReparseQueue()
+    {
+        return pollReparseQueue(MAX_PARSE_PIECE);
+    }
+    
+    /**
+     * Run an item from the re-parse queue, if there are any, and attempt to
+     * parse the specified amount of document (approximately). Return true if
+     * a queued re-parse was processed or false if the queue was empty.
+     */
+    public boolean pollReparseQueue(int maxParse)
+    {
+        if (reparseRecordTree == null) {
+            return false;
+        }
+        
+        NodeAndPosition<ReparseRecord> nap = reparseRecordTree.findNodeAtOrAfter(0);
+        if (nap != null) {
+            int pos = nap.getPosition();
+            
+            ParsedNode pn = parsedNode;
+            int ppos = 0;
+            if (pn != null) {
+                // Find the ParsedNode to handle the reparse.
+                NodeAndPosition<ParsedNode> cn = pn.findNodeAt(pos, ppos);
+                while (cn != null && cn.getEnd() == pos) {
+                    cn = cn.nextSibling();
+                }
+                while (cn != null && cn.getPosition() <= pos) {
+                    ppos = cn.getPosition();
+                    pn = cn.getNode();
+                    cn = pn.findNodeAt(nap.getPosition(), ppos);
+                    while (cn != null && cn.getEnd() == pos) {
+                        cn = cn.nextSibling();
+                    }
+                }
+                
+                MoeSyntaxEvent mse = new MoeSyntaxEvent(this);
+                pn.reparse(this, ppos, pos, maxParse, mse);
+                fireChangedUpdate(mse);
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Process all of the re-parse queue.
+     */
+    public void flushReparseQueue()
+    {
+        while (pollReparseQueue(getLength())) ;
+    }
+    
+    /**
+     * Schedule a reparse at a certain point within the document.
+     * @param pos    The position to reparse at
+     * @param size   The reparse size. This is a minimum, rather than a maximum; that is,
+     *               the reparse when it occurs must parse at least this much.
+     */
+    public void scheduleReparse(int pos, int size)
+    {
+        NodeAndPosition<ReparseRecord> existing = reparseRecordTree.findNodeAtOrAfter(pos);
+        if (existing != null) {
+            if (existing.getPosition() > pos && existing.getPosition() <= (pos + size)) {
+                existing.getNode().slideStart(pos - existing.getPosition());
+                return;
+            }
+            else if (existing.getPosition() <= pos) {
+                int nsize = (pos + size) - existing.getPosition();
+                if (nsize > existing.getSize()) {
+                    NodeAndPosition<ReparseRecord> next = existing.nextSibling();
+                    while (next != null && next.getPosition() <= pos + size) {
+                        nsize = Math.max(nsize, next.getEnd() - pos);
+                        NodeAndPosition<ReparseRecord> nnext = next.nextSibling();
+                        next.getNode().remove();
+                        next = nnext;
+                    }
+                    existing.getNode().setSize(nsize);
+                }
+                return;
+            }
+        }
+        
+        ReparseRecord rr = new ReparseRecord();
+        reparseRecordTree.insertNode(rr, pos, size);
+    }
+    
+    /**
+     * Mark a portion of the document as having been parsed. This removes any
+     * scheduled re-parses as appropriate and repaints the appropriate area.
+     */
+    public void markSectionParsed(int pos, int size)
+    {
+        repaintLines(pos, size);
+        
+        NodeAndPosition<ReparseRecord> existing = reparseRecordTree.findNodeAtOrAfter(pos);
+        while (existing != null && existing.getPosition() <= pos) {
+            NodeAndPosition<ReparseRecord> next = existing.nextSibling();
+            // Remove from end, or a middle portion, or the whole node
+            int rsize = existing.getEnd() - pos;
+            rsize = Math.min(rsize, size);
+            if (rsize == existing.getSize()) {
+                existing.getNode().remove();
+            }
+            else if (existing.getPosition() == pos) {
+                existing.slideStart(rsize);
+                existing = next; break;
+            }
+            else {
+                // the record begins before the point to be removed.
+                int existingEnd = existing.getEnd();
+                existing.setSize(pos - existing.getPosition());
+                // Now we may have to insert a new node, if the middle portion
+                // of the existing node was removed.
+                if (existingEnd > pos + size) {
+                    scheduleReparse(pos + size, existingEnd - (pos + size));
+                    return;
+                }
+            }
+            existing = next;
+        }
+        
+        while (existing != null && existing.getPosition() < pos + size) {
+            int rsize = pos + size - existing.getPosition();
+            if (rsize < existing.getSize()) {
+                existing.slideStart(rsize);
+                return;
+            }
+            NodeAndPosition<ReparseRecord> next = existing.nextSibling();
+            existing.getNode().remove();
+            existing = next;
+        }
+    }
+    
     /**
      * Sets attributes for a paragraph.  This method was added to 
      * provide the ability to replicate DefaultStyledDocument's ability to 
@@ -111,7 +305,16 @@ public class MoeSyntaxDocument extends SyntaxDocument
     }
     
     /**
-     * Allows user-defined colours to be set for synax highlighting. The file
+     * Get an array of colours as specified in the configuration file for different
+     * token types. The indexes for each token type are defined in the Token class.
+     */
+    public static Color[] getColors()
+    {
+        return getUserColors();
+    }
+    
+    /**
+     * Allows user-defined colours to be set for syntax highlighting. The file
      * containing the colour values is 'lib/moe.defs'. If this file is
      * not found, or not all colours are defined, the BlueJ default colours are
      * used.
@@ -182,6 +385,18 @@ public class MoeSyntaxDocument extends SyntaxDocument
     }
     
     /**
+     * Identify the token types and positions in a line. This is used for syntax colouring.
+     * @param line  The line number (0 based).
+     */
+    public Token getTokensForLine(int line)
+    {
+        Element lineEl = getDefaultRootElement().getElement(line);
+        int pos = lineEl.getStartOffset();
+        int length = lineEl.getEndOffset() - pos - 1;
+        return parsedNode.getMarkTokensFor(pos, length, 0, this);
+    }
+    
+    /**
      * Get an integer value from a property whose value is hex-encoded.
      * @param propName  The name of the property
      * @param def       The default value if the property is undefined or
@@ -197,5 +412,119 @@ public class MoeSyntaxDocument extends SyntaxDocument
         catch (NumberFormatException nfe) {
             return def;
         }
+    }
+    
+    /*
+     * Override default implementation to notify the parser of text insertion
+     * @see javax.swing.text.AbstractDocument#fireInsertUpdate(javax.swing.event.DocumentEvent)
+     */
+    protected void fireInsertUpdate(DocumentEvent e)
+    {
+        if (reparseRecordTree != null) {
+            NodeAndPosition<ReparseRecord> napRr = reparseRecordTree.findNodeAtOrAfter(e.getOffset());
+            if (napRr != null) {
+                if (napRr.getPosition() <= e.getOffset()) {
+                    napRr.getNode().resize(napRr.getSize() + e.getLength());
+                }
+                else {
+                    napRr.getNode().slide(e.getLength());
+                }
+            }
+        }
+        
+        MoeSyntaxEvent mse = new MoeSyntaxEvent(this, e);
+        if (parsedNode != null) {
+            parsedNode.textInserted(this, 0, e.getOffset(), e.getLength(), mse);
+        }
+        super.fireInsertUpdate(mse);
+    }
+    
+    /* Override the default implementation to notify the parser of text removal
+     * @see javax.swing.text.AbstractDocument#fireRemoveUpdate(javax.swing.event.DocumentEvent)
+     */
+    protected void fireRemoveUpdate(DocumentEvent e)
+    {
+        NodeAndPosition<ReparseRecord> napRr = (reparseRecordTree != null) ?
+                reparseRecordTree.findNodeAtOrAfter(e.getOffset()) :
+                    null;
+        int rpos = e.getOffset();
+        int rlen = e.getLength();
+        if (napRr != null && napRr.getEnd() == rpos) {
+            // Boundary condition
+            napRr = napRr.nextSibling();
+        }
+        while (napRr != null && rlen > 0) {
+            if (napRr.getPosition() < rpos) {
+                if (napRr.getEnd() >= rpos + rlen) {
+                    // remove middle
+                    napRr.getNode().resize(napRr.getSize() - rlen);
+                    break;
+                }
+                else {
+                    // remove end and continue
+                    int reduction = napRr.getEnd() - rpos;
+                    napRr.getNode().resize(napRr.getSize() - reduction);
+                    rlen -= reduction;
+                    napRr = napRr.nextSibling();
+                    continue;
+                }
+            }
+            else if (napRr.getPosition() == rpos) {
+                if (napRr.getEnd() > rpos + rlen) {
+                    // remove beginning
+                    napRr.getNode().resize(napRr.getSize() - rlen);
+                    break;
+                }
+                else {
+                    // remove whole node
+                    napRr.getNode().remove();
+                    napRr = reparseRecordTree.findNodeAtOrAfter(e.getOffset());
+                    continue;
+                }
+            }
+            else {
+                // napRr position is greater than delete position
+                if (napRr.getPosition() >= (rpos + rlen)) {
+                    napRr.slide(-rlen);
+                    break;
+                }
+                else if (napRr.getEnd() <= (rpos + rlen)) {
+                    // whole node to be removed
+                    NodeAndPosition<ReparseRecord> nextRr = napRr.nextSibling();
+                    napRr.getNode().remove();
+                    napRr = nextRr;
+                    continue;
+                }
+                else {
+                    // only a portion to be removed
+                    int ramount = (rpos + rlen) - napRr.getPosition();
+                    napRr.slideStart(ramount);
+                    napRr.slide(-rlen);
+                    break;
+                }
+            }
+        }
+        
+        MoeSyntaxEvent mse = new MoeSyntaxEvent(this, e);
+        if (parsedNode != null) {
+            parsedNode.textRemoved(this, 0, e.getOffset(), e.getLength(), mse);
+        }
+        super.fireRemoveUpdate(mse);
+    }
+    
+    /**
+     * Notify that the whole document potentially needs repainting.
+     */
+    public void documentChanged()
+    {
+        repaintLines(0, getLength());
+    }
+    
+    /**
+     * Notify that a certain area of the document needs repainting.
+     */
+    public void repaintLines(int offset, int length)
+    {
+        fireChangedUpdate(new DefaultDocumentEvent(offset, length, EventType.CHANGE));
     }
 }

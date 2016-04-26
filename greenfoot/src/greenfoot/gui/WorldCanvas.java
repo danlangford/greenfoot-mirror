@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -50,7 +50,6 @@ import javax.swing.SwingConstants;
  * The visual representation of the world.
  * 
  * @author Poul Henriksen
- * @version $Id: WorldCanvas.java 6732 2009-09-19 07:56:11Z davmac $
  */
 public class WorldCanvas extends JPanel
     implements  DropTarget, Scrollable
@@ -63,6 +62,8 @@ public class WorldCanvas extends JPanel
     private Point dragLocation;
     /** Image used when dragging new actors on the world. Includes the drop shadow.*/
     private BufferedImage dragImage;
+    /** Preferred size */
+    private Dimension size;
     
     public WorldCanvas(World world)
     {
@@ -70,7 +71,6 @@ public class WorldCanvas extends JPanel
         setBackground(Color.WHITE);
         setOpaque(true);
     }
-
     
     /**
      * Sets the world that should be visualised by this canvas.
@@ -85,10 +85,21 @@ public class WorldCanvas extends JPanel
             repaint();
         }
         else {
-            this.setSize(0, 0);
+            // this.setSize(0, 0);
         }
     }
 
+    /**
+     * Set the last known world size. Affects the preferred size of the
+     * WorldCanvas.
+     */
+    public void setWorldSize(int xsize, int ysize)
+    {
+        if (world == null) {
+            size = new Dimension(xsize, ysize);
+        }
+    }
+    
     /**
      * Paints all the objects.
      * 
@@ -111,16 +122,19 @@ public class WorldCanvas extends JPanel
 
                 AffineTransform oldTx = null;
                 try {
-                    double xCenter = thing.getX() * cellSize + cellSize / 2.;
+                    int ax = ActorVisitor.getX(thing);
+                    int ay = ActorVisitor.getY(thing);
+                    double xCenter = ax * cellSize + cellSize / 2.;
                     int paintX = (int) Math.floor(xCenter - halfWidth);
-                    double yCenter = thing.getY() * cellSize + cellSize / 2.;
+                    double yCenter = ay * cellSize + cellSize / 2.;
                     int paintY = (int) Math.floor(yCenter - halfHeight);
 
-                    if (thing.getRotation() % 360 != 0) {
+                    int rotation = ActorVisitor.getRotation(thing);
+                    if (rotation != 0) {
                         // don't bother transforming if it is not rotated at
                         // all.
                         oldTx = g.getTransform();
-                        g.rotate(Math.toRadians(thing.getRotation()), xCenter, yCenter);
+                        g.rotate(Math.toRadians(rotation), xCenter, yCenter);
                     }
 
                     ImageVisitor.drawImage(image, g, paintX, paintY, this, true);
@@ -141,11 +155,14 @@ public class WorldCanvas extends JPanel
     }
 
     public void paintComponent(Graphics g)
-    {   
+    {
         if (world == null) {
+            Color c = g.getColor();
+            g.setColor(getParent().getBackground());
+            g.fillRect(0, 0, getWidth(), getHeight());
+            g.setColor(c);
             return;
         }
-        
         
         // We need to sync, so that objects are not added and removed when we
         // traverse the list.
@@ -169,18 +186,12 @@ public class WorldCanvas extends JPanel
                 }
                 finally {
                     lock.readLock().unlock();
-
-                    // Wake up any threads waiting. For instance the
-                    // World.repaint() call.
-                    if (lock.writeLock().tryLock()) {
-                        try {
-                            lock.writeLock().newCondition().signalAll();
-                        }
-                        finally {
-                            lock.writeLock().unlock();
-                        }
-                    }
+                    WorldVisitor.worldPainted(world);
                 }
+            }
+            else {
+                WorldVisitor.worldPainted(world); // we failed, but notify waiters anyway
+                // (otherwise they keep waiting indefinitely...)
             }
         }
         catch (InterruptedException e) {
@@ -228,29 +239,28 @@ public class WorldCanvas extends JPanel
         }
     }
 
-  
-
+    @Override
     public Dimension getMinimumSize()
     {
         return getPreferredSize();
     }
 
+    @Override
     public Dimension getPreferredSize()
     {
-        Dimension size = new Dimension();
         if (world != null) {
+            Dimension size = new Dimension();
             size.width = WorldVisitor.getWidthInPixels(world) ;
             size.height = WorldVisitor.getHeightInPixels(world) ;
+            this.size = new Dimension(size);
         }
         return size;
     }
-    
     
     public void setDropTargetListener(DropTarget dropTargetListener)
     {
         this.dropTargetListener = dropTargetListener;
     }
-    
 
     public boolean drop(Object o, Point p)
     {
@@ -270,7 +280,7 @@ public class WorldCanvas extends JPanel
      */
     public boolean drag(Object o, Point p)
     {
-        if(o instanceof Actor && ((Actor) o).getWorld() == null) {   
+        if(o instanceof Actor && ActorVisitor.getWorld((Actor) o) == null) {   
             if(!getVisibleRect().contains(p)) {
                 return false;
             }
@@ -362,5 +372,5 @@ public class WorldCanvas extends JPanel
     {
         return false;
     }
- 
+    
 }

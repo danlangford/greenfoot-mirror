@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,7 +21,8 @@
  */
 package greenfoot.platforms;
 
-import java.awt.Component;
+import greenfoot.GreenfootImage;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -31,18 +32,42 @@ import java.net.URL;
  * class depending on where and how the greenfoot project is running.
  * 
  * @author Poul Henriksen
- * 
  */
 public interface GreenfootUtilDelegate
 {
-    public void createSkeleton(String className, String superClassName, File file, String templateFileName) throws IOException;
+    public void createSkeleton(String className, String superClassName, File file,
+            String templateFileName) throws IOException;
 
-    public File getScenarioFromFileBrowser(Component parent);
-    
-    public String getNewProjectName(Component parent);
-
+    /**
+     * Get some resource from the project, specified by a relative path.
+     */
     public URL getResource(String path);  
-    
 
+    /**
+     * Get the project-relative path of the Greenfoot logo.
+     */
     public String getGreenfootLogoPath();
+
+    /**
+     * Remove the cached version of an image for a particular class. This should be
+     * called when the image for the class is changed. Thread-safe.
+     */
+    public void removeCachedImage(String fileName);
+
+    /**
+     * Adds a filename with the associated image into the cache. 
+     * Returns whether the image was cached. Thread-safe
+     */
+    public boolean addCachedImage(String fileName, GreenfootImage image);
+
+    /**
+     * Gets the cached image of the requested fileName. Thread-safe
+     */
+    public GreenfootImage getCachedImage(String fileName);
+    
+    /**
+     * Returns true if the fileName exists in the map and the image is cached as being null; 
+     * returns false if it exists and is not null or if it does not exist in the map
+     */
+    public boolean isNullCachedImage(String fileName);
 }

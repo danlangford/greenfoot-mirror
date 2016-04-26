@@ -25,7 +25,7 @@ import java.io.IOException;
 
 import javax.swing.text.BadLocationException;
 
-import bluej.editor.LineColumn;
+import bluej.parser.SourceLocation;
 
 /**
  * Proxy object that allows interaction with the BlueJ Editor for a
@@ -33,7 +33,7 @@ import bluej.editor.LineColumn;
  * Except as marked, methods of this class must be called from a swing compatible thread.
  *
  * @author Damiano Bolla, University of Kent at Canterbury, 2004
- * @version    $Id: Editor.java 6215 2009-03-30 13:28:25Z polle $
+ * @version    $Id: Editor.java 7337 2010-04-14 14:52:24Z nccb $
  */
 
 public class Editor
@@ -51,6 +51,11 @@ public class Editor
     Editor(bluej.editor.Editor bjEditor)
     {
         this.bjEditor = bjEditor;
+    }
+    
+    bluej.editor.Editor getEditor()
+    {
+        return bjEditor;
     }
 
 
@@ -321,13 +326,13 @@ public class Editor
      * @param  location  The point in the editor to convert to a LineColumn.
      * @return           The LineColumn object describing a point in the editor.
      */
-    private LineColumn convertLocation(TextLocation location)
+    private SourceLocation convertLocation(TextLocation location)
     {
         if (location == null) {
             return null;
         }
 
-        return new LineColumn(location.getLine(), location.getColumn());
+        return new SourceLocation(location.getLine() + 1, location.getColumn() + 1);
     }
 
 
@@ -338,13 +343,13 @@ public class Editor
      * @param  location  The point in the editor to convert to a TextLocation.
      * @return           The TextLocation object describing a point in the editor.
      */
-    private TextLocation convertLocation(LineColumn location)
+    private TextLocation convertLocation(SourceLocation location)
     {
         if (location == null) {
             return null;
         }
 
-        return new TextLocation(location.getLine(), location.getColumn());
+        return new TextLocation(location.getLine() - 1, location.getColumn() - 1);
     }
 
 }

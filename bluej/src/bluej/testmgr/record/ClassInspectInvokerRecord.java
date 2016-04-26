@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,6 +21,8 @@
  */
 package bluej.testmgr.record;
 
+import bluej.pkgmgr.PkgMgrFrame;
+
 /**
  * Records a single user interaction with the 
  * class inspection mechanisms of BlueJ.
@@ -29,8 +31,6 @@ package bluej.testmgr.record;
  * (not currently working).
  *
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: ClassInspectInvokerRecord.java 6215 2009-03-30 13:28:25Z polle $
- *
  */
 public class ClassInspectInvokerRecord extends InvokerRecord
 {   
@@ -56,7 +56,7 @@ public class ClassInspectInvokerRecord extends InvokerRecord
         return secondIndent + className + statementEnd;
     }
 
-    public String toTestMethod()
+    public String toTestMethod(PkgMgrFrame pmf)
     {
         return firstIndent + className + statementEnd;
     }
@@ -66,12 +66,4 @@ public class ClassInspectInvokerRecord extends InvokerRecord
     {
         return className;       
     }
-    
-
-    @Override
-    public String getExpressionGlue()
-    {
-        return ".";
-    }
-
 }

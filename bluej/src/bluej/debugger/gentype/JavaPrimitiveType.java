@@ -32,7 +32,7 @@ public class JavaPrimitiveType
     extends JavaType
 {
     private static JavaPrimitiveType [] primitiveTypes = new JavaPrimitiveType[JavaType.JT_MAX+1];
-    private static String [] typeNames = { "void", "java.lang.Object", "boolean", "char",
+    private static String [] typeNames = { "void", "null", "boolean", "char",
             "byte", "short", "int", "long", "float", "double" };
     // note, the types above should be valid java types. So the type of null
     // is java.lang.Object.
@@ -206,32 +206,82 @@ public class JavaPrimitiveType
         return myIndex == v;
     }
     
-    public JavaType mapTparsToTypes(Map tparams)
+    public JavaType mapTparsToTypes(Map<String, ? extends GenTypeParameter> tparams)
     {
         return this;
     }
     
-    public boolean equals(Object other)
-    {
-        if (other instanceof JavaType) {
-            JavaType gto = (JavaType) other;
-            return (gto.typeIs(myIndex));
-        }
-        else
-            return false;
-    }
+//    public boolean equals(Object other)
+//    {
+//        if (other instanceof JavaType) {
+//            JavaType gto = (JavaType) other;
+//            return (gto.typeIs(myIndex));
+//        }
+//        else {
+//            return false;
+//        }
+//    }
     
     final protected int getMyIndex()
     {
         return myIndex;
     }
     
-    public JavaType opBNot()
+    @Override
+    public GenTypeArray getArray()
     {
-        // binary-not is defined for integer types
-        if (myIndex >= JT_CHAR && myIndex <= JT_LONG)
-            return this;
+        return new GenTypeArray(this);
+    }
+    
+    @Override
+    public JavaType getCapture()
+    {
+        return this;
+    }
+    
+    @Override
+    public void getParamsFromTemplate(Map<String, GenTypeParameter> map,
+            GenTypeParameter template)
+    {
         
+    }
+    
+    @Override
+    public GenTypeSolid getLowerBound()
+    {
         return null;
+    }
+    
+    @Override
+    public JavaPrimitiveType getUpperBound()
+    {
+        return this;
+    }
+    
+    @Override
+    public GenTypeSolid[] getUpperBounds()
+    {
+        return null;
+    }
+    
+    @Override
+    public String toTypeArgString(NameTransform nt)
+    {
+        return toString();
+    }
+    
+    @Override
+    public boolean equals(JavaType other)
+    {
+        if (other == null) {
+            return false;
+        }
+        return other.typeIs(myIndex);
+    }
+    
+    @Override
+    public boolean isWildcard()
+    {
+        return false;
     }
 }

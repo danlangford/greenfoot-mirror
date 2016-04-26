@@ -19,24 +19,17 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-//Copyright (c) 2000, 2005 BlueJ Group, Deakin University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html 
-// Any queries should be directed to Michael Kolling mik@bluej.org
-
 package bluej.editor;
 
 /**
- * @version $Id: EditorWatcher.java 6215 2009-03-30 13:28:25Z polle $
  * @author Michael Kolling
  * Interface between the editor and the rest of BlueJ
  * The editor uses this class
  */
 public interface EditorWatcher
 {
+    //key for storing the value of the expand/collapse of the naviview
+    public final static String NAVIVIEW_EXPANDED_PROPERTY="naviviewExpandedProperty";
     /**
      * Called by Editor when a file is changed
      */
@@ -69,6 +62,16 @@ public interface EditorWatcher
     /**
      * Called by Editor when documentation is to be compiled
      */
-    void generateDoc();
+    void generateDoc();  
+    
+    /**
+     * Sets a property
+     */
+    void setProperty(String key, String value);
+    
+    /**
+     * Gets a property
+     */
+    String getProperty(String key);
 
 } // end class EditorWatcher

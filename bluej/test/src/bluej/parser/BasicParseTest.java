@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,6 +22,8 @@
 package bluej.parser;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.net.URL;
 import java.util.ArrayList;
@@ -29,6 +31,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 
+import javax.swing.text.BadLocationException;
+
+import bluej.editor.moe.MoeSyntaxDocument;
+import bluej.parser.entity.ClassLoaderResolver;
+import bluej.parser.entity.EntityResolver;
+import bluej.parser.entity.PackageResolver;
+import bluej.parser.nodes.ParsedCUNode;
 import bluej.parser.symtab.ClassInfo;
 import bluej.parser.symtab.Selection;
 
@@ -42,12 +51,6 @@ public class BasicParseTest extends junit.framework.TestCase
     /**
      * Get a data or result file from our hidden stash..
      * NOTE: the stash of data files is in the ast/data directory.
-     * This is because eventually, we want all parsing in bluej to
-     * be done by the AST routines, and we can get rid of this
-     * parser. So we share the data file until then.
-     * 
-     * @param name
-     * @return
      */
     private File getFile(String name)
     {
@@ -78,6 +81,22 @@ public class BasicParseTest extends junit.framework.TestCase
     }
 
     /**
+     * Find a target method/class in the comments and return its index (or -1 if not found).
+     */
+    private int findTarget(Properties comments, String target)
+    {
+        for (int commentNum = 0; ; commentNum++) {
+            String comment = comments.getProperty("comment" + commentNum + ".target");
+            if (comment == null) {
+                return -1;
+            }
+            if (comment.equals(target)) {
+                return commentNum;
+            }
+        }
+    }
+    
+    /**
      * Lots of sample files, none of which should cause exceptions
      * in our parser.
      * 
@@ -88,32 +107,47 @@ public class BasicParseTest extends junit.framework.TestCase
     {
         // this file came from some guys web page.. it just includes lots of
         // Java constructs
-        ClassParser.parse(getFile("java_basic.dat"), null);
+        assertNotNull(InfoParser.parse(getFile("java_basic.dat")));
 
         // these files came from the test suite accompanying antlr
-        ClassParser.parse(getFile("A.dat"),null);
-        ClassParser.parse(getFile("B.dat"),null);
-        ClassParser.parse(getFile("C.dat"),null);
-        ClassParser.parse(getFile("D.dat"),null);
-        ClassParser.parse(getFile("E.dat"),null);
+        assertNotNull(InfoParser.parse(getFile("A.dat")));
+        assertNotNull(InfoParser.parse(getFile("B.dat")));
+        assertNotNull(InfoParser.parse(getFile("C.dat")));
+        assertNotNull(InfoParser.parse(getFile("D.dat")));
+        assertNotNull(InfoParser.parse(getFile("E.dat")));
         
         // these files were added later
-        ClassParser.parse(getFile("F.dat"),null);
-        ClassParser.parse(getFile("G.dat"),null);
-        
+        assertNotNull(InfoParser.parse(getFile("F.dat")));
+        assertNotNull(InfoParser.parse(getFile("G.dat")));
     }
     
     public void testNoParseExceptionsOnGenerics()
     	throws Exception
     {
     	// Parse generics
-    	ClassParser.parse(getFile("15_generic.dat"), null);
+    	assertNotNull(InfoParser.parse(getFile("15_generic.dat")));
+    }
+    
+    public void testCode()
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+
+        StringReader sr = new StringReader(
+                "class A {\n" +
+                "  Class<int[]> cc = int[].class;" +
+                "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, ter, "testpkg");
+        assertNotNull(info);
     }
     
     public void testValidClassInfo()
         throws Exception
     {
-        List references = new ArrayList();
+        List<String> references = new ArrayList<String>();
         references.add("Insets");
         references.add("Color");
         references.add("Rectangle");
@@ -125,10 +159,10 @@ public class BasicParseTest extends junit.framework.TestCase
         references.add("Dummy2");
         
         File file = getFile("AffinedTransformer.dat");
-        ClassInfo info = ClassParser.parse(file, references);
+        ClassInfo info = InfoParser.parse(file, new ClassLoaderResolver(this.getClass().getClassLoader()));
 
         assertEquals("AffinedTransformer",info.getName());
-        assertEquals("JFrame",info.getSuperclass());
+        assertEquals("javax.swing.JFrame",info.getSuperclass());
         assertEquals("bluej.parser.ast.data",info.getPackage());
 
         //assertEquals(7, info.getUsed().size());
@@ -157,7 +191,7 @@ public class BasicParseTest extends junit.framework.TestCase
         assertNull(extendsInsert);
         
         // No type parameters
-        List l = info.getTypeParameterTexts();
+        List<String> l = info.getTypeParameterTexts();
         if (l != null)
             assertEquals(0, l.size());
 //        testSel = info.getTypeParametersSelection();
@@ -180,22 +214,17 @@ public class BasicParseTest extends junit.framework.TestCase
         Properties comments = info.getComments();
         
         String wantedComment = "void resizeToInternalSize(int, int)";
-        for (int commentNum = 0; ; commentNum++) {
-            String comment = comments.getProperty("comment" + commentNum + ".target");
-            if (comment.equals(wantedComment)) {
-                String paramNames = comments.getProperty("comment" + commentNum + ".params");
-                assertEquals("internalWidth internalHeight", paramNames);
-                break;
-            }
-            assertNotNull(comment);
-        }
+        int wci = findTarget(comments, wantedComment);
+        assertTrue(wci != -1);
+        String paramNames = comments.getProperty("comment" + wci + ".params");
+        assertEquals("internalWidth internalHeight", paramNames);
         
         /*
          * Second file - no superclass, multiple interfaces 
          */
         
         file = getFile("multi_interface.dat");
-        info = ClassParser.parse(file);
+        info = InfoParser.parse(file);
         
         extendsInsert = info.getExtendsInsertSelection();
         assertEquals(10, extendsInsert.getEndColumn());
@@ -212,9 +241,9 @@ public class BasicParseTest extends junit.framework.TestCase
         assertEquals(1, implementsInsert.getLine());
         
         // the interface selections: "implements" "AA" "," "BB" "," "CC"
-        List interfaceSels = info.getInterfaceSelections();
+        List<Selection> interfaceSels = info.getInterfaceSelections();
         assertEquals(6, interfaceSels.size());
-        Iterator i = interfaceSels.iterator();
+        Iterator<Selection> i = interfaceSels.iterator();
         
         // "implements"
         Selection interfaceSel = (Selection) i.next();
@@ -261,86 +290,175 @@ public class BasicParseTest extends junit.framework.TestCase
     
     public void testValidClassInfo2() throws Exception
     {
-    	List<String> classes = new ArrayList<String>();
     	StringReader sr = new StringReader(
-    			"class A implements II, IJ {\n" +
+    			"class A implements Runnable, Iterable {\n" +
     			"  void someMethod() {\n" +
     			"    I i = new I();\n" +
     			"  }\n" +
     			"}\n"
     	);
-    	ClassInfo info = ClassParser.parse(sr, classes);
+    	ClassInfo info = InfoParser.parse(sr,
+    	        new ClassLoaderResolver(this.getClass().getClassLoader()), null);
     	List<String> implemented = info.getImplements();
     	assertNotNull(implemented);
     	assertEquals(2, implemented.size());
-    	assertTrue(implemented.contains("II"));
-    	assertTrue(implemented.contains("IJ"));
+    	assertTrue(implemented.contains("java.lang.Runnable"));
+    	assertTrue(implemented.contains("java.lang.Iterable"));
+    }
+    
+    public void testValidClassInfo3() throws Exception
+    {
+        StringReader sr = new StringReader(
+                "interface A extends Runnable, Iterable {\n" +
+                "}\n");
+        ClassInfo info = InfoParser.parse(sr,
+                new ClassLoaderResolver(this.getClass().getClassLoader()), null);
+        List<String> implemented = info.getImplements();
+        assertNotNull(implemented);
+        assertEquals(2, implemented.size());
+        assertTrue(implemented.contains("java.lang.Runnable"));
+        assertTrue(implemented.contains("java.lang.Iterable"));
+        Selection extendsSel = info.getExtendsInsertSelection();
+        assertNotNull(extendsSel);
+        assertEquals(1, extendsSel.getLine());
+        assertEquals(39, extendsSel.getColumn());
     }
 
     /**
      * Test recognition of interfaces
      */
-    public void testValidClassInfo3() throws Exception
+    public void testValidClassInfo4() throws Exception
     {
-    	List<String> classes = new ArrayList<String>();
     	StringReader sr = new StringReader(
     			"interface A {}"
     	);
-    	ClassInfo info = ClassParser.parse(sr, classes);
+    	ClassInfo info = InfoParser.parse(sr, null, null);
     	assertTrue(info.isInterface());
     }
 
     /**
      * Test recognition of enumerations
      */
-    public void testValidClassInfo4() throws Exception
+    public void testValidClassInfo5() throws Exception
     {
-    	List<String> classes = new ArrayList<String>();
     	StringReader sr = new StringReader(
-    			"enum A { monday, tuesday, wednesday }"
+    			"enum A { monday { public int getAnInt() { return 3;} }, tuesday() {}, wednesday }"
     	);
-    	ClassInfo info = ClassParser.parse(sr, classes);
+    	ClassInfo info = InfoParser.parse(sr, null, null);
+    	assertNotNull(info);
     	assertTrue(info.isEnum());
     }
     
     public void testMultiDimensionalArrayParam() throws Exception
     {
         File file = getFile("I.dat");
-        List<String> packageClasses = new ArrayList<String>();
-        ClassInfo info = ClassParser.parse(file, packageClasses);
+        ClassInfo info = InfoParser.parse(file);
         
         // Check that comment is created with parameter names
         Properties comments = info.getComments();
         
-        boolean commentFound = false;
         String wantedComment = "void method(int[][])";
-        for (int commentNum = 0; ; commentNum++) {
-            String comment = comments.getProperty("comment" + commentNum + ".target");
-            if (comment == null) {
-                break;
-            }
-            if (comment.equals(wantedComment)) {
-                String paramNames = comments.getProperty("comment" + commentNum + ".params");
-                assertEquals(paramNames, "args");
-                commentFound = true;
-            }
-        }
+        int commentNum = findTarget(comments, wantedComment);
+        assertTrue(commentNum != -1);
+        String paramNames = comments.getProperty("comment" + commentNum + ".params");
+        assertEquals(paramNames, "args");
+    }
+    
+    public void testCommentExtraction() throws Exception
+    {
+        String aSrc = "class A {\n"
+            + "  void method1(int [] a) { }\n"
+            + "  void method2(int a[]) { }\n"
+            + "  void method3(String [] a) { }\n"
+            + "}\n";
         
-        assertTrue(commentFound);
+        ClassInfo info = InfoParser.parse(new StringReader(aSrc), new ClassLoaderResolver(getClass().getClassLoader()), null);
+        Properties comments = info.getComments();
+        assertTrue(findTarget(comments, "void method1(int[])") != -1);
+        assertTrue(findTarget(comments, "void method2(int[])") != -1);
+        assertTrue(findTarget(comments, "void method3(java.lang.String[])") != -1);
+    }
+
+    public void testCommentExtraction2() throws Exception
+    {
+        String aSrc = "class A<T> {\n"
+            + "  void method1(T [] a) { }\n"
+            + "  <U> void method2(U a[]) { }\n"
+            + "}\n";
+        
+        ClassInfo info = InfoParser.parse(new StringReader(aSrc), new ClassLoaderResolver(getClass().getClassLoader()), null);
+        Properties comments = info.getComments();
+        assertTrue(findTarget(comments, "void method1(java.lang.Object[])") != -1);
+        assertTrue(findTarget(comments, "void method2(java.lang.Object[])") != -1);
+    }
+
+    public void testMultipleInterfaceExtends() throws Exception
+    {
+        String aSrc = "interface A extends B, C { }";
+        
+        ClassInfo info = InfoParser.parse(new StringReader(aSrc), null, null);
+        assertNotNull(info);
+    }
+    
+    private ParsedCUNode cuForSource(String sourceCode, EntityResolver resolver)
+    {
+        MoeSyntaxDocument document = new MoeSyntaxDocument(resolver);
+        document.enableParser(true);
+        try {
+            document.insertString(0, sourceCode, null);
+        }
+        catch (BadLocationException ble) {}
+        return document.getParser();
+    }
+    
+    public void testInterfaceSelections()
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "");
+        ter.addCompilationUnit("", cuForSource("interface I {}", pkgr));
+        //ter.addCompilationUnit("", cuForSource("interface II extends I {}", pkgr));
+        ter.addCompilationUnit("", cuForSource("interface J {}", pkgr));
+        //ter.addCompilationUnit("", cuForSource("interface JJ extends I, J {}", pkgr));
+
+        String IIsrc = "interface II extends I { public void sampleMethod(); }";
+        ClassInfo info = InfoParser.parse(new StringReader(IIsrc), pkgr, "");
+        
+        List<Selection> isels = info.getInterfaceSelections();
+        assertEquals(2, isels.size());
+        assertEquals(14, isels.get(0).getColumn());
+        assertEquals(22, isels.get(1).getColumn());
+        
+        String JJsrc = "interface JJ extends I, J { public void sampleMethod(); }";
+        info = InfoParser.parse(new StringReader(JJsrc), pkgr, "");
+        isels = info.getInterfaceSelections();
+        assertEquals(4, isels.size());
+        assertEquals(14, isels.get(0).getColumn());  // "extends"
+        assertEquals(22, isels.get(1).getColumn());  // "I"
+        assertEquals(23, isels.get(2).getColumn());  // ","
+        assertEquals(25, isels.get(3).getColumn());  // "J"
     }
     
     public void testDependencyAnalysis()
         throws Exception
     {
-        List classes = new ArrayList();
-        classes.add("I");
-        classes.add("J");
-        classes.add("K");
-        classes.add("L");
-        classes.add("M");
-        ClassInfo info = ClassParser.parse(getFile("H.dat"), classes);
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "");
+        ter.addCompilationUnit("", cuForSource("class I {}", pkgr));
+        ter.addCompilationUnit("", cuForSource("class J<T> {}", pkgr));
+        ter.addCompilationUnit("", cuForSource("class K {}", pkgr));
+        ter.addCompilationUnit("", cuForSource("class L {}", pkgr));
+        ter.addCompilationUnit("", cuForSource("class M {}", pkgr));
         
-        List used = info.getUsed();
+        FileInputStream fis = new FileInputStream(getFile("H.dat"));
+        ClassInfo info = InfoParser.parse(new InputStreamReader(fis), pkgr, "");
+        
+        List<String> used = info.getUsed();
         assertTrue(used.contains("I")); 
         assertTrue(used.contains("J")); 
         assertTrue(used.contains("K")); 
@@ -355,8 +473,11 @@ public class BasicParseTest extends junit.framework.TestCase
      */
     public void testDependencyAnalysis2() throws Exception
     {
-    	List<String> classes = new ArrayList<String>();
-    	classes.add("I");
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        ter.addCompilationUnit("", cuForSource("class I {}", ter));
     	StringReader sr = new StringReader(
     			"class A {\n" +
     			"  void someMethod() {\n" +
@@ -365,10 +486,272 @@ public class BasicParseTest extends junit.framework.TestCase
     			"  class I { }\n" +
     			"}\n"
     	);
-    	ClassInfo info = ClassParser.parse(sr, classes);
+    	ClassInfo info = InfoParser.parse(sr, null, null);
     	List<String> used = info.getUsed();
     	
     	assertFalse(used.contains("I"));
     }
 
+    /**
+     * Test loop iterator variable declaration dependency
+     */
+    public void testDependencyAnalysis3() throws Exception
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "");
+        ter.addCompilationUnit("", cuForSource("class I {}", pkgr));
+        ter.addCompilationUnit("", cuForSource("class JJ { public static I someMethod() { return null; } }", pkgr));
+        
+        StringReader sr = new StringReader(
+                        "class A {\n" +
+                        "  void someMethod() {\n" +
+                        "    for(I ii = JJ.someMethod(); ;) ;\n" +
+                        "  }\n" +
+                        "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "");
+        List<String> used = info.getUsed();
+        
+        assertTrue(used.contains("I"));
+    }
+    
+    /**
+     * Test reference to class via static method call
+     */
+    public void testDependencyAnalysis4() throws Exception
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "");
+        ter.addCompilationUnit("", cuForSource("class I {}", pkgr));
+        ter.addCompilationUnit("", cuForSource("class JJ { public static I someMethod() { return null; } }", pkgr));
+        
+        StringReader sr = new StringReader(
+                        "class A {\n" +
+                        "  void someMethod() {\n" +
+                        "    for(I ii = JJ.someMethod(); ;) ;\n" +
+                        "  }\n" +
+                        "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "");
+        List<String> used = info.getUsed();
+        
+        assertTrue(used.contains("JJ"));
+    }
+    
+    /**
+     * Test that type parameters are recognized and that they shadow classes with the same name
+     */
+    public void testDependencyAnalysis5() throws Exception
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        ter.addCompilationUnit("", cuForSource("class T {}", ter));
+        
+        StringReader sr = new StringReader(
+                        "class A<T> {\n" +
+                        "  public T someVar;" +
+                        "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, ter, "");
+        List<String> used = info.getUsed();
+        
+        assertFalse(used.contains("T"));
+    }
+
+    /**
+     * Test dependency analysis within a named package
+     */
+    public void testDependencyAnalysis6() throws Exception
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "testpkg");
+        ter.addCompilationUnit("testpkg", cuForSource("package testpkg; class N {}", pkgr));
+        
+        StringReader sr = new StringReader(
+                        "package testpkg;" +
+                        "class A {\n" +
+                        "  public N someVar;" +
+                        "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "testpkg");
+        List<String> used = info.getUsed();
+        
+        assertTrue(used.contains("N"));
+    }
+
+    /**
+     * Test dependency analysis handles qualified names
+     */
+    public void testDependencyAnalysis7() throws Exception
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "testpkg");
+        PackageResolver pkgmr = new PackageResolver(ter, "otherpkg");
+        ter.addCompilationUnit("testpkg", cuForSource("package testpkg; class N {}", pkgr));
+        ter.addCompilationUnit("otherpkg", cuForSource("package otherpkg; class M {}", pkgmr));
+        
+        StringReader sr = new StringReader(
+                        "package testpkg;" +
+                        "class A {\n" +
+                        "  public testpkg.N someVar;" +
+                        "  public otherpkg.M otherVar;" +
+                        "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "testpkg");
+        List<String> used = info.getUsed();
+        
+        assertTrue(used.contains("N"));
+        assertFalse(used.contains("M"));
+    }
+    
+    /**
+     * Test that an imported class shadows another class in the same package.
+     */
+    public void testDependencyAnalysis8() throws Exception
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        ter.addCompilationUnit("testpkg", cuForSource("class N {}", ter));
+        ter.addCompilationUnit("otherpkg", cuForSource("class N {}", ter));
+        
+        StringReader sr = new StringReader(
+                        "package testpkg;" +
+                        "import otherpkg.N;" +
+                        "class A {\n" +
+                        "  public N someVar;" +
+                        "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, ter, "testpkg");
+        List<String> used = info.getUsed();
+        
+        assertFalse(used.contains("N"));
+    }
+
+    /**
+     * Test reference to class via static value reference
+     */
+    public void testDependencyAnalysis9() throws Exception
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "");
+        ter.addCompilationUnit("", cuForSource("class I { public static int xyz = 3; }", pkgr));
+        
+        StringReader sr = new StringReader(
+                        "class A {\n" +
+                        "  int n = I.xyz;" +
+                        "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "");
+        List<String> used = info.getUsed();
+        
+        assertTrue(used.contains("I"));
+    }
+    
+    /**
+     * Test that a type argument generates a dependency.
+     */
+    public void testDependencyAnalysis10()
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "");
+        ter.addCompilationUnit("", cuForSource("class I { }", pkgr));
+
+        StringReader sr = new StringReader(
+                "import java.util.List;" +
+                "class A {\n" +
+                "  List<I> list;" +
+                "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "");
+        List<String> used = info.getUsed();
+
+        assertTrue(used.contains("I"));
+    }
+
+    /**
+     * Test that a type parameter bound generates a dependency.
+     */
+    public void testDependencyAnalysis11()
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "");
+        ter.addCompilationUnit("", cuForSource("class I { }", pkgr));
+
+        StringReader sr = new StringReader(
+                "class A<T extends I> {\n" +
+                "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "");
+        List<String> used = info.getUsed();
+
+        assertTrue(used.contains("I"));
+    }
+    
+    public void testDependencyAnalysis12()
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "testpkg");
+        ter.addCompilationUnit("testpkg", cuForSource("package testpkg; class I { }", pkgr));
+        ter.addCompilationUnit("testpkg", cuForSource("package testpkg; class J { }", pkgr));
+
+        StringReader sr = new StringReader(
+                "package testpkg;" +
+                "class A {\n" +
+                "  Class<?> cc = I.class;" +
+                "  Class<?> cc2 = testpkg.J.class;" +
+                "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "testpkg");
+        List<String> used = info.getUsed();
+
+        assertTrue(used.contains("I"));
+        assertTrue(used.contains("J"));
+    }
+    
+    public void testClassModifiers()
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "");
+
+        StringReader sr = new StringReader(
+                "abstract class A {\n" +
+                "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "");
+        assertTrue(info.isAbstract());
+        assertFalse(info.isInterface());
+        assertFalse(info.isApplet());
+        assertFalse(info.isEnum());
+    }
 }

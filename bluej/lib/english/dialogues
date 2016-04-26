@@ -15,11 +15,6 @@ An error occurred in a file for which the
 source cannot be found.
 class: source line number:
 
-system-exit
-The method finished through an explicit
-"exit" instruction. No result was
-returned. The exit code is:
-
 no-help
 No help available for this message.
 Please mail the text of the error message
@@ -87,11 +82,6 @@ error-open-source
 Cannot open the source
 of this class.
 
-error-writing-readme
-The README file for this project could not be
-updated to add the main class information.
-There was an error changing this file.
-
 error-writing-jar
 The jar file could not be written correctly.
 (Check the file system for access rights and
@@ -105,10 +95,10 @@ Cancel
 null
 
 invalid-class-name
-Invalid Class Name.
+Invalid class name.
 
 invalid-package-name
-Invalid Package Name.
+Invalid package name.
 
 must-be-identifier
 The name is not valid. It
@@ -134,7 +124,7 @@ does not exist.
 
 cannot-import
 Cannot import file. The file must
-be a Java source file (it's name
+be a Java source file (its name
 must end in ".java").
 
 docdir-blocked-by-file
@@ -170,7 +160,7 @@ If this message appears again you should check the log file
 with the error messages from Javadoc:
 
 severe-doc-trouble
-An exception occured during the call
+An exception occurred during the call
 to the external documentation tool.
 
 no-java-sources-found
@@ -182,8 +172,28 @@ A class or package with this name already exists
 in this project. You cannot have two
 classes or packages with the same name.
 
+class-library-conflict
+A class with this name already exists in the library
+"$".
+If you create this class, you will be able to
+edit and compile it, but not call its methods.
+Cancel
+Continue Anyway
+null
+
+compile-class-library-conflict
+A class with this name already exists in the library
+"$".
+You are able to edit and compile your class, but 
+calling methods will execute code from the library class.
+
+windows-reserved-class-name
+The chosen class name cannot be used, because it
+conflicts with a reserved filename on some operating
+systems.
+
 error-in-import
-An error occured during the attempt to
+An error occurred during the attempt to
 import the file. Check access rights and
 disk space.
 
@@ -382,16 +392,10 @@ null
 error-create-vm
 BlueJ was unable to create a virtual machine (VM) to execute projects.
 This is a serious problem - you will not be able to create objects 
-or execute methods without solving it.
-Usually, this problem is caused by specific network settings on your
-machine. BlueJ uses TCP/IP and sockets to achieve the creation of the 
-VM. The most common cause for this is an overly restrictive firewall that
-does not allow connections from your local host. Switch off the firewall
-(if you have one) to test this. If this solves it, try to find a firewall 
-setting that allows connections from localhost.
-Other possible causes are incorrect network settings. Check that TCP/IP
-is set up correctly check other networking parameters.
-If problems persist, ask for help (see http://www.bluej.org/help/ask-help.html).
+or execute methods without solving it. Often this is caused by overly
+restrictive firewall settings.
+Please see <http://www.bluej.org/help/faq.html#socket-exc> for more
+information.
 
 project-is-readonly
 The project is read-only. You will not be able to create objects
@@ -518,6 +522,11 @@ Keep my version
 Use repository version
 null
 
+team-error-saving-project
+An error occurred when trying to save the project files:
+	$
+Committing or updating may have unexpected results.
+
 not-all-compiled
 Not all classes in this project are compiled. To deploy the MIDlet
 suite in this project you must compile all classes in the project.
@@ -532,7 +541,11 @@ null
 stuck-at-breakpoint
 Your program is already running, and stopped at a breakpoint.
 You cannot start another execution while the current one is still
-active.
-    
-Use the debugger Controls to either continue or terminate the
-current execution first.
+active. Use the debugger Controls to either continue or terminate
+the current execution first.
+
+already-executing
+Your program is already running. You cannot start another
+execution (or inspect a class) until the execution finishes. If
+the program is stuck in a loop, you can use the debugger to
+terminate it.

@@ -7,6 +7,8 @@ greenfoot.quit=Quit
 greenfoot.continue=Continue
 greenfoot.cancel=Cancel
 
+greenfoot.launchFailed=Greenfoot failed to launch. For help go to http://greenfoot.org/programming/support/index.html
+
 # About dialog
 about.title=About Greenfoot
 about.moreInfo=More information can be found at www.greenfoot.org
@@ -26,12 +28,12 @@ project.version.older.part2=). The scenario will be updated to the current versi
 #Info about changes in this new version of the API that might break existing scenarios.
 project.version.older.part3=). The following changes to the Greenfoot API might break this scenario:
 
-project.version.changes.1=2.0.0 The methods 'stopSimulation', 'startSimulation' and 'setSimulationSpeed' in the Greenfoot class have been renamed to 'start', 'stop' and 'setSpeed'. 
-project.version.changes.2=2.0.0 Actor's methods 'getWidth' and 'getHeight' have been removed. Use 'getImage().getWidth()' and 'getImage().getHeight()' instead.
-project.version.changes.3=2.0.0 Actor's method 'getObjectsInRange' now uses cells instead of pixels as the unit for the range. 
-project.version.changes.4=2.0.0 Greenfoot has been made case sensitive when dealing with sound and image files.
-project.version.changes.5=2.0.0 World's methods 'setTiled' and 'getTiled' have been removed.
-project.version.changes.6=2.0.0 World's 'getBackground' now returns an image that is the size of the entire background.
+project.version.changes.1=1.5.6 The methods 'stopSimulation', 'startSimulation' and 'setSimulationSpeed' in the Greenfoot class have been renamed to 'start', 'stop' and 'setSpeed'. 
+project.version.changes.2=1.5.6 Actor's methods 'getWidth' and 'getHeight' have been removed. Use 'getImage().getWidth()' and 'getImage().getHeight()' instead.
+project.version.changes.3=1.5.6 Actor's method 'getObjectsInRange' now uses cells instead of pixels as the unit for the range. 
+project.version.changes.4=1.5.6 Greenfoot has been made case sensitive when dealing with sound and image files.
+project.version.changes.5=1.5.6 World's methods 'setTiled' and 'getTiled' have been removed.
+project.version.changes.6=1.5.6 World's 'getBackground' now returns an image that is the size of the entire background.
 
 project.version.newer.part1=The scenario being opened has been written using a newer version of Greenfoot (API version 
 # project version inserted here by Greenfoot
@@ -40,9 +42,10 @@ project.close=Close
 
 # Actions
 greenfoot.about=About Greenfoot...
-compile.all=Compile all
+compile.all=Compile
 compile.class=Compile
 edit.class=Open editor
+edit.images=Scenario Images...
 new.class=New Class...
 new.project=New...
 new.subclass=New subclass...
@@ -60,12 +63,12 @@ select.image=Set image...
 show.readme=Scenario Information
 pause.simulation=Pause
 show.apidoc=Open Documentation
+save.world=Save the World
 
 # Remove class confirmation
 remove.confirm.title=Confirm removal of class
 remove.confirm.text1=About to remove class
 remove.confirm.text2=Continue?
-
 
 # Save project copy dialog
 project.savecopy.title=Save Scenario Copy
@@ -90,6 +93,7 @@ export.dialog.title=Greenfoot: Export
 export.dialog.continue=Export
 export.dialog.continue.update=(update)
 export.lock.label=Lock scenario
+export.snapshot.label=Keep existing screenshot:
 export.lock.description=Prevents: Speed change, Act-button, and changing of actor locations while paused.
 export.publish.help=Publish the scenario to:
 export.publish.info=Information for display on
@@ -102,6 +106,7 @@ export.publish.tags.popular=Popular tags:
 export.publish.tags.loading=loading...
 export.publish.shortDescription=One-line description:
 export.publish.longDescription=Longer description:
+export.publish.update=Changes in update:
 export.publish.url=Your own page (URL):
 export.publish.login=Login
 export.publish.username=Username:
@@ -123,6 +128,11 @@ publish.event.status=Status:
 
 world.handlerDelegate.inspect=Inspect
 world.handlerDelegate.remove=Remove
+
+record.method.comment1=Prepare the world for the start of the program. That is: create the initial
+record.method.comment2=objects and add them to the world.
+
+record.saved.message=Saved world setup in prepare() method.  
 
 greenfoot.utilDelegate.newScenario=New Scenario
 
@@ -154,18 +164,40 @@ imagelib.newClass=New class
 imagelib.projectImages=Scenario images:
 imagelib.categories=Image Categories:
 imagelib.images=Library images:
-imagelib.browse.button=Browse for more images ...
+imagelib.browse.button=Import from file...
+imagelib.create.button=Create new image...
+imagelib.edit=Edit
+imagelib.edit.tooltip=Edit the selected image by opening it in the image editor.
+imagelib.duplicate=Duplicate
+imagelib.duplicate.tooltip=Duplicate the selected image.
+imagelib.delete=Delete
+imagelib.delete.tooltip=Delete the selected image.
+imagelib.import.button=Import from library...
+imagelib.create.tooltip=Create a new image with a default size and name, and open it in the image editor.
 imagelib.className=New class name:
-imagelib.help.autoImage=Click Ok to accept the auto-generated image, or select an image from the list below.
 imagelib.help.selectImage=Select an image for the class from the list below.
 imagelib.newClass.image=New class image:
-imagelib.image.autoGenerated=(auto-generated)
 imagelib.file.noPreview=No preview
 imagelib.choose.button=Select
 imagelib.write.exists.part1=The file \"
 # Greenfoot inserts filename here
 imagelib.write.exists.part2=\" already exists. Do you want to overwrite it?
 imagelib.write.exists.title=Confirm file replace
+imagelib.greenfoot.frame.title=Greenfoot Library Images
+imagelib.scenario.frame.title=Scenario Images
+imagelib.delete.confirm.title=Confirm Deletion
+imagelib.delete.confirm.text=Are you sure you want to delete 
+imagelib.image.invalid.title=Invalid Image
+imagelib.image.invalid.text=is not a valid image.
+imagelib.image.unsupportedformat.title=Unsupported Format
+imagelib.image.unsupportedformat.text=is not supported on your machine.  Please choose another and try again.
+imagelib.rename.exists.text=Cannot rename file because a file with that name already exists.
+imagelib.rename.exists.title=Rename Failed
+imagelib.new.image.title=New Image
+imagelib.new.image.name=Name:
+imagelib.new.image.width=Width:
+imagelib.new.image.height=Height:  
+imagelib.new.image.type=Type:
 
 scenario.viewer.appletInfo=Applet generated with Greenfoot (www.greenfoot.org). Scenario name:
 
@@ -188,6 +220,28 @@ browser.border.world=World classes
 browser.border.actors=Actor classes
 browser.border.others=Other classes
 
+# Sound Recorder
+
+soundRecorder.title=Sound Recorder
+soundRecorder.record=Record
+soundRecorder.stopRecord=Stop recording
+soundRecorder.trim=Trim to selection
+soundRecorder.play=Play
+soundRecorder.playSelection=Play selection
+soundRecorder.stopPlay=Stop playing
+soundRecorder.filename=Filename
+soundRecorder.save=Save
+soundRecorder.done=Close
+soundRecorder.saved=Saved
+soundRecorder.notSaved=Not Saved
+soundRecorder.overwrite.part1=The file \"
+soundRecorder.overwrite.part2=\" already exists.  Do you want to overwrite?
+soundRecorder.overwrite.title=Confirm file overwrite
+soundRecorder.overwrite=Overwrite
+soundRecorder.closeAnyway=Close anyway
+soundRecorder.closeTitle=Close without saving
+soundRecorder.closeQuestion=Sound has been changed since you last saved.  If you close the sound recorder, these changes will be lost.
+
 # Menus
 
 menu.openRecent=Open recent
@@ -197,6 +251,10 @@ menu.scenario=Scenario
 menu.edit=Edit
 
 menu.controls=Controls
+
+menu.debugger=Show Debugger
+
+menu.soundRecorder=Show Sound Recorder
 
 menu.help=Help
 menu.help.about=About Greenfoot...
@@ -215,4 +273,14 @@ properties.heading.greenfoot=Greenfoot properties. Settings in this file overrid
 
 # Message to display if there is no default world constructor
 world.missing.constructor.title=Error when instantiating World.
-world.missing.constructor.msg=It was not possible to instantiate a new world. The reason for this is usually that the world does not have a public default constructor (a constructor that takes no parameters). 
+world.missing.constructor.msg=It was not possible to instantiate a new world. The reason for this is usually that the world does not have a public default constructor (a constructor that takes no parameters).
+
+# Message to display if a file cannot be created
+greenfoot.cannotCreateClass=The class file could not be created. Check that the project folder is writable.
+greenfoot.cannotCreateProject=The project could not be created. Check that the containing folder is writable.
+
+# General error messages
+greenfoot.cannotFindAPIDocumentation=The API documentation seems to be missing, or unreadable.
+
+# Message for sound related errors
+sound-line-unavailable=Cannot get access to the sound card. If you have a sound \ncard installed, check your system settings, and close down \nany other programs that might be using the sound card.

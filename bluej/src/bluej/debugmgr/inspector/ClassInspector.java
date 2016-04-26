@@ -22,7 +22,10 @@
 package bluej.debugmgr.inspector;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.EventQueue;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.Insets;
 
 import javax.swing.*;
@@ -32,16 +35,19 @@ import bluej.BlueJTheme;
 import bluej.Config;
 import bluej.debugger.DebuggerClass;
 import bluej.pkgmgr.Package;
+import bluej.pkgmgr.target.role.StdClassRole;
+import bluej.prefmgr.PrefMgr;
 import bluej.testmgr.record.InvokerRecord;
 import bluej.utility.DialogManager;
 import bluej.utility.JavaNames;
+import java.awt.Dimension;
 
 /**
  * A window that displays the static fields in an class.
  * 
  * @author Michael Kolling
  * @author Poul Henriksen
- * @version $Id: ClassInspector.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: ClassInspector.java 7686 2010-05-22 12:01:21Z mik $
  */
 public class ClassInspector extends Inspector
 {
@@ -56,6 +62,7 @@ public class ClassInspector extends Inspector
     protected final static String INTERFACE_INSPECT_TITLE = Config.getString("debugger.inspector.interface.title");
     protected final static String INTERFACE_NAME_LABEL = Config.getString("debugger.inspector.interface.nameLabel");
 
+    protected final static String noFieldsMsg = Config.getString("debugger.inspector.class.noFields");
     
     // === instance variables ===
 
@@ -69,7 +76,7 @@ public class ClassInspector extends Inspector
      */
     public ClassInspector(DebuggerClass clss, InspectorManager inspectorManager, Package pkg, InvokerRecord ir, final JFrame parent)
     {
-        super(inspectorManager, pkg, ir);
+        super(inspectorManager, pkg, ir, new Color(249,230,207));
 
         myClass = clss;
 
@@ -85,6 +92,7 @@ public class ClassInspector extends Inspector
                 else {
                     DialogManager.centreWindow(insp, parent);
                 }
+                installListenersForMoveDrag();
             }
         });
     }
@@ -94,6 +102,8 @@ public class ClassInspector extends Inspector
      */
     protected void makeFrame()
     {
+        setUndecorated(true);
+        
         String className = JavaNames.stripPrefix(myClass.getName());
         String headerString = null;
         if(myClass.isEnum()) {
@@ -107,26 +117,35 @@ public class ClassInspector extends Inspector
             headerString = CLASS_NAME_LABEL + " " + className;
         }
         
-        setBorder(BorderFactory.createCompoundBorder(BlueJTheme.getShadowBorder(), BorderFactory.createEmptyBorder(10, 10,
-                10, 10)));
-
         // Create the header
         JComponent header = new JPanel();
+        header.setOpaque(false);
         header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));        
         JLabel headerLabel = new JLabel(headerString);
 
         headerLabel.setAlignmentX(0.5f);
         header.add(headerLabel);
         header.add(Box.createVerticalStrut(BlueJTheme.generalSpacingWidth));
-        header.add(new JSeparator());
+        JSeparator sep = new JSeparator();
+        sep.setForeground(new Color(217, 175, 150));
+        sep.setBackground(new Color(0, 0, 0, 0));
+        header.add(sep);
 
         // Create the main panel (field list, Get/Inspect buttons)
 
         JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
         mainPanel.setOpaque(false);
 
-        JScrollPane scrollPane = createFieldListScrollPane();
-        mainPanel.add(scrollPane, BorderLayout.CENTER);
+        if (getListData().length != 0) {
+            JScrollPane scrollPane = createFieldListScrollPane();
+            mainPanel.add(scrollPane, BorderLayout.CENTER);
+        } else {
+            JLabel lab = new JLabel("  " + noFieldsMsg);
+            lab.setPreferredSize(new Dimension(200, 30));
+            lab.setFont(PrefMgr.getStandardFont().deriveFont(20.0f));
+            lab.setForeground(new Color(160, 120, 77));
+            mainPanel.add(lab);
+        }
 
         JPanel inspectAndGetButtons = createInspectAndGetButtons();
         mainPanel.add(inspectAndGetButtons, BorderLayout.EAST);
@@ -150,7 +169,19 @@ public class ClassInspector extends Inspector
         bottomPanel.add(buttonPanel);
 
         // add the components
-        JPanel contentPane = (JPanel) getContentPane();
+        JPanel contentPane = new JPanel() {
+            protected void paintComponent(Graphics g)
+            {
+                super.paintComponent(g);
+                Graphics2D g2d = (Graphics2D)g;
+                g2d.setPaint(new StdClassRole().getBackgroundPaint(getWidth(), getHeight()));
+                g2d.fillRect(0, 0, getWidth(), getHeight());
+                g2d.setColor(Color.BLACK);
+                g2d.drawRect(0, 0, getWidth()-1, getHeight()-1);
+            }
+        };
+        setContentPane(contentPane);
+        contentPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         contentPane.setLayout(new BorderLayout());
         contentPane.add(header, BorderLayout.NORTH);
         contentPane.add(mainPanel, BorderLayout.CENTER);

@@ -21,16 +21,22 @@
  */
 package bluej.terminal;
 
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.io.IOException;
 import javax.swing.JTextArea;
 import javax.swing.text.BadLocationException;
 
 import bluej.utility.Debug;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
 
 /**
  * A customised text area for use in the BlueJ text terminal.
  *
  * @author  Michael Kolling
- * @version $Id: TermTextArea.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: TermTextArea.java 7054 2010-01-27 03:58:25Z davmac $
  */
 public final class TermTextArea extends JTextArea
 {
@@ -38,12 +44,17 @@ public final class TermTextArea extends JTextArea
 
     private boolean unlimitedBuffer = false;
 
+    private InputBuffer buffer;
+    private Terminal terminal;
+
     /**
      * Create a new text area with given size.
      */
-    public TermTextArea(int rows, int columns)
+    public TermTextArea(int rows, int columns, InputBuffer buffer, Terminal terminal)
     {
         super(rows, columns);
+        this.buffer = buffer;
+        this.terminal = terminal;
     }
 
     public void setUnlimitedBuffering(boolean arg)
@@ -51,6 +62,7 @@ public final class TermTextArea extends JTextArea
         unlimitedBuffer = arg;
     }
 
+    @Override
     public void append(String s)
     {
         super.append(s);
@@ -66,6 +78,44 @@ public final class TermTextArea extends JTextArea
                     Debug.reportError("bad location in terminal operation");
                 }
             }
+        }
+    }
+
+    /*
+     * Overrides the default method to stop it append to the JTextArea straight
+     * away, instead we add the resultant string to our pasteBuffer for use
+     * elsewhere
+     * @see Terminal.keyTyped(KeyEvent event)
+     */
+    @Override
+    public void paste()
+    {
+        if (! terminal.checkActive()) {
+            return;
+        }
+        
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+        Transferable contents = clipboard.getContents(null);
+        if (contents.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+            String result = null;
+            try {
+                result = (String) contents.getTransferData(DataFlavor.stringFlavor);
+            } catch (UnsupportedFlavorException ex) {
+                Debug.message(ex.getMessage());
+            } catch (IOException ex) {
+                Debug.message(ex.getMessage());
+            }
+            
+            if (result != null) {
+                for (char ch : result.toCharArray()) {
+                    if (buffer.putChar(ch)) {
+                        terminal.writeToTerminal(String.valueOf(ch));
+                    }
+                }
+            }
+        } else {
+            // if it isn't a string, let the usual paint method handle it.
+            super.paste();
         }
     }
 }

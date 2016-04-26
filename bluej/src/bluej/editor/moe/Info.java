@@ -19,14 +19,6 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-// Copyright (c) 2000, 2005 BlueJ Group, Deakin University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html 
-// Any queries should be directed to Michael Kolling mik@bluej.org
-
 package bluej.editor.moe;
 
 import bluej.Config;
@@ -47,7 +39,7 @@ import javax.swing.border.EmptyBorder;
 public final class Info extends JPanel
     implements ActionListener
 {
-    static final ImageIcon helpImage = Config.getImageAsIcon("image.editor.help");
+    static final ImageIcon helpImage = Config.getFixedImageAsIcon("help.png");
 
     public static Font infoFont = new Font("SansSerif", Font.BOLD, 10);
 
@@ -76,6 +68,7 @@ public final class Info extends JPanel
         line2 = new JLabel();
         body.add(line1);
         body.add(line2);
+        body.setOpaque(false);
         add(body, BorderLayout.CENTER);
 
         helpButton = new JButton(helpImage);

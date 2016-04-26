@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -33,8 +33,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Properties;
 
 
@@ -60,9 +58,6 @@ public class ProjectProperties
 
     /** Reference to the file that holds the properties */
     private File propsFile;
-    
-    /** Holds images for classes. Avoids loading the same image twice */
-    public Map<String, GreenfootImage> classImages = new HashMap<String, GreenfootImage>();
 
     /**
      * Creates a new properties instance for the project in the given directory.
@@ -218,14 +213,12 @@ public class ProjectProperties
     }
     
     /**
-     * Gets a boolean property as in Java's Properties class. Thread-safe.
+     * Gets a boolean property as in Java's Properties class. 
+     * Allows the specification of a default value. Thread-safe.
      */
-    public synchronized boolean getBoolean(String key) throws NullPointerException
+    public synchronized boolean getBoolean(String key, String defaultValue)
     {
-        String bool = properties.getProperty(key);
-        if (bool == null) {
-            throw new NullPointerException("Key does not exist: " + key);
-        }
+        String bool = properties.getProperty(key, defaultValue);
         return Boolean.parseBoolean(bool);
     }
     
@@ -236,59 +229,6 @@ public class ProjectProperties
     public synchronized String removeProperty(String key)
     {
         return (String) properties.remove(key);
-    }
-
-    /**
-     * Gets an image for the given class. The images are cached to avoid loading
-     * images several times. This method is thread-safe.
-     * 
-     * @param className If it is a qualified name, the package is ignored.
-     *            Returns null, if there is no entry for this class in the
-     *            properties.
-     * @return The image.
-     */
-    public GreenfootImage getImage(String className)
-    {
-        className = GreenfootUtil.extractClassName(className);
-        
-        synchronized (classImages) {
-            GreenfootImage image = classImages.get(className);
-
-            if (image == null) {
-                // If it is the Actor class the image is always the same:
-                if (className.equals("Actor")) {
-                    image = new GreenfootImage(GreenfootUtil.getGreenfootLogoPath());
-                }
-                else {
-                    String imageName = getString("class." + className + ".image");
-                    if (imageName != null) {
-                        try {
-                            image = new GreenfootImage("images/" + imageName);
-                        }
-                        catch (IllegalArgumentException iae) {
-                            // This occurs if the image file doesn't exist anymore
-                        }
-                    }
-                }
-
-                if (image != null) {
-                    classImages.put(className, image);
-                }
-            }
-            return image;
-        }
-    }
-
-
-    /**
-     * Remove the cached version of an image for a particular class. This should be
-     * called when the image for the class is changed. Thread-safe.
-     */
-    public void removeCachedImage(String className)
-    {
-        synchronized (classImages) {
-            classImages.remove(className);
-        }
     }
 
 
@@ -314,4 +254,28 @@ public class ProjectProperties
         Version version = new Version(versionString);
         return version;
     }
+    
+    /**
+     * Gets an image for the given class. The images are cached to avoid loading
+     * images several times. This method is thread-safe.
+     * 
+     * @param className If it is a qualified name, the package is ignored.
+     *            Returns null, if there is no entry for this class in the
+     *            properties.
+     * @return The image.
+     */
+    public GreenfootImage getImage(String className)
+    {
+        return GreenfootUtil.getGreenfootImage(className, getString("class." + className + ".image"));
+    }
+    
+    /**
+     * Remove the cached version of an image for a particular class. This should be
+     * called when the image for the class is changed. Thread-safe.
+     */
+    public void removeCachedImage(String className)
+    {
+       GreenfootUtil.removeCachedImage(className);
+    }
+
 }

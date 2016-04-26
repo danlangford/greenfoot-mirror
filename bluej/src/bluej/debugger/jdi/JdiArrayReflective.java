@@ -31,10 +31,9 @@ import com.sun.jdi.VirtualMachine;
  * A proxy-type reflective for arrays.
  * 
  * @author Davin McCall
- * @version $Id: JdiArrayReflective.java 6215 2009-03-30 13:28:25Z polle $
  */
-public class JdiArrayReflective extends JdiReflective {
-
+public class JdiArrayReflective extends JdiReflective
+{
     private JavaType componentType;
     
     public JdiArrayReflective(JavaType t, ReferenceType srctype)
@@ -56,40 +55,7 @@ public class JdiArrayReflective extends JdiReflective {
     
     protected void checkLoaded()
     {
-        name = "[" + componentName();
+        name = "[" + componentType.arrayComponentName();
         super.checkLoaded();
-    }
-    
-    /**
-     * Get the component name, as it appears in the class name given to a
-     * classloader.
-     */
-    private String componentName()
-    {
-        if (componentType.typeIs(JavaType.JT_BOOLEAN))
-            return "Z";
-        if (componentType.typeIs(JavaType.JT_BYTE))
-            return "B";
-        if (componentType.typeIs(JavaType.JT_CHAR))
-            return "C";
-        if (componentType.typeIs(JavaType.JT_DOUBLE))
-            return "D";
-        if (componentType.typeIs(JavaType.JT_FLOAT))
-            return "F";
-        if (componentType.typeIs(JavaType.JT_INT))
-            return "I";
-        if (componentType.typeIs(JavaType.JT_LONG))
-            return "J";
-        if (componentType.typeIs(JavaType.JT_SHORT))
-            return "S";
-
-        if (componentType instanceof GenTypeArray) {
-            Reflective r = ((GenTypeArray) componentType).getReflective();
-            return r.getName();
-        }
-
-        // If we get to here, assume it's a class/interface type.
-        GenTypeClass gtc = (GenTypeClass) componentType;
-        return "L" + gtc.rawName() + ";";
     }
 }

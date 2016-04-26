@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -36,16 +36,15 @@ import java.util.*;
  * @see        BConstructor
  * @see        BMethod
  * @see        BField
- * @version    $Id: BObject.java 6215 2009-03-30 13:28:25Z polle $
- */
-
-/*
- * Author Clive Miller, University of Kent at Canterbury, 2002
- * Author Damiano Bolla, University of Kent at Canterbury 2003,2004
+ *
+ * @author Clive Miller, University of Kent at Canterbury, 2002
+ * @author Damiano Bolla, University of Kent at Canterbury 2003,2004
  */
 public class BObject
 {
     private ObjectWrapper objectWrapper;
+    
+    /** An identifier for the class of this object */
     private Identifier wrapperId;
 
 
@@ -123,12 +122,12 @@ public class BObject
             return;
         }
 
-        // No reational to add a null object, isn't it ?
+        // Not rational to add a null object, is it ?
         if (objectWrapper.getObject().isNullObject()) {
             return;
         }
 
-        // If you want you may set the instance name here. Othervise accept default
+        // If you want you may set the instance name here. Otherwise accept default
         if (instanceName != null) {
             objectWrapper.setName(instanceName);
         }
@@ -173,13 +172,16 @@ public class BObject
     public BClass getBClass()
              throws ProjectNotOpenException, PackageNotFoundException, ClassNotFoundException
     {
-        // Tis is to test if the Bobject is still valid
-        wrapperId.getJavaClass();
-
         // BClasses are retrieved from the BlueJ classTarget
         ClassTarget classTarget = wrapperId.getClassTarget();
         
-        // There is only one instance of BClass foer each ClassTarget
+        if (classTarget == null) {
+            // Not a project class; exists in a library or the Java runtime
+            wrapperId.getJavaClass(); // will throw ClassNotFoundException if not loadable
+            return BClass.getBClass(wrapperId);
+        }
+        
+        // There is only one instance of BClass for each ClassTarget
         return classTarget.getBClass();
     }
 
@@ -245,11 +247,11 @@ public class BObject
     }
 
 
-    private static HashMap primiMap;
+    private static HashMap<String,String> primiMap;
 
     static {
         // This will be executed once when this class is loaded
-        primiMap = new HashMap();
+        primiMap = new HashMap<String,String>();
         primiMap.put("boolean", "Z");
         primiMap.put("byte", "B");
         primiMap.put("short", "S");

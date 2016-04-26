@@ -19,18 +19,13 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-// Copyright (c) 2000, 2005 BlueJ Group, Deakin University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html 
-// Any queries should be directed to Michael Kolling mik@bluej.org
-
 package bluej.editor.moe;
 
-import java.awt.*;
-import javax.swing.*;
+import java.awt.Dimension;
+import java.awt.Rectangle;
+
+import javax.swing.JEditorPane;
+import javax.swing.border.EmptyBorder;
 
 /**
  * MoeJEditorPane - a variation of JEditorPane for Moe. The preferred size
@@ -38,7 +33,6 @@ import javax.swing.*;
  *
  * @author Michael Kolling
  */
-
 public final class MoeEditorPane extends JEditorPane
 {
     /**
@@ -47,25 +41,26 @@ public final class MoeEditorPane extends JEditorPane
     public MoeEditorPane()
     {
         super();
+        setBorder(new EmptyBorder(6, 6, 6, 0));
     }
     
-    /**
+    /*
      * Adjust this pane's preferred size to add the tag area.
      */
     public Dimension getPreferredSize() 
     {
         Dimension d = super.getPreferredSize();
-        d.width += BlueJSyntaxView.TAG_WIDTH + 8;  // bit of empty space looks nice
+        d.width += MoeSyntaxView.TAG_WIDTH + 8;  // bit of empty space looks nice
         return d;
     }
 
-    /**
+    /*
      * Make sure, when we are scrolling to follow the caret,
      * that we can see the tag area as well.
      */
     public void scrollRectToVisible(Rectangle rect)
     {
-        super.scrollRectToVisible(new Rectangle(rect.x - (BlueJSyntaxView.TAG_WIDTH + 4), rect.y,
-                                                rect.width + BlueJSyntaxView.TAG_WIDTH + 4, rect.height));
+        super.scrollRectToVisible(new Rectangle(rect.x - (MoeSyntaxView.TAG_WIDTH + 4), rect.y,
+                                                rect.width + MoeSyntaxView.TAG_WIDTH + 4, rect.height));
     }
 }

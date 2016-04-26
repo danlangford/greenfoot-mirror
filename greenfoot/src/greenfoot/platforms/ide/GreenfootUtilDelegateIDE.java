@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,10 +21,9 @@
  */
 package greenfoot.platforms.ide;
 
+import greenfoot.GreenfootImage;
 import greenfoot.platforms.GreenfootUtilDelegate;
-import greenfoot.util.FileChoosers;
 
-import java.awt.Component;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -35,14 +34,11 @@ import java.util.Hashtable;
 import bluej.Config;
 import bluej.runtime.ExecServer;
 import bluej.utility.BlueJFileReader;
-import bluej.utility.FileUtility;
 
 public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
 {
     /**
-     * 
      * Creates the skeleton for a new class
-     * 
      */
     public void createSkeleton(String className, String superClassName, File file, String templateFileName) throws IOException   {
         Dictionary<String, String> translations = new Hashtable<String, String>();
@@ -58,25 +54,10 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
         if(!template.canRead()) {
             template = Config.getDefaultLanguageFile(baseName);
         }
-        BlueJFileReader.translateFile(template, file, translations, Charset.forName("UTF-8"));
+        BlueJFileReader.translateFile(template, file, translations, Charset.forName("UTF-8"), Charset.defaultCharset());
         
     }
     
-    /**
-     * Brings up a file browser that lets the user select an existing Greenfoot scenario.
-     * 
-     * @return Returns a File pointing to the scenario directory, or null if none selected.
-     */
-    public File getScenarioFromFileBrowser(Component parent) {
-       return FileChoosers.getScenario(parent);
-    }    
-    
-    public String getNewProjectName(Component parent)
-    {
-        return FileUtility.getFileName(parent, Config.getString("greenfoot.utilDelegate.newScenario"), Config.getString("pkgmgr.newPkg.buttonLabel"), false, null, true);
-    }
-
-
     public URL getResource(String path) 
     {
         return ExecServer.getCurrentClassLoader().getResource(path);
@@ -91,5 +72,21 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
         return libDir.getAbsolutePath() + "/imagelib/other/greenfoot.png";        
     }
 
+    public boolean addCachedImage(String fileName, GreenfootImage image) 
+    { 
+        return false;
+    }
+
+    public GreenfootImage getCachedImage(String fileName)
+    { 
+        return null;
+    }
+
+    public void removeCachedImage(String fileName) { }
+
+    public boolean isNullCachedImage(String fileName)
+    {
+        return false;
+    }
 
 }

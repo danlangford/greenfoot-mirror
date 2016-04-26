@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,30 +21,35 @@
  */
 package greenfoot.sound;
 
+import greenfoot.core.WorldHandler;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
+import bluej.Config;
+import bluej.utility.DialogManager;
+
 /**
  * This class should be forwarded some of the common sound exceptions. It keeps
  * track of which type of exceptions has already been shown to the user, and
- * makes sure not to repeatedly show the same exception which would otherwise
- * be likely to happen. For instance, it is enough to tell the user once, if a
+ * makes sure not to repeatedly show the same exception which would otherwise be
+ * likely to happen. For instance, it is enough to tell the user once, if a
  * soundcard can't be found, not every time a sound is attempted to be played.
  * 
  * @author Poul Henriksen
  * 
  */
-public class SoundExceptionHandler 
+public class SoundExceptionHandler
 {
     // Whether we have handled certain exceptions. We use these flags to ensure
     // we only print an error message once to avoid flooding the error output.
     private static volatile boolean lineUnavailableHandled;
     private static volatile boolean illegalArgumentHandled;
     private static volatile boolean securityHandled;
-    
+    private static boolean mp3LibHandled;
 
     public static void handleUnsupportedAudioFileException(UnsupportedAudioFileException e, String filename)
     {
@@ -55,7 +60,7 @@ public class SoundExceptionHandler
     {
         throw new IllegalArgumentException("Could not find sound file: " + filename, e);
     }
-    
+
     public static void handleIOException(IOException e, String filename)
     {
         throw new IllegalArgumentException("Could not open sound file: " + filename, e);
@@ -64,12 +69,10 @@ public class SoundExceptionHandler
     public static void handleLineUnavailableException(Exception e)
     {
         // We only want to print this error message once.
-        if(! lineUnavailableHandled) {
+        if (!lineUnavailableHandled) {
             lineUnavailableHandled = true;
-            System.err.println("Cannot get access to the sound card. "
-                + "If you have a sound card installed, check your system settings, "
-                + "and close down any other programs that might be using the sound card.");
-            e.printStackTrace();
+            String errMsg = Config.getString("sound-line-unavailable");
+            DialogManager.showErrorText(WorldHandler.getInstance().getWorldCanvas(), errMsg);
         }
     }
 
@@ -95,11 +98,19 @@ public class SoundExceptionHandler
         }
     }
 
-	public static void handleInvalidMidiDataException(
-			InvalidMidiDataException e, String filename)
-	{
+    public static void handleInvalidMidiDataException(InvalidMidiDataException e, String filename)
+    {
         throw new IllegalArgumentException("Invalid data in MIDI file: " + filename, e);
-	}
+    }
 
-    
+    public static void handleMp3LibNotAvailable()
+    {
+        if (!mp3LibHandled) {
+            mp3LibHandled = true;
+            System.err.println("MP3 library not available." + " You will not be able to play any mp3 audio files."
+                    + " This is most likely happening because you are using a non-standard Greenfoot installation."
+                    + " To get the standard version, go to http://www.greenfoot.org");
+        }
+    }
+
 }

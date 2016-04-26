@@ -14,13 +14,11 @@
         <include name="lib/bluejext.jar" />
         <include name="lib/antlr.jar" />
         <include name="lib/junit.jar" />
-        <include name="lib/MRJ141Stubs.jar" />
+        <include name="lib/AppleJavaExtensions.jar" />
     	<include name="lib/commons-httpclient-3.1.jar" />
     	<include name="lib/commons-codec-1.3.jar" />
-    	<include name="lib/commons-logging-api-1.1.1.jar" />
-        <!-- TODO: Remove comment when we want to include GreenfootSound support               
+    	<include name="lib/commons-logging-api-1.1.1.jar" />               
     	<include name="lib/jl1.0.1.jar" />
-    	-->
         <include name="lib/bluej.defs" />
         <include name="lib/greenfoot.defs" />
         <include name="lib/moe.defs" />
@@ -106,7 +104,7 @@
         <!-- distribution jar, and stores its length in the        -->
         <!-- installer properties                                  -->
         <javac
-               executable="${build_java_home}/bin/javac"
+               executable="${build_java_home}/${java_command_dir_name}/javac"
                fork="yes"
                srcdir="."
                destdir="install_tmp"
@@ -118,7 +116,7 @@
         <java
                classname="InstallerProps"
                fork="yes"
-               jvm="${build_java_home}/bin/java"
+               jvm="${build_java_home}/${java_command_dir_name}/java"
             >
             <classpath>
                 <pathelement location="install_tmp" />
@@ -135,7 +133,7 @@
 
         <!-- compile the installer -->
         <javac
-               executable="${build_java_home}/bin/javac"
+               executable="${build_java_home}/${java_command_dir_name}/javac"
                fork="yes"
                srcdir="."
                destdir="install_tmp"
@@ -159,6 +157,10 @@
              greenfoot-dist-new.jar which is the platform independant
              distributable -->
         <delete dir="install_tmp" />
+        <delete file="greenfoot-install.png" />
+    </target>
+    
+    <target name="greenfoot-dist-cleanup">
         <delete dir="${bluej_home}/package/scenarios" />
         <delete dir="${bluej_home}/package/tutorial" />
         <delete>
@@ -166,7 +168,6 @@
                 <patternset refid="greenfoot.license.files" />
             </fileset>
         </delete>
-        <delete file="greenfoot-install.png" />
     </target>
 
     <target name="mac-dist">
@@ -226,6 +227,111 @@
         <delete dir="install_tmp" />
     </target>
 
+    <target name="debian-dist">
+        <mkdir dir="gfdeb" />
+        <copy todir="gfdeb">
+            <fileset dir="gfdebianfiles" includes="DEBIAN/**" />
+        </copy>
+		
+        <mkdir dir="gfdeb/usr" />
+        <mkdir dir="gfdeb/usr/bin" />
+        <copy todir="gfdeb/usr/bin" file="gfdebianfiles/greenfoot" />
+        <chmod perm="ugo+x" file="gfdeb/usr/bin/greenfoot" verbose="true" />
+
+        <!-- lib files -->
+        <mkdir dir="gfdeb/usr/share/greenfoot" />
+        <mkdir dir="gfdeb-lib-tmp" />
+        <copy todir="gfdeb-lib-tmp">
+            <fileset dir="${bluej_home}">
+                <patternset refid="bluej.libdirs" />
+                <patternset refid="bluej.libfiles" />
+            </fileset>
+        </copy>
+        <move todir="gfdeb/usr/share/greenfoot">
+            <fileset dir="gfdeb-lib-tmp/lib">
+                <patternset includes="**" />
+            </fileset>
+        </move>
+        <delete dir="gfdeb-lib-tmp" />
+
+        <!-- examples and documentation -->
+        <mkdir dir="gf-examples-tmp" />
+        <copy todir="gf-examples-tmp">
+            <fileset dir="${bluej.projectdir}/package">
+                <patternset refid="greenfoot.scenarios" />
+            </fileset>
+            <fileset dir="${bluej_home}/package">
+                <patternset refid="greenfoot.tutorial" />
+            </fileset>
+            <fileset dir="${bluej_home}/package">
+                <patternset refid="greenfoot.license.files" />
+            </fileset>
+        </copy>
+		
+		<mkdir dir="gfdeb/usr/share/doc/Greenfoot" />
+        <move todir="gfdeb/usr/share/doc/Greenfoot">
+            <fileset dir="gf-examples-tmp">
+                <patternset includes="**" />
+            </fileset>
+        </move>
+    	<delete dir="gf-examples-tmp" />
+    	
+    	<mkdir dir="gf-apidoc-tmp" />
+    	<copy todir="gf-apidoc-tmp">
+    		<fileset dir="${bluej_home}">
+    			<patternset refid="bluej.docfiles" />
+    		</fileset>
+    	</copy>
+    	<mkdir dir="gfdeb/usr/share/doc/Greenfoot/API" />
+    	<move todir="gfdeb/usr/share/doc/Greenfoot/API">
+    		<fileset dir="gf-apidoc-tmp/doc/API">
+    	    	<patternset includes="**" />
+    	    </fileset>
+    	</move>
+    	
+    	<delete dir="gf-apidoc-tmp" />	
+    		
+		
+		<copy todir="gfdeb/usr/share/doc/Greenfoot" file="${greenfoot.projectdir}/doc/LICENSE.txt" />
+		<copy todir="gfdeb/usr/share/doc/Greenfoot" file="${greenfoot.projectdir}/doc/THIRDPARTYLICENSE.txt" />
+
+		<!-- desktop app extras -->
+		<copy todir="gfdeb/usr/share">
+			<fileset dir="gfdebianfiles">
+				<patternset includes="applications/**,icons/**,pixmaps/**" />
+			</fileset>
+		</copy>
+
+	    <!-- update version number -->
+	    <replaceregexp byline="true">
+	        <regexp pattern="VERSION" />
+	        <substitution expression="${greenfoot.version}" />
+	        <fileset dir="gfdeb/DEBIAN" includes="control" />
+	    </replaceregexp>
+		
+		<!-- you must do this as root, sigh -->
+		<chown owner="root">
+			<fileset dir="gfdeb">
+				<patternset includes="**" />
+			</fileset>
+		</chown>
+		<chgrp group="root">
+			<fileset dir="gfdeb">
+				<patternset includes="**" />
+			</fileset>
+		</chgrp>
+		
+		<chmod perm="+x" file="gfdeb/DEBIAN/postinst" />
+		<chmod perm="+x" file="gfdeb/DEBIAN/postrm" />
+		<exec executable="dpkg-deb" searchpath="true">
+		    <arg value="-b" />
+		    <arg file="gfdeb" />
+		    <arg value="greenfoot-${greenfoot.version}.deb" />
+		</exec>
+		
+        <delete dir="gfdeb" />
+    </target>
+	
     <target name="clean">
         <delete file="greenfoot-dist.jar" />
         <delete file="greenfoot-dist-new.jar" />

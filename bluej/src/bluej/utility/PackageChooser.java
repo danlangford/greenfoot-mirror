@@ -56,22 +56,22 @@ import bluej.utility.filefilter.JavaSourceFilter;
  * @author  Michael Kolling
  * @author  Axel Schmolitzky
  * @author  Markus Ostman
- * @version $Id: PackageChooser.java 6691 2009-09-16 14:27:05Z davmac $
  */
 class PackageChooser extends JFileChooser
 {
-    static final Icon classIcon = Config.getImageAsIcon("image.filechooser.classIcon");
-    static final Icon packageIcon = Config.getImageAsIcon("image.filechooser.packageIcon");
+    static private final Icon classIcon = Config.getFixedImageAsIcon("class-icon.png");
+    static private final Icon packageIcon = Config.getFixedImageAsIcon("package-icon.png");
 
-    static final String previewLine1 = Config.getString("utility.packageChooser.previewPane1");
-    static final String previewLine2 = Config.getString("utility.packageChooser.previewPane2");
+    static private final String previewLine1 = Config.getString("utility.packageChooser.previewPane1");
+    static private final String previewLine2 = Config.getString("utility.packageChooser.previewPane2");
 
-    PackageDisplay displayPanel;
+    private PackageDisplay displayPanel;
+    private boolean allowNewFiles = true;
 
     /**
      * Create a new PackageChooser.
      * 
-     * @param startDirectory    the directory to start the package selection in.
+     * @param startDirectory 	the directory to start the package selection in.
      * @param preview           whether to show the package structure preview pane
      * @param showArchives      whether to allow choosing jar and zip files
      */
@@ -114,6 +114,19 @@ class PackageChooser extends JFileChooser
         }
     }
     
+    /**
+     * Set whether this chooser should allow new (non-existing) files to
+     * be selected. This does not actually prevent the user from specifying
+     * a non-existing file, it just tweaks UI behaviour a bit.
+     */
+    public void setAllowNewFiles(boolean allowNewFiles)
+    {
+        this.allowNewFiles = allowNewFiles;
+    }
+    
+    /* (non-Javadoc)
+     * @see javax.swing.JFileChooser#accept(java.io.File)
+     */
     public boolean accept(File f)
     {
         if (f.isDirectory())
@@ -121,7 +134,8 @@ class PackageChooser extends JFileChooser
         
         String fname = f.getName();
         return fname.endsWith(".jar") || fname.endsWith(".JAR") ||
-                fname.endsWith(".zip") || fname.endsWith(".ZIP");
+                fname.endsWith(".zip") || fname.endsWith(".ZIP")
+                || (Config.isGreenfoot() && (fname.endsWith(".gfar") || fname.endsWith(".GFAR")));
     }
 
     /**
@@ -137,13 +151,15 @@ class PackageChooser extends JFileChooser
         }
         else{
             super.setCurrentDirectory(dir);
-            // Hack to make file chooser behave slightly nicer. The default behaviour is to put
-            // the directory name, without a trailing slash, in the filename field.
-            // See ticket #127
-            FileChooserUI ui = getUI();
-            if (ui instanceof BasicFileChooserUI) {
-                BasicFileChooserUI mui = (BasicFileChooserUI) ui;
-                mui.setFileName("");
+            if (allowNewFiles) {
+                // Hack to make file chooser behave slightly nicer. The default behaviour is to put
+                // the directory name, without a trailing slash, in the filename field.
+                // See ticket #127
+                FileChooserUI ui = getUI();
+                if (ui instanceof BasicFileChooserUI) {
+                    BasicFileChooserUI mui = (BasicFileChooserUI) ui;
+                    mui.setFileName("");
+                }
             }
         }
     }
@@ -175,7 +191,9 @@ class PackageChooser extends JFileChooser
             setDisplayDirectory(displayDir);
         }
 
+        @Override
         protected void processMouseEvent(MouseEvent e) { }
+        @Override
         protected void processMouseMotionEvent(MouseEvent e) { }
 
         void setDisplayDirectory(File displayDir)

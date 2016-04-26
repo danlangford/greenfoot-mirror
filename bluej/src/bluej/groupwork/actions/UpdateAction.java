@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -111,8 +111,6 @@ public class UpdateAction extends AbstractAction
         project = updateFrame.getProject();
         
         if (project != null) {
-            project.saveAllEditors();
-            // doUpdate(project);
             updateFrame.startProgress();
             PkgMgrFrame.displayMessage(project, Config.getString("team.update.statusMessage"));
             
@@ -355,11 +353,10 @@ public class UpdateAction extends AbstractAction
                         Set<File> filesToOverride = new HashSet<File>();
 
                         // Binary conflicts
-                        for (Iterator i = updateServerResponse.getBinaryConflicts().iterator();
+                        for (Iterator<File> i = updateServerResponse.getBinaryConflicts().iterator();
                                 i.hasNext(); ) {
-                            File f = (File) i.next();
+                            File f = i.next();
 
-                            // TODO proper check for name - case insensitive file systems
                             if (BlueJPackageFile.isPackageFileName(f.getName())) {
                                 filesToOverride.add(f);
                             }
@@ -383,9 +380,9 @@ public class UpdateAction extends AbstractAction
                         List<String> nonBlueJConflicts = new LinkedList<String>();
                         List<Target> targets = new LinkedList<Target>();
 
-                        for (Iterator i = updateServerResponse.getConflicts().iterator();
+                        for (Iterator<File> i = updateServerResponse.getConflicts().iterator();
                                 i.hasNext();) {
-                            File file = (File) i.next();
+                            File file = i.next();
 
                             // Calculate the file base name
                             String baseName = file.getName();
@@ -479,7 +476,7 @@ public class UpdateAction extends AbstractAction
                 String parentPackage = JavaNames.getPrefix(packageName);
                 String baseName = JavaNames.getBase(packageName);
                 
-                File packageDir = JavaNames.convertQualifiedNameToFile(packageName);
+                File packageDir = JavaNames.convertQualifiedNameToFile(packageName, project.getProjectDir());
                 if (! packageDir.exists()) {
                     // Close the package window, if open
                     Package pkg = project.getCachedPackage(packageName);

@@ -13,8 +13,6 @@ compiler.warningDialog.title=Compiler Warnings
 compiler.warningDialog.label=Warnings from last compilation 
 compiler.warningDialog.noWarnings=No warnings
 
-debugger.null=null
-
 debugger.assert.assertThat=Assert that:
 debugger.assert.resultIs=result is
 debugger.assert.equalTo=equal to
@@ -32,6 +30,8 @@ debugger.inspector.enum.title=BlueJ:  Enum Inspector
 debugger.inspector.interface.title=BlueJ:  Interface Inspector
 debugger.inspector.result.title=BlueJ:  Method Result
 debugger.inspector.result.returned=returned:
+debugger.inspector.object.noFields=No fields
+debugger.inspector.class.noFields=No fields
 debugger.inspector.showClass=Show static fields
 debugger.inspector.inspect=Inspect
 debugger.inspector.get=Get
@@ -109,11 +109,15 @@ prefmgr.misc.filechooser.title=Select Wireless Toolkit directory
 prefmgr.edit.prefpaneltitle=Editor
 prefmgr.edit.editor.title=Editor settings
 prefmgr.edit.editorfontsize=Font size
-prefmgr.edit.usesyntaxhilighting=Use syntax hilighting
+prefmgr.edit.colortransparency=Scope Highlighting
+prefmgr.edit.usesyntaxhilighting=Use syntax highlighting
 prefmgr.edit.autoindent=Auto-indent (Enter and Tab keys)
 prefmgr.edit.displaylinenumbers=Display line numbers
 prefmgr.edit.makeBackup=Make backup of source files
 prefmgr.edit.matchBrackets=Match brackets
+prefmgr.edit.keybindingstitle=Key Bindings
+prefmgr.edit.highlightLighter=Lighter
+prefmgr.edit.highlightDarker=Darker
 
 
 # Extensions Manager Help panel
@@ -159,12 +163,12 @@ editor.closeLabel = Close
 editor.page-setupLabel = Page Setup...
 
 # menu labels (MUST be defined)
-editor.classLabel = Class
-editor.editLabel = Edit
-editor.toolsLabel = Tools
-editor.debugLabel = Debug
-editor.optionLabel = Options
-editor.helpLabel = Help
+editor.classLabel = _Class
+editor.editLabel = _Edit
+editor.toolsLabel = _Tools
+editor.debugLabel = _Debug
+editor.optionLabel = _Options
+editor.helpLabel = _Help
 
 # item labels (can be omitted if same as action name)
 editor.saveLabel = Save
@@ -178,10 +182,13 @@ editor.copy-to-clipboardLabel = Copy
 editor.paste-from-clipboardLabel = Paste
 editor.indent-blockLabel = Indent more
 editor.deindent-blockLabel = Indent less
+editor.autoindentLabel = Auto-layout
 editor.comment-blockLabel = Comment
 editor.uncomment-blockLabel = Uncomment
 editor.insert-methodLabel = Insert method
+editor.add-javadocLabel = Add method comment
 
+editor.new-findLabel = New Find
 editor.findLabel = Find...
 editor.find-nextLabel = Find Next
 editor.find-next-backwardLabel = Find Next Backward
@@ -205,6 +212,10 @@ editor.state.changed = changed
 
 editor.key-bindingsLabel = Key Bindings...
 editor.preferencesLabel = Preferences...
+
+editor.printDialog.title=BlueJ:  Print Source Code
+editor.printDialog.printLineNumbers=Print Line Numbers
+editor.printDialog.printHighlighting=Print with Syntax Highlighting
 
 # Dialog titles and texts
 editor.functions.title = Editor Functions
@@ -234,14 +245,41 @@ editor.find.backward=backward
 editor.find.forward=forward
 editor.find.wrapAround=wrap around
 
-#Messages shown as a result of a search with replace all
+# FindPanel
+editor.findpanel.replacePanel=  Replace
+editor.findpanel.findLabel=Find:
+editor.findpanel.findNext=Next
+editor.findpanel.findPrevious=Prev
+editor.findpanel.matchCase=Match Case
+
+# ReplacePanel
+editor.replacePanel.replaceLabel=Replace:
+editor.replacePanel.replaceOnce=Once
+editor.replacePanel.replaceAll=All
+
+# "Add javadoc" function
+editor.addjavadoc.notAMethod=Not in a method.
+editor.addjavadoc.hasJavadoc=This method already has a Javadoc comment.
+editor.addjavadoc.constructor=Constructor
+editor.addjavadoc.method=Method
+editor.addjavadoc.parameter=A parameter
+editor.addjavadoc.returnValue=The return value
+
+# Messages shown as a result of a search with replace all
 editor.replaceAll.replaced=Replaced 
 editor.replaceAll.intancesOf=\ instances of 
 editor.replaceAll.string=String 
 editor.replaceAll.notFoundNothingReplaced=\ not found. Nothing replaced.
 
-#Messages shown when determining what function is bound to a given key
-editor.keypressed.keyIsNotBound=\ in not bound to a function.
+# Messages shown as a result of a search with highlight all
+editor.highlight.found=Found 
+editor.highlight.notFound=\ not found.
+
+# Message shown in code completion pane when nothing is found
+editor.completion.noMatch=No matching completions
+
+# Messages shown when determining what function is bound to a given key
+editor.keypressed.keyIsNotBound=\ is not bound to a function.
 editor.keypressed.callsTheFunction=\ calls the function "
 
 #Messages, warnings, etc that is displayed by Info.java
@@ -271,6 +309,7 @@ editor.info.docAborted = There was a serious problem generating the javadoc\nint
 editor.info.docDisappeared = Cannot find HTML file:
 editor.info.docNoFrames = Frame display is disabled in editor preview.
 editor.info.tabsExpanded = Converted all TABs to spaces. (You are working\nwith soft TABs, the file contained hard TABs.)
+editor.info.perfectIndent = Indentation was already correct
 editor.printer.continued=continued
 #End Editor labels
 
@@ -279,7 +318,7 @@ pkgmgr.chooseUsesTo=Select the class it depends on
 pkgmgr.chooseInhFrom=Select the subclass
 pkgmgr.chooseInhTo=Select the superclass
 pkgmgr.chooseArrow=Select an arrow to delete
-pkgmgr.packageSaved=Package saved
+pkgmgr.packageSaved=Package saved.
 pkgmgr.info.printing = Printing...
 pkgmgr.info.printed = Printing... Done.
 
@@ -441,8 +480,8 @@ pkgmgr.printDialog.printSource=Print source code
 pkgmgr.printDialog.printReadme=Print project readme 
 
 # method call dialog
-pkgmgr.methodCall.titleCreate=BlueJ:  Create Object
-pkgmgr.methodCall.titleCall=BlueJ:  Method Call
+pkgmgr.methodCall.titleCreate=Create Object
+pkgmgr.methodCall.titleCall=Method Call
 pkgmgr.methodCall.namePrompt=Name of Instance:
 pkgmgr.methodCall.typeParametersPrompt=Type Parameters:
 pkgmgr.methodCall.typeParameterPrompt=Type Parameter:
@@ -452,7 +491,7 @@ error.methodCall.illegalName=The instance name must be a Java identifier.
 error.methodCall.duplicateName=An object with this name already exists.\nPlease choose a unique name.
 
 # Debugger dialog (ExecControls.java)
-debugger.execControls.windowTitle = BlueJ:  Debugger
+debugger.execControls.windowTitle = Debugger
 debugger.execControls.stackTitle = Call Sequence
 debugger.execControls.staticTitle = Static variables
 debugger.execControls.instanceTitle = Instance variables
@@ -470,9 +509,9 @@ debugger.threadRunning = <html><center>Thread is running.<br>Threads must be sto
 
 # DialogManager labels
 
-dialogmgr.error = BlueJ:  Error
-dialogmgr.question = BlueJ:  Question
-dialogmgr.message = BlueJ:  Message
+dialogmgr.error = Error
+dialogmgr.question = Question
+dialogmgr.message = Message
 
 #Terminal Window
 terminal.options = Options
@@ -480,6 +519,7 @@ terminal.title = Terminal Window
 terminal.clear = Clear
 terminal.copy = Copy
 terminal.save = Save to file...
+terminal.print = Print
 terminal.close = Close
 terminal.clearScreen = Clear screen at method call
 terminal.recordCalls = Record method calls
@@ -608,6 +648,9 @@ team.status.refresh=Refresh
 team.conflicts.title=Conflicts found
 team.conflicts.classes=The following classes had conflicts
 team.conflicts.show=Show conflicts
+team.error.username.at=Your username has an @ character in it, which is unsupported by BlueJ.
+team.error.username.colon=Your username has an : character in it, which is unsupported by BlueJ.
+team.error.password.at=Your password has an @ character in it, which is unsupported by BlueJ.
 
 # The following appear in brackets after a filename, in the
 # update/commit dialogs.
@@ -713,6 +756,9 @@ tooltip.update=Update local files that have been modified in the repository
 tooltip.status=Show the status of all teamwork files in the project
 tooltip.deployMIDlet=Deploy MIDlet suite contained in the project
 
+graph.tooltip.classBroken=This class cannot currently be parsed
+
+
 #Copyright
 
 menu.help.copyright.title=BlueJ Copyright, Licensing and Redistribution
@@ -729,8 +775,8 @@ about.vm=Virtual machine:
 about.runningOn=Running on:
 about.javahome=Java Home:
 about.logfile=Debug log file:
-about.moreInfo=More information is at www.bluej.org.
+about.moreInformation=For more information, see
 about.theTeam=The BlueJ team:
 
 # Work Indicator
-workIndicator.resetMachine=Reset Machine@^R
+workIndicator.resetMachine=Reset Java Virtual Machine@^R

@@ -21,6 +21,7 @@
  */
 package bluej.utility;
 
+import java.awt.Component;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Insets;
@@ -29,8 +30,12 @@ import java.awt.Window;
 import java.awt.event.KeyEvent;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.lang.management.ManagementFactory;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -40,9 +45,12 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
 
 import javax.swing.AbstractButton;
 import javax.swing.border.Border;
+import javax.swing.text.TabExpander;
 
 import bluej.Config;
 
@@ -51,7 +59,7 @@ import bluej.Config;
  * 
  * @author Michael Cahill
  * @author Michael Kolling
- * @version $Id: Utility.java 6689 2009-09-16 14:18:42Z davmac $
+ * @version $Id: Utility.java 8323 2010-09-14 20:14:07Z mik $
  */
 public class Utility
 {
@@ -67,6 +75,15 @@ public class Utility
     {
         for (int i = 0; i < thickness; i++)
             g.drawRect(x + i, y + i, width - 2 * i, height - 2 * i);
+    }
+    
+    /**
+     * Draw a thick rounded rectangle - another of the things missing from the AWT
+     */
+    public static void drawThickRoundRect(Graphics g, int x, int y, int width, int height, int arc, int thickness)
+    {
+        for (int i = 0; i < thickness; i++)
+            g.drawRoundRect(x + i, y + i, width - 2 * i, height - 2 * i, arc, arc);
     }
 
     /**
@@ -116,7 +133,9 @@ public class Utility
         if (xOffset < 0) {
             xOffset = 0;
         }
-        int yOffset = (height + fm.getAscent()) / 2;
+        // This is the space left around the text, divided by 2 (equal gap above and below)
+        // to get the top of the text, plus the ascent to get the baseline 
+        int yOffset = fm.getAscent() + ((height - fm.getAscent() - fm.getDescent()) / 2);
         g.drawString(str, x + xOffset, y + yOffset);
         g.setClip(oldClip);
     }
@@ -621,6 +640,73 @@ public class Utility
         else
             return originalString;
     }
+    
+    /**
+     * Calculates how many spaces each tab in the given string turns into.
+     * 
+     * If there is a tab at character index N, the array entry N in the
+     * returned array will indicate how many spaces the tab converts into.
+     * The value of all other entries is undefined.
+     */
+    public static int[] calculateTabSpaces(String line, int tabSize)
+    {
+        // Bigger array than necessary, but we're only doing one line at a time:
+        int[] tabSpaces = new int[line.length()];
+        int curPos = 0;
+        for (int i = 0; i < line.length(); i++) {
+            if (line.charAt(i) == '\t') {
+                // calculate how many spaces to add
+                int numberOfSpaces = tabSize - (curPos % tabSize);
+                tabSpaces[i] = numberOfSpaces;
+                curPos += numberOfSpaces;
+            }
+            else {
+                curPos += 1;
+            }
+        }
+        return tabSpaces;
+    }
+    
+    /**
+     * Makes a TabExpander object that will turn tabs into the appropriate
+     * white-space, based on the original String.  This means that the tabs
+     * will get aligned to the correct tab-stops rather than just being
+     * converted into a set number of spaces.  Thus, the TabExpander will match
+     * the behaviour of the editor.
+     */
+    public static TabExpander makeTabExpander(String line, int tabSize, final FontMetrics fontMetrics)
+    {
+        final int[] tabSpaces = Utility.calculateTabSpaces(line, tabSize);
+        
+        return new TabExpander() {
+            public float nextTabStop(float x, int tabOffset) {
+                return x + tabSpaces[tabOffset] * fontMetrics.charWidth(' ');
+            }
+        };
+    }
+    
+    /**
+     * Given a String and an index into it, along with the pre-calculated tabSpaces array,
+     * advances the index by the given number of character widths.
+     * 
+     * If the String contains to tabs, this effectively adds advanceBy to index.
+     * 
+     * If the String does contain tabs, their width is taken into account
+     * as the index is advanced through the array.
+     * 
+     */
+    public static int advanceChars(String line, int[] tabSpaces, int index, int advanceBy)
+    {
+        while (advanceBy > 0 && index < line.length())
+        {
+            int width = (line.charAt(index) == '\t') ? tabSpaces[index] : 1;	
+            advanceBy -= width;
+            index += 1;
+        }
+        return index;
+    }
+    
+    
 
     /**
      * Check if this is the first time a particular event (identified by the
@@ -683,7 +769,7 @@ public class Utility
         button.putClientProperty("JButton.buttonType", "square");
 
         if (oldBorder == button.getBorder()) {
-            // if the border didn't change the "textured" type probably doesn't
+            // if the border didn't change the "square" type probably doesn't
             // exist, which means we are running on MacOS < 10.5. This means we
             // should use the old pre-10.5 "toolbar" style instead.
             button.putClientProperty("JButton.buttonType", "toolbar");
@@ -720,5 +806,177 @@ public class Utility
                 return true;                
         }
         return false;
+    }
+    
+    /**
+     * Takes a list of lines and forms them into a multiline tool-tip.
+     * 
+     * The way to do this is to use HTML; see http://www.jguru.com/faq/view.jsp?EID=10653
+     */
+    public static String multilineTooltip(String... lines)
+    {
+        StringBuilder str = new StringBuilder("<html>");
+        for (int i = 0; i < lines.length; i++) {
+            str.append(lines[i]);
+            if (i != lines.length - 1) {
+                str.append("<br>");
+            }
+        }
+        str.append("</html>");
+        return str.toString();
+    }
+
+    /**
+     * Attempt to determine the prefix folder of a zip or jar archive.
+     * That is, if all files in the archive are stored under a first-level
+     * folder, return the name of that folder; otherwise return null.
+     * 
+     * @param arName   The archive file
+     * @return         The prefix folder of the archive, or null.
+     * @throws FileNotFoundException
+     * @throws IOException
+     */
+    public static String getArchivePrefixFolder(File arName)
+    throws FileNotFoundException, IOException
+    {
+        JarInputStream jarInStream = null;
+        FileInputStream is = null;
+        String prefixFolder = null;
+        try {
+            is = new FileInputStream(arName);
+            jarInStream = new JarInputStream(is);
+            
+            // Extract entries in the jar file
+            JarEntry je = jarInStream.getNextJarEntry();
+            while (je != null) {
+                String entryName = je.getName();
+                int slashIndex = entryName.indexOf('/');
+                if (slashIndex == -1) {
+                    prefixFolder = null;
+                    break;
+                }
+                
+                String prefix = entryName.substring(0, slashIndex);
+                if (prefixFolder == null)
+                    prefixFolder = prefix;
+                else if (! prefixFolder.equals(prefix)) {
+                    prefixFolder = null;
+                    break;
+                }
+                
+                je = jarInStream.getNextJarEntry();
+            }
+        }
+        catch (FileNotFoundException fnfe) {
+            throw fnfe;  // rethrow after processing finally block
+        }
+        catch (IOException ioe) {
+            throw ioe; // rethrow after processing finally block
+        }
+        finally {
+            if (jarInStream != null)
+                jarInStream.close();
+            if (is != null)
+                is.close();
+        }
+        
+        return prefixFolder;
+    }
+
+    public static File maybeExtractArchive(File archive, Component parent)
+    {
+        JarInputStream jarInStream = null;
+        File oPath = archive.getParentFile();
+    
+        try { 
+            // first need to determine the output path. If the jar file
+            // contains a root-level (eg bluej.pkg) entry, extract into a directory
+            // whose name is the basename of the archive file. Otherwise, if
+            // all entries have a common ancestor, extract to that directory
+            // (after checking it doesn't exist).
+            String prefixFolder = getArchivePrefixFolder(archive);
+            
+            if (prefixFolder == null) {
+                // Try to extract to directory which has same name as the jar
+                // file, with the .jar or .bjar extension stripped.
+                String archiveName = archive.getName();
+                int dotIndex = archiveName.lastIndexOf('.');
+                String strippedName = null;
+                if(dotIndex != -1) {
+                    strippedName = archiveName.substring(0, dotIndex);
+                } else {
+                    strippedName = archiveName;
+                }
+                oPath = new File(oPath, strippedName);
+                if (oPath.exists()) {
+                    DialogManager.showErrorWithText(parent, "jar-output-dir-exists", oPath.toString());
+                    return null;
+                }
+                else if (! oPath.mkdir()) {
+                    DialogManager.showErrorWithText(parent, "jar-output-no-write", archive.toString());
+                    return null;
+                }
+            }
+            else {
+                File prefixFolderFile = new File(oPath, prefixFolder);
+                if (prefixFolderFile.exists()) {
+                    DialogManager.showErrorWithText(parent, "jar-output-dir-exists", prefixFolderFile.toString());
+                    return null;
+                }
+                if (! prefixFolderFile.mkdir()) {
+                    DialogManager.showErrorWithText(parent, "jar-output-no-write", archive.toString());
+                    return null;
+                }
+            }
+            
+            // Need to extract the project somewhere, then open it
+            FileInputStream is = new FileInputStream(archive);
+            jarInStream = new JarInputStream(is);
+            
+            // Extract entries in the jar file
+            JarEntry je = jarInStream.getNextJarEntry();
+            while (je != null) {
+                File outFile = new File(oPath, je.getName());
+                
+                // An entry could represent a file or directory
+                if (je.getName().endsWith("/"))
+                    outFile.mkdirs();
+                else {
+                    outFile.getParentFile().mkdirs();
+                    OutputStream os = new FileOutputStream(outFile);
+                    
+                    // try to read 8k at a time
+                    byte [] buffer = new byte[8192];
+                    int rlength = jarInStream.read(buffer);
+                    while (rlength != -1) {
+                        os.write(buffer, 0, rlength);
+                        rlength = jarInStream.read(buffer);
+                    }
+                    
+                    jarInStream.closeEntry();
+                }
+                je = jarInStream.getNextJarEntry();
+            }
+            
+            // Now, the jar file may contain a bluej project, or it may
+            // be a regular jar file in which case we should convert it
+            // to a bluej project first.
+            
+            if (prefixFolder != null)
+                oPath = new File(oPath, prefixFolder);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            DialogManager.showError(parent, "jar-extraction-error");
+            return null;
+        }
+        finally {
+            try {
+                if (jarInStream != null)
+                    jarInStream.close();
+            }
+            catch (IOException ioe) {}
+        }
+        return oPath;
     }
 }

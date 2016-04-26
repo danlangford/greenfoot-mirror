@@ -21,16 +21,31 @@
  */
 package bluej.debugger.jdi;
 
+import java.util.LinkedList;
+import java.util.Queue;
+
 import com.sun.jdi.ReferenceType;
 import com.sun.jdi.VMDisconnectedException;
 import com.sun.jdi.VirtualMachine;
-import com.sun.jdi.event.*;
+import com.sun.jdi.event.BreakpointEvent;
+import com.sun.jdi.event.ClassPrepareEvent;
+import com.sun.jdi.event.Event;
+import com.sun.jdi.event.EventIterator;
+import com.sun.jdi.event.EventQueue;
+import com.sun.jdi.event.EventSet;
+import com.sun.jdi.event.ExceptionEvent;
+import com.sun.jdi.event.LocatableEvent;
+import com.sun.jdi.event.StepEvent;
+import com.sun.jdi.event.ThreadDeathEvent;
+import com.sun.jdi.event.ThreadStartEvent;
+import com.sun.jdi.event.VMDeathEvent;
+import com.sun.jdi.event.VMDisconnectEvent;
+import com.sun.jdi.event.VMStartEvent;
 
 /**
  * Event handler class to handle events coming from the remote VM.
  *
  * @author  Michael Kolling
- * @version $Id: VMEventHandler.java 6215 2009-03-30 13:28:25Z polle $
  */
 class VMEventHandler extends Thread
 {
@@ -39,6 +54,22 @@ class VMEventHandler extends Thread
     private VMReference vm;
     private EventQueue queue;
     private boolean queueEmpty;
+    
+    /**
+     * A class to represent a thread halted/resumed event.
+     */
+    private class ThreadEvent
+    {
+        ThreadEvent(JdiThread thread, boolean state)
+        {
+            this.thread = thread;
+            this.state = state;
+        }
+        JdiThread thread;
+        boolean state; // true for halted, false for continued
+    }
+    
+    private Queue<ThreadEvent> haltedThreads = new LinkedList<ThreadEvent>();
     
     volatile boolean exiting = false;
     
@@ -55,6 +86,8 @@ class VMEventHandler extends Thread
         while (!exiting) {
             try {
                 // get the next event
+                // NOTE: use 1 as the timeout, because 0 just waits indefinitely,
+                //  contrary to documentation.
                 EventSet eventSet = queue.remove(1);
                 
                 if (eventSet == null) {
@@ -64,11 +97,27 @@ class VMEventHandler extends Thread
                         queueEmpty = true;
                         notifyAll();
                     }
+                    
+                    // In case a thread event was issued while queueEmpty was still false,
+                    // we should process it now:
+                    handleThreadEvents();
 
-                    eventSet = queue.remove();
+                    try {
+                        eventSet = queue.remove();
+                    }
+                    catch (InterruptedException ie) {
+                        handleThreadEvents();
+                        continue;
+                    }
+                    
                     synchronized (this) {
+                        isInterrupted(); // clear the interrupt flag;
+                        // we need to do this in a synchronized context
                         queueEmpty = false;
                     }
+                }
+                else {
+                    handleThreadEvents();
                 }
                 
                 // From the JDK documentation
@@ -90,7 +139,7 @@ class VMEventHandler extends Thread
                 //		 o AccessWatchpointEvent 
                 //   * Only with other ModificationWatchpointEvents for the same field modification:
                 //		 o ModificationWatchpointEvent 
-                //   * Only with other ExceptionEvents for the same exception occurrance:
+                //   * Only with other ExceptionEvents for the same exception occurrence:
                 //		 o ExceptionEvent 
                 //   * Only with other MethodExitEvents for the same method exit:
                 //		 o MethodExitEvent 
@@ -104,12 +153,13 @@ class VMEventHandler extends Thread
                 // iterate through all events in the set
                 EventIterator it = eventSet.eventIterator();
                 
+                boolean examineSaidSkipUpdates = false;
+                boolean gotBPEvent = false;
+                
                 while (it.hasNext()) {
                     Event ev = it.nextEvent();
                     
-                    // do some processing with this event
-                    // this calls back into VMReference
-                    handleEvent(ev);
+                    examineSaidSkipUpdates |= screenEvent(ev);
                     
                     // for breakpoint and step events, we may want
                     // to leave the relevant thread suspended. If the dontResume
@@ -122,9 +172,20 @@ class VMEventHandler extends Thread
                                 addToSuspendCount = false;
                                 // a step and breakpoint can be hit at the same
                                 // time - make sure to only suspend once
+                                gotBPEvent |= (ev instanceof BreakpointEvent);
                             }
                         }
                     }
+                }
+            
+                // Now go through again to do proper processing:
+                it = eventSet.eventIterator();
+                while (it.hasNext()) {
+                    Event ev = it.nextEvent();
+                    
+                    // do some processing with this event
+                    // this calls back into VMReference
+                    handleEvent(ev, examineSaidSkipUpdates, gotBPEvent);
                 }
                 
                 // resume the VM
@@ -132,6 +193,40 @@ class VMEventHandler extends Thread
             }
             catch (InterruptedException exc) { }
             catch (VMDisconnectedException discExc) { exiting = true; }
+        }
+    }
+    
+    /**
+     * Deliver thread halted/resumed events.
+     */
+    private synchronized void handleThreadEvents()
+    {
+        ThreadEvent halted = haltedThreads.poll();
+        while (halted != null) {
+            if (halted.state) {
+                vm.threadHaltedEvent(halted.thread);
+            }
+            else {
+                vm.threadResumedEvent(halted.thread);
+            }
+            halted = haltedThreads.poll();
+        }
+    }
+    
+    /**
+     * Emit a thread halted/resumed event.
+     * 
+     * @param thr   The thread for which the event occurred
+     * @param halted  True if the thread was halted, false if resumed
+     */
+    public synchronized void emitThreadEvent(JdiThread thr, boolean halted)
+    {
+        haltedThreads.add(new ThreadEvent(thr, halted));
+        if (queueEmpty) {
+            // The VM event handler thread is either waiting for an event,
+            // or it has just pulled one but has yet to set queueEmpty = false,
+            // which it will only do while synched.
+            interrupt();
         }
     }
     
@@ -150,7 +245,17 @@ class VMEventHandler extends Thread
         }
     }
     
-    private void handleEvent(Event event)
+    private boolean screenEvent(Event event)
+    {
+        if (event instanceof BreakpointEvent) {
+            return vm.screenBreakpointEvent((LocatableEvent)event, true);
+        } else if (event instanceof StepEvent) {
+            return vm.screenBreakpointEvent((LocatableEvent)event, false);
+        }
+        return false;
+    }
+        
+    private void handleEvent(Event event, boolean skipUpdate, boolean gotBP)
     {
         if (event instanceof VMStartEvent) {
             vm.vmStartEvent((VMStartEvent) event);
@@ -161,9 +266,13 @@ class VMEventHandler extends Thread
         } else if (event instanceof ExceptionEvent) {
             vm.exceptionEvent((ExceptionEvent)event);
         } else if (event instanceof BreakpointEvent) {
-            vm.breakpointEvent((LocatableEvent)event, true);
+            vm.breakpointEvent((LocatableEvent)event, true, skipUpdate);
         } else if (event instanceof StepEvent) {
-            vm.breakpointEvent((LocatableEvent)event, false);
+            // If we get a step and hit a breakpoint at the same time,
+            // we only report the breakpoint.
+            if (! gotBP) {
+                vm.breakpointEvent((LocatableEvent)event, false, skipUpdate);
+            }
         } else if (event instanceof ThreadStartEvent) {
             vm.threadStartEvent((ThreadStartEvent)event);
         } else if (event instanceof ThreadDeathEvent) {

@@ -30,14 +30,24 @@ import java.util.Set;
  * as a type parameter anywhere else, except that it can be bounded.
  * 
  * @author Davin McCall
- * @version $Id: GenTypeDeclTpar.java 6215 2009-03-30 13:28:25Z polle $
  */
-public class GenTypeDeclTpar extends GenTypeTpar {
-
+public class GenTypeDeclTpar extends GenTypeTpar
+{
     protected GenTypeSolid [] upperBounds;
     protected GenTypeSolid lBound = null;
     
-    public GenTypeDeclTpar(String parname, GenTypeSolid bound) {
+    /**
+     * Construct a GenTypeDeclTpar without specifying bounds. The bounds should then be
+     * set using setBounds(). Until that occurs any intermediate method call has undefined
+     * results.
+     */
+    public GenTypeDeclTpar(String parname)
+    {
+        super(parname);
+    }
+    
+    public GenTypeDeclTpar(String parname, GenTypeSolid bound)
+    {
         super(parname);
         upperBounds = new GenTypeSolid [] { bound };
     }
@@ -67,6 +77,15 @@ public class GenTypeDeclTpar extends GenTypeTpar {
     }
     
     /**
+     * Set the bounds. This should only be done when first creating the instance; otherwise,
+     * GenTypeDeclTpar instances should be immutable (as with other JavaTypes).
+     */
+    public void setBounds(GenTypeSolid [] ubounds)
+    {
+        upperBounds = ubounds;
+    }
+    
+    /**
      * Get the upper bound (possibly an intersection type).
      */
     public GenTypeSolid getBound()
@@ -75,13 +94,7 @@ public class GenTypeDeclTpar extends GenTypeTpar {
     }
     
     /**
-     * Get the bounds of this type parameter, as an array of GenTypeSolid
-     * (If the upper bound is an intersection type, this returns the component
-     * types).<p>
-     * 
-     * Note, this is different from getUpperBounds! That is for getting upper
-     * bounds of a parameterizable ( = {this}), this method is specific to
-     * GenTypeDeclTpar and returns the bounds of the tpar itself.
+     * Get the bounds of this type parameter, as an array of GenTypeSolid.
      */
     public GenTypeSolid [] upperBounds()
     {
@@ -90,29 +103,29 @@ public class GenTypeDeclTpar extends GenTypeTpar {
         return r;
     }
     
-    public GenTypeSolid lowerBound()
-    {
-        return lBound;
-    }
-    
     public GenTypeSolid [] lowerBounds()
     {
-        if (lBound == null)
+        if (lBound == null) {
             return new GenTypeSolid[0];
-        else
+        }
+        else {
             return new GenTypeSolid [] {lBound};
+        }
     }
-    
-    public JavaType mapTparsToTypes(Map tparams)
+        
+    /* (non-Javadoc)
+     * @see bluej.debugger.gentype.GenTypeTpar#mapTparsToTypes(java.util.Map)
+     */
+    public GenTypeSolid mapTparsToTypes(Map<String, ? extends GenTypeParameter> tparams)
     {
         if (tparams == null)
-            return new GenTypeWildcard(upperBounds(), lowerBounds());
+            return new GenTypeWildcard(upperBounds(), lowerBounds()).getCapture().asSolid();
         
-        GenTypeParameterizable newType = (GenTypeParameterizable)tparams.get(getTparName());
+        GenTypeParameter newType = (GenTypeParameter)tparams.get(getTparName());
         if( newType == null )
-            return new GenTypeWildcard(upperBounds(), lowerBounds());
+            return new GenTypeWildcard(upperBounds(), lowerBounds()).getCapture().asSolid();
         else
-            return newType;
+            return newType.getCapture().asSolid();
     }
     
     /**
@@ -144,7 +157,7 @@ public class GenTypeDeclTpar extends GenTypeTpar {
         return upperBounds[0].getErasedType();
     }
 
-    public void erasedSuperTypes(Set s)
+    public void erasedSuperTypes(Set<Reflective> s)
     {
         for (int i = 0; i < upperBounds.length; i++) {
             upperBounds[i].erasedSuperTypes(s);
@@ -153,7 +166,7 @@ public class GenTypeDeclTpar extends GenTypeTpar {
     
     public GenTypeClass [] getReferenceSupertypes()
     {
-        ArrayList al = new ArrayList();
+        ArrayList<GenTypeClass> al = new ArrayList<GenTypeClass>();
         for (int i = 0; i < upperBounds.length; i++) {
             GenTypeClass [] brs = upperBounds[i].getReferenceSupertypes();
             for (int j = 0; j < brs.length; j++) {
@@ -165,11 +178,13 @@ public class GenTypeDeclTpar extends GenTypeTpar {
 
     public boolean isAssignableFrom(JavaType t)
     {
-        if (super.isAssignableFrom(t))
+        if (super.isAssignableFrom(t)) {
             return true;
+        }
         
-        if (lBound != null)
+        if (lBound != null) {
             return lBound.isAssignableFrom(t);
+        }
         
         return false;
     }

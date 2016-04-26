@@ -1,21 +1,21 @@
 /*
  This file is part of the BlueJ program. 
  Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
- 
+
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
  as published by the Free Software Foundation; either version 2 
  of the License, or (at your option) any later version. 
- 
+
  This program is distributed in the hope that it will be useful, 
  but WITHOUT ANY WARRANTY; without even the implied warranty of 
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
  GNU General Public License for more details. 
- 
+
  You should have received a copy of the GNU General Public License 
  along with this program; if not, write to the Free Software 
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. 
- 
+
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
@@ -23,8 +23,6 @@ package bluej.parser;
 
 import java.io.IOException;
 import java.io.Reader;
-
-import antlr.CharScanner;
 
 /**
  * This is a Reader processes the stream from another reader, replacing unicode escape
@@ -35,35 +33,31 @@ import antlr.CharScanner;
  * to correctly recognize keywords, identifiers etc. which have embedded unicode escape
  * sequences.
  * 
- * The lexer (CharScanner) should be attached (using setAttachedScanner method) to the
- * reader so that the reader can update the column information in the lexer when a unicode
- * escape is processed.
- * 
  * @author Davin McCall
- * @version $Id$
  */
-public class EscapedUnicodeReader extends Reader
+public final class EscapedUnicodeReader extends Reader
 {
     Reader sourceReader;
-    CharScanner attachedScanner;
-    
+
     private boolean charIsBuffered;
     private int bufferedChar;
     
-    // tracks whether we need to bump the column count as we read the next character.
-    // This is set true after decoding a unicode escape sequence.
-    private boolean bumpColumn;
-    
+    private int position; // position within source stream
+    private int line = 1;
+    private int column = 1;
+
+
     public EscapedUnicodeReader(Reader source)
     {
         sourceReader = source;
     }
     
-    public void setAttachedScanner(CharScanner scanner)
+    public void setLineCol(int line, int column)
     {
-        attachedScanner = scanner;
+        this.line = line;
+        this.column = column;
     }
-    
+
     public int read(char [] buffer, int off, int len) throws IOException
     {
         int numRead = 0;
@@ -87,58 +81,52 @@ public class EscapedUnicodeReader extends Reader
                 }
             }
         }
-        
+
         // if we failed to read anything, it's due to end-of-stream
         if (numRead == 0 && len != 0)
             numRead = -1;
-        
+
         return numRead;
     }
-    
+
     public void close() throws IOException
     {
         sourceReader.close();
     }
-    
+
     /**
      * Get a single character, which may be an escaped unicode character (\\uXXXX, with a
      * single leading backslash)
      */
     private int getChar() throws IOException
     {
-        if (bumpColumn) {
-            attachedScanner.setColumn(attachedScanner.getColumn() + 5);
-            bumpColumn = false;
-        }
-        
         int rchar;
         if (charIsBuffered) {
             charIsBuffered = false;
+            if (bufferedChar != -1) {
+                processChar((char) bufferedChar);
+            }
             return bufferedChar;
         }
         else {
-            rchar = sourceReader.read();
+            rchar = readSourceChar();
         }
-        
+
         if (rchar == '\\') {
             // This could be the beginning of an escaped unicode sequence,
             // \\uXXXX (with only a single backslash)
             int nchar = sourceReader.read();
-            
+
             if (nchar == 'u') {
-                // set bumpColumn so that the column will be bumped just as the next
-                // character is read. We can't bump it now because doing so can confuse
-                // the lexer - it thinks that *this* character starts wherever the
-                // column is set to when getChar() returns.
-                bumpColumn = true;
+                column++; position++;
                 return readEscapedUnicodeSequence();
             }
             else {
-                putBuffer(nchar);
+                putBuffer(nchar);             
                 return '\\';
             }
         }
-        
+
         return rchar;
     }
 
@@ -147,30 +135,77 @@ public class EscapedUnicodeReader extends Reader
         bufferedChar = nchar;
         charIsBuffered = true;
     }
-    
+
     private int readEscapedUnicodeSequence() throws IOException
     {
-        int d1 = sourceReader.read();
-        int d2 = sourceReader.read();
-        int d3 = sourceReader.read();
-        int d4 = sourceReader.read();
+        // The Java Language Spec specifies that any number of 'u' characters may appear in sequence
+        // as part of a unicode escape.
+        int uc = sourceReader.read();
+        while (uc == 'u') {
+            processChar((char)uc);
+            uc = sourceReader.read();
+        }
         
-        // Note, any of the above reads might return a non-hex-digit, including the
-        // end-of-stream marker, but in this case hexDigitValue() will throw IOException.
+        int val = Character.digit((char) uc, 16);
+        if (val == -1) {
+            putBuffer(uc);
+            return 0xFFFF;
+        }
+        processChar((char)uc);
         
-        int rval = hexDigitValue(d1) * 0x1000;
-        rval += hexDigitValue(d2) * 0x100;
-        rval += hexDigitValue(d3) * 0x10;
-        rval += hexDigitValue(d4);
-        return rval;
-    }
-    
-    private int hexDigitValue(int hexDigit) throws IOException
-    {
-        int hval = Character.digit((char) hexDigit, 16);
-        if (hval == -1)
-            throw new IOException();
-        return hval;
+        int i = 0;
+        do {
+            val *= 0x10;
+            uc = sourceReader.read();
+            int digitVal = Character.digit((char) uc, 16);
+            if (digitVal == -1) {
+                putBuffer(uc);
+                return 0xFFFF;
+            }
+            processChar((char)uc);
+            val += digitVal;
+            i++;
+        } while (i < 3);
+        
+        return val;
     }
 
+    private int readSourceChar() throws IOException
+    {
+        int rchar = sourceReader.read();
+        if (rchar != -1) {
+            processChar((char) rchar);
+        }
+        return rchar;
+    }
+    
+    private void processChar(char ch)
+    {
+        position++;
+        if (ch == '\n') {
+            line++;
+            column = 1;
+        }
+        else {
+            column++;
+        }
+    }
+    
+    /**
+     * Get the position within the source stream (i.e. number of characters read).
+     */
+    public int getPosition()
+    {
+        return position;
+    }
+
+    public int getLine()
+    {
+        return line;
+    }
+
+    public int getColumn()
+    {
+        return column;
+    }
 }

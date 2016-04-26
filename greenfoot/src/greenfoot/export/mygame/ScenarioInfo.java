@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -37,14 +37,26 @@ public class ScenarioInfo
     private String title;
     private String shortDescription;
     private String longDescription;
+    private String updateDescription;
     private List<String> tags;
     private String url;
     private boolean hasSource;
     private boolean isLocked;
     
+    private static final String PUBLISH_TITLE = "publish.title";
+    private static final String PUBLISH_SHORT_DESC = "publish.shortDesc";
+    private static final String PUBLISH_LONG_DESC = "publish.longDesc";
+    private static final String PUBLISH_URL = "publish.url";
+    private static final String PUBLISH_TAGS = "publish.tags";
+    private static final String PUBLISH_HAS_SOURCE = "publish.hasSource";
+    private static final String PUBLISH_LOCKED = "publish.locked";
+    private static final String PUBLISH_UPDATE_DESC = "publish.updateDesc";
+    
     public void setTitle(String title)
     {
-        this.title = title.trim();
+        if (title!=null) {
+            this.title = title.trim();
+        }
     }
     
     public String getTitle()
@@ -116,13 +128,22 @@ public class ScenarioInfo
      */
     public void store(ProjectProperties properties)
     {
-        properties.setString("publish.title", getTitle());
-        properties.setString("publish.shortDesc", getShortDescription());
-        properties.setString("publish.longDesc", getLongDescription());
-        properties.setString("publish.url", getUrl());
-        properties.setString("publish.tags", getTagsAsString());
-        properties.setBoolean("publish.hasSource", getHasSource());
-        properties.setBoolean("publish.locked", isLocked());
+        properties.setString(PUBLISH_TITLE, getTitle());
+        if (getShortDescription()!=null)
+        {
+            properties.setString(PUBLISH_SHORT_DESC, getShortDescription());
+        }
+        if (getLongDescription()!=null) 
+        {
+            properties.setString(PUBLISH_LONG_DESC, getLongDescription());
+        }
+        properties.setString(PUBLISH_URL, getUrl());
+        properties.setString(PUBLISH_TAGS, getTagsAsString());
+        properties.setBoolean(PUBLISH_HAS_SOURCE, getHasSource());
+        properties.setBoolean(PUBLISH_LOCKED, isLocked());
+        if (getUpdateDescription() !=null){
+            properties.setString(PUBLISH_UPDATE_DESC, getUpdateDescription());
+        }
     }
 
     private String getTagsAsString()
@@ -144,28 +165,38 @@ public class ScenarioInfo
      */
     public boolean load(ProjectProperties properties)
     {
-        try {
-            properties.getBoolean("publish.hasSource");
-        }
-        catch (NullPointerException e) {
+        //if it is a saved scenario it should have at least a title set
+        if (properties.getString(PUBLISH_TITLE)==null){
             return false;
         }
-        
-        setTitle(properties.getString("publish.title"));
-        setShortDescription(properties.getString("publish.shortDesc"));
-        setLongDescription(properties.getString("publish.longDesc"));
-        setUrl(properties.getString("publish.url"));
-        String tags = properties.getString("publish.tags");
-        String[] tagArray = tags.split(" ");
-
+        setTitle(properties.getString(PUBLISH_TITLE));
+        setShortDescription(properties.getString(PUBLISH_SHORT_DESC));
+        setLongDescription(properties.getString(PUBLISH_LONG_DESC));
+        setUrl(properties.getString(PUBLISH_URL));
         List<String> tagList = new LinkedList<String>();
-        for (int i = 0; i < tagArray.length; i++) {
-            String string = tagArray[i];
-            tagList.add(string);
+        String tags = properties.getString(PUBLISH_TAGS);
+        if (tags!=null){
+            String[] tagArray = tags.split(" ");
+            for (int i = 0; i < tagArray.length; i++) {
+                String string = tagArray[i];
+                tagList.add(string);
+            }
         }
         setTags(tagList);
-        setHasSource(properties.getBoolean("publish.hasSource"));
-        setLocked(properties.getBoolean("publish.locked"));
+        setHasSource(properties.getBoolean(PUBLISH_HAS_SOURCE, "false"));
+        setLocked(properties.getBoolean(PUBLISH_LOCKED, "true"));
+        setUpdateDescription(properties.getString(PUBLISH_UPDATE_DESC));
         return true;
     }
+
+    public String getUpdateDescription()
+    {
+        return updateDescription;
+    }
+
+    public void setUpdateDescription(String updateDescription)
+    {
+        this.updateDescription = updateDescription;
+    }
+ 
 }

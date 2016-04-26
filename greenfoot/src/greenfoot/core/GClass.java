@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -28,12 +28,10 @@ import java.awt.EventQueue;
 import java.rmi.RemoteException;
 
 import rmiextension.wrappers.RClass;
-import rmiextension.wrappers.RConstructor;
-import rmiextension.wrappers.RField;
-import bluej.extensions.*;
 import bluej.extensions.ClassNotFoundException;
-import bluej.parser.ClassParser;
-import bluej.parser.symtab.ClassInfo;
+import bluej.extensions.CompilationNotStartedException;
+import bluej.extensions.PackageNotFoundException;
+import bluej.extensions.ProjectNotOpenException;
 import bluej.runtime.ExecServer;
 import bluej.utility.Debug;
 
@@ -45,7 +43,6 @@ import bluej.utility.Debug;
  * have not been compiled.
  * 
  * @author Poul Henriksen
- * @version $Id$
  */
 public class GClass
 {
@@ -86,8 +83,14 @@ public class GClass
                 loadRealClass();
             }
         }
-        catch (Exception re) {
-            Debug.reportError("Getting remote class information", re);
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Problem checking class compiled state", e);
+        }
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Problem checking class compiled state", e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Problem checking class compiled state", e);
         }
     }
     
@@ -154,15 +157,7 @@ public class GClass
      */
     public String getClassProperty(String propertyName)
     {
-        try {
-            return pkg.getProject().getProjectProperties().getString("class." + getName() + "." + propertyName);
-        }
-        catch (ProjectNotOpenException e) {
-            return null;
-        }
-        catch (RemoteException e) {
-            return null;
-        }    
+        return pkg.getProject().getProjectProperties().getString("class." + getName() + "." + propertyName);
     }
     
     /**
@@ -187,67 +182,151 @@ public class GClass
         }
     }
     
-    public void compile(boolean waitCompileEnd)
+    public void compile(boolean waitCompileEnd, boolean forceQuiet)
         throws ProjectNotOpenException, PackageNotFoundException, RemoteException, CompilationNotStartedException
     {
-        rmiClass.compile(waitCompileEnd);
+        rmiClass.compile(waitCompileEnd, forceQuiet);
     }
 
     /**
      * Open the editor for this class.
      */
     public void edit()
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException
     {
-        rmiClass.edit();
+        try {
+            rmiClass.edit();
+        }
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Could not open editor", e);
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Could not open editor", e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Could not open editor", e);
+        }
+    }
+    
+    /**
+     * Close the editor for this class.
+     */
+    public void closeEditor()
+    {
+        try {
+            rmiClass.closeEditor();
+        }
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Could not close editor", e);
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Could not close editor", e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Could not close editor", e);
+        }
+    }
+    
+    public boolean hasSourceCode()
+    {
+        try {
+            return rmiClass.hasSourceCode();
+        }
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Could not close editor", e);
+            return false;
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Could not close editor", e);
+            return false;
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Could not close editor", e);
+            return false;
+        }
+    }
+    
+    /**
+     * Used for adding code to a void method with no parameters -- creating it if necessary
+     * 
+     * <p>Comment should include the delimiters and be fully formed (and end in a newline).
+     * Method name should have no parameters, it should just be "foo" or similar.
+     * Method body should have no curly braces, it should just be
+     * "foo.bar();\n        if(true) return;\n" or similar, and should end in a newline
+     */
+    public void insertAppendMethod(String comment, String access, String methodName, String methodBody, boolean showEditorOnCreate, boolean showEditorOnAppend)
+    {
+        try {
+            rmiClass.insertAppendMethod(comment, access, methodName, methodBody, showEditorOnCreate, showEditorOnAppend);
+        }
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Could not insert code", e);
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Could not insert code", e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Could not insert code", e);
+        }
+    }
+    
+    public void insertMethodCallInConstructor(String methodName, boolean showEditor)
+    {
+        try {
+            rmiClass.insertMethodCallInConstructor(methodName, showEditor);
+        }
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Could not insert code", e);
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Could not insert code", e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Could not insert code", e);
+        }
+    }
+    
+    /**
+     * Display a message in the status area of the editor window for this class.
+     */
+    public void showMessage(String message)
+    {
+        try {
+            rmiClass.showMessage(message);
+        }
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Could not display editor message", e);
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Could not display editor message", e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Could not display editor message", e);
+        }
     }
 
-
-    public void remove() throws ProjectNotOpenException, PackageNotFoundException, ClassNotFoundException, RemoteException
+    public void remove()
     {
         ProjectProperties props = pkg.getProject().getProjectProperties();
         props.removeProperty("class." + getName() + ".superclass");
         props.removeProperty("class." + getName() + ".image");
         props.removeCachedImage(getName());
-        rmiClass.remove();
+        try {
+            rmiClass.remove();
+        }
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Could not remove class", e);
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Could not remove class", e);
+        }
+        catch (ClassNotFoundException e) {
+            Debug.reportError("Could not remove class", e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Could not remove class", e);
+        }
     }
     
-    public RConstructor getConstructor(Class<?>[] signature)
-        throws ProjectNotOpenException, ClassNotFoundException, RemoteException
-    {
-        return rmiClass.getConstructor(signature);
-    }
-
-    public RConstructor[] getConstructors()
-        throws ProjectNotOpenException, ClassNotFoundException, RemoteException
-    {
-        return rmiClass.getConstructors();
-    }
-
-    public BMethod getDeclaredMethod(String methodName, Class<?>[] params)
-        throws ProjectNotOpenException, ClassNotFoundException, RemoteException
-    {
-        return rmiClass.getDeclaredMethod(methodName, params);
-    }
-
-    public BMethod[] getDeclaredMethods()
-        throws ProjectNotOpenException, ClassNotFoundException, RemoteException
-    {
-        return rmiClass.getDeclaredMethods();
-    }
-
-    public RField getField(String fieldName)
-        throws ProjectNotOpenException, ClassNotFoundException, RemoteException
-    {
-        return rmiClass.getField(fieldName);
-    }
-
-    public BField[] getFields()
-        throws ProjectNotOpenException, ClassNotFoundException, RemoteException
-    {
-        return rmiClass.getFields();
-    }
-
     /**
      * Get the java.lang.Class object representing this class. Returns null if
      * the class cannot be loaded (including if the class is not compiled).
@@ -305,7 +384,8 @@ public class GClass
      * Returns true if there is a cycle in the inheritance hierarchy.
      * @return
      */
-    private boolean containsCyclicHierarchy() {
+    private boolean containsCyclicHierarchy()
+    {
         GClass superCls = getSuperclassWithoutCheck();
         while (superCls != null) {
             if (superCls == this) {
@@ -358,9 +438,7 @@ public class GClass
      * Sets the superclass guess that will be returned if it is not possible to
      * find it in another way.
      * 
-     * This name will be stripped of any qualifications.
-     * 
-     * If this guess results in a cyclic hierarchy, it will not be set.
+     * <p>If this guess results in a cyclic hierarchy, it will not be set.
      * 
      * @return True if it was a valid name. False if invalid and something else
      *         should be tried (for instance if the guess is the same as the
@@ -368,9 +446,7 @@ public class GClass
      */
     public boolean setSuperclassGuess(final String superclassName)
     {
-        String superName = GreenfootUtil.extractClassName(superclassName);
-       
-        if (superName.equals(getName()) ) {
+        if (superclassName.equals(getQualifiedName())) {
             return false;
         }
         
@@ -397,20 +473,13 @@ public class GClass
     }
     
     /**
-     * This method tries to guess which class is the superclass. This can be used for non compilable and non parseable classes.
-     * <p>
-     * If the class is compiled, it will return the real superclass.
-     * <br>
-     * If the class is parseable this information will be used to extract the superclass.
-     * <br>
-     * If the is not parseable it will use the last superclass that was known.
-     * <br>
+     * This method tries to guess which class is the superclass. This can be used for non
+     * compilable and non parseable classes.
+     * 
+     * <p>If the class is compiled, it will return the real superclass.<br>
+     * If the class is parseable this information will be used to extract the superclass.<br>
+     * If the is not parseable it will use the last superclass that was known.<br>
      * In general, we will try to remember the last known superclass, and report that back.
-     * <p>
-     * 
-     * The meethod will only find superclasses that is part of this project or is one of the greenfoot API class (World or Actor).
-     * 
-     * OBS: This method can be very slow and shouldn't be called unless needed. Especially if the class isn't compiled it can be very slow.
      * 
      * @return Best guess of the name of the superclass (NOT the qualified name).
      */
@@ -419,90 +488,45 @@ public class GClass
         // TODO This should be called each time the source file is saved. However,
         // this is not possible at the moment, so we just do it when it is
         // compiled.
-        String name = this.getName();
-        if(name.equals("World") || name.equals("Actor")) {
+        String name = this.getQualifiedName();
+        if(name.equals("greenfoot.World") || name.equals("greenfoot.Actor")) {
             //We do not want to waste time on guessing the name of the superclass for these two classes.
             if(setSuperclassGuess("")) {
                 return;
             }
         }
         
-        //First, try to get the real super class.
-        String realSuperclass = null;
-        try {
-            if(isCompiled()) {                
-                realSuperclass = rmiClass.getSuperclass().getQualifiedName();
-            }
-        }
-        catch (RemoteException e) {
-        }
-        catch (ProjectNotOpenException e) {
-        }
-        catch (PackageNotFoundException e) {
-        }
-        catch (ClassNotFoundException e) {
-        }
-        catch (NullPointerException e) {
-        }
-
-        if(realSuperclass != null && setSuperclassGuess(realSuperclass)) {
-            return;
-        }
-        
-        // If the class is compiled, but we did not get a superclass back, then
-        // the superclass is not from this project, but we can get it from the
-        // real class
-        if (realSuperclass == null && isCompiled()) {
+        if (isCompiled()) {
             Class<?> superclass = realClass.getSuperclass();
-            if (superclass != null && setSuperclassGuess(superclass.getName())) {
-                return;
-            }
-            else {
+            if (superclass == null || !setSuperclassGuess(superclass.getName())) {
                 setSuperclassGuess("");
             }
+            return;
         }
         
-        //Second, try to parse the file
-        String parsedSuperclass = null;
         try {
-            ClassInfo info = ClassParser.parse(rmiClass.getJavaFile());//, classes);
-            parsedSuperclass = info.getSuperclass();
-           
-            // TODO hack! If the superclass is Actor or World,
-            // put it in the right package... parsing does not resolve references...
-            if (parsedSuperclass.equals("Actor")) {
-                parsedSuperclass = "greenfoot.Actor";
-            }
-            if (parsedSuperclass.equals("World")) {
-                parsedSuperclass = "greenfoot.World";
+            RClass sclass = rmiClass.getSuperclass();
+            if (sclass != null) {
+                setSuperclassGuess(sclass.getQualifiedName());
+                return;
             }
         }
-        catch (ProjectNotOpenException e) {}
-        catch (PackageNotFoundException e) {}
-        catch (RemoteException e) {}
-        catch (Exception e) {}
-
-        if(parsedSuperclass != null && setSuperclassGuess(parsedSuperclass)) {
-            return;
+        catch (ProjectNotOpenException e) {
+            Debug.reportError("Couldn't get superclass", e);
+        }
+        catch (PackageNotFoundException e) {
+            Debug.reportError("Couldn't get superclass", e);
+        }
+        catch (ClassNotFoundException e) {
+            Debug.reportError("Couldn't get superclass", e);
+        }
+        catch (RemoteException e) {
+            Debug.reportError("Couldn't get superclass", e);
         }
         
         //Ok, nothing more to do. We just let the superclassGuess be whatever it is.
-        // It can produce incorrect hierarchies if a class named Object inherits Class A, and then that inheritance is removed. It will then stay as a subclass of A because it has the same name as its superclass (java.lang.Object). 
     }
     
-    /**
-     * Strips the name of a class for its qualified part.
-     */
-    private String removeQualification(String classname)
-    {
-        int lastDotIndex = classname.lastIndexOf(".");
-        if(lastDotIndex != -1) {
-            return classname.substring(lastDotIndex+1);
-        } else {
-            return classname;
-        }
-    }
-
     /**
      * Check whether this class is compiled (thread-safe).
      */
@@ -533,34 +557,26 @@ public class GClass
     /**
      * Returns true if this class is a subclass of the given class.
      * 
-     * A class is not considered a subclass of itself. So, if the two classes
+     * <p>A class is not considered a subclass of itself. So, if the two classes
      * are same it returns false.
      * 
-     * It only looks at the name of class and not the fully qualified name.
-     * 
-     * @param className
-     * @return
+     * <p>It only looks at the name of class and not the fully qualified name.
      */
     public boolean isSubclassOf(String className)
     {    
-        className = removeQualification(className);
-        GClass superclass = this;
-        if(this.getName().equals(className)) {
+        if (this.getQualifiedName().equals(className)) {
             return false;
         }
+        
         //Recurse through superclasses
-        while (superclass != null) {
-            String superclassName = superclass.getSuperclassGuess();
-            //TODO Fix this hack. Should be done when non-greenfoot classes gets support.
-            //HACK to ensure that a class with no superclass has "" as superclass. This is becuase of the ClassForest building which then allows the class to show up even though it doesn't have any superclass.
-            if(superclassName == null) {
-                superclassName = "";
-            }
-            if (superclassName != null && (className.equals(removeQualification(superclassName)))) {
+        GClass currentClass = this;
+        do {
+            String superclassName = currentClass.getSuperclassGuess();
+            if (className.equals(superclassName)) {
                 return true;
             }
-            superclass = superclass.getSuperclass();
-        }
+            currentClass = currentClass.getSuperclass();
+        } while (currentClass != null);
         return false;
     }   
 

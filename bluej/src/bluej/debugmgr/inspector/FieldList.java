@@ -223,20 +223,27 @@ public class FieldList extends JTable
     {
         final static private ImageIcon objectrefIcon = Config.getImageAsIcon("image.inspector.objectref");
         final private static Border valueBorder = BorderFactory.createLineBorder(Color.gray);
-        private Color valueColor;
+        private Color bkColor;
 
 
-        public ListTableCellRenderer(Color valueColor)
+        public ListTableCellRenderer(Color bkColor)
         {
-            this.valueColor = valueColor;
+            this.bkColor = bkColor;
             this.setOpaque(true);
         }
 
         public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
                 boolean hasFocus, int row, int column)
         {
-
             String valueString = (String) value;
+
+            // It seems the JRE can pass in null in certain situations. Specifically,
+            // turning the Voiceover utility on in Mac OS X (10.6.2, Java 1.6.0_17)
+            // causes this method to be called with a null value every time the list
+            // selection changes.
+            if (valueString == null) {
+                return this;
+            }
 
             if (valueString.equals(" " + DebuggerObject.OBJECT_REFERENCE)) {
                 this.setIcon(objectrefIcon);
@@ -255,23 +262,17 @@ public class FieldList extends JTable
                 this.setText(displayString.toString());
             }
 
-            if (isSelected) {
-                this.setBackground(table.getSelectionBackground());
-            }
-            else {
-                this.setBackground(table.getBackground());
-            }
-
-            Border b = BorderFactory.createLineBorder(this.getBackground(), 3);
+            Color rowBackground = isSelected ? table.getSelectionBackground() : bkColor;
+            this.setBackground(rowBackground);
+            
+            Border b = BorderFactory.createLineBorder(rowBackground, 3);
 
             super.setBorder(b);
-
-            TableColumn tableColumn = table.getColumnModel().getColumn(column);
 
             // depending in which column we are in, we have to do some different
             // things
             if (column == 1) {
-                this.setBackground(valueColor);
+                this.setBackground(new Color(255,255,255));
                 this.setHorizontalAlignment(JLabel.CENTER);
                 Border compoundBorder = BorderFactory.createCompoundBorder(getBorder(), valueBorder);
                 super.setBorder(compoundBorder);
@@ -284,9 +285,8 @@ public class FieldList extends JTable
 
         private void replaceAll(StringBuffer sb, String orig, String replacement)
         {
-            //The call to toString is not efficient, but this method will not
-            // be
-            //called that many times anyway, so it doesn't matter that much.
+            // The call to toString is not efficient, but this method will not
+            // be called that many times anyway, so it doesn't matter that much.
             int location = sb.toString().indexOf(orig);
             while (location != -1) {
                 sb.replace(location, location + orig.length(), replacement);

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,9 +29,9 @@ import bluej.extensions.PackageAlreadyExistsException;
 import bluej.extensions.ProjectNotOpenException;
 
 /**
+ * Interface for a remote project.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: RProject.java 6721 2009-09-19 04:11:55Z davmac $
  */
 public interface RProject
     extends java.rmi.Remote
@@ -44,32 +44,41 @@ public interface RProject
         throws RemoteException;
 
     /**
-     * @return
+     * Get the project directory.
      * @throws ProjectNotOpenException
      */
     public abstract File getDir()
         throws ProjectNotOpenException, RemoteException;
 
     /**
-     * @return
+     * Get the project's name.
+     * 
      * @throws ProjectNotOpenException
      */
     public abstract String getName()
         throws ProjectNotOpenException, RemoteException;
 
     /**
-     * @param name
-     * @return
+     * Get a remote reference to a package within the project, by name.
+     * 
      * @throws ProjectNotOpenException
      */
     public abstract RPackage getPackage(String name)
         throws ProjectNotOpenException, RemoteException;
 
+    /**
+     * Create a new package within the project.
+     * 
+     * @throws ProjectNotOpenException     if the project is no longer open
+     * @throws PackageAlreadyExistsException  if the package already exists
+     * @throws RemoteException  if a remote exception occurred
+     */
     public abstract RPackage newPackage(String fullyQualifiedName)
         throws ProjectNotOpenException, PackageAlreadyExistsException, RemoteException;
 
     /**
-     * @return
+     * Get all packages within this project.
+     * 
      * @throws ProjectNotOpenException
      */
     public abstract RPackage[] getPackages()
@@ -77,6 +86,7 @@ public interface RProject
 
     /**
      * Request a save of all open files in the project.
+     * 
      * @throws ProjectNotOpenException
      */
     public abstract void save()
@@ -84,6 +94,7 @@ public interface RProject
     
     /**
      * Open the "readme" editor for this project.
+     * 
      * @throws ProjectNotOpenException
      * @throws RemoteException
      */
@@ -105,4 +116,34 @@ public interface RProject
      */
     public abstract void removeListener(RProjectListener listener)
         throws RemoteException;
+    
+    /**
+     * Get a remote reference to the object in the launcher "transport" field. The purpose
+     * of this is to allow obtaining a remote reference to a local object, by means of:
+     * 
+     * <ol>
+     * <li>(in the user VM) Storing a reference to the object into the transport field
+     * <li>Calling this method.
+     * </ul>
+     * 
+     * @return  A remote reference to the transport field object.
+     * @throws RemoteException  If an RMI exception occurs.
+     */
+    public abstract RObject getRemoteObject()
+        throws RemoteException;
+
+    /**
+     * Toggles the BlueJ debugger (Shows/Hides)
+     * @throws RemoteException  if an RMI error occurs
+     */
+    public abstract void toggleExecControls()
+        throws RemoteException;
+
+    /**
+     * @return	Whether or not the debugger window is currently visible
+     * @throws RemoteException   if an RMI error occurs
+     * @throws ProjectNotOpenException   if the project is no longer open
+     */
+    public abstract boolean isExecControlVisible()
+        throws RemoteException, ProjectNotOpenException;
 }

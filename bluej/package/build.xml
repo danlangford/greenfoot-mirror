@@ -19,7 +19,7 @@
         <include name="lib/bluejext.jar" />
         <include name="lib/antlr.jar" />
         <include name="lib/junit.jar" />
-        <include name="lib/MRJ141Stubs.jar" />
+        <include name="lib/AppleJavaExtensions.jar" />
         <include name="lib/sshconnection.jar" />
         <include name="lib/org-netbeans-lib-cvsclient.jar" />
         <include name="lib/jsch.jar" />
@@ -87,16 +87,18 @@
     </fileset>
 
     <!-- These are files which should be made to have system line endings -->
-    <patternset id="bluej.textfiles">
+    <patternset id="bluej.textfiles.utf8">
         <include name="examples/**/*.java" />
         <include name="examples/**/README.*" />
         <include name="lib/bluej.defs" />
         <include name="lib/moe.defs" />
+        <include name="lib/*/templates/**" />
+    </patternset>
+	<patternset id="bluej.textfiles.iso88591">
         <include name="lib/*/labels" />
         <include name="lib/*/dialogues" />
         <include name="lib/*/*.help" />
-        <include name="lib/*/templates/**" />
-    </patternset>
+	</patternset>
     
     <target name="dist">
         <delete dir="install_tmp" />
@@ -122,8 +124,11 @@
         </touch>
 
         <!-- make sure line endings are in unix format -->
-        <fixcrlf srcdir="install_tmp" eol="lf">
-            <patternset refid="bluej.textfiles" />
+        <fixcrlf srcdir="install_tmp" eol="lf" encoding="ISO-8859-1">
+            <patternset refid="bluej.textfiles.iso88591" />
+        </fixcrlf>
+        <fixcrlf srcdir="install_tmp" eol="lf" encoding="UTF-8">
+            <patternset refid="bluej.textfiles.utf8" />
         </fixcrlf>
         
         <chmod dir="install_tmp" perm="a+r"/>
@@ -142,7 +147,7 @@
         <!-- distribution jar, and stores its length in the        -->
         <!-- installer properties                                  -->
         <javac
-               executable="${build_java_home}/bin/javac"
+               executable="${build_java_home}/${java_command_dir_name}/javac"
                fork="yes"
                srcdir="."
                destdir="install_tmp"
@@ -154,7 +159,7 @@
         <java
                classname="InstallerProps"
                fork="yes"
-               jvm="${build_java_home}/bin/java"
+               jvm="${build_java_home}/${java_command_dir_name}/java"
             >
             <classpath>
                  <pathelement location="install_tmp" />
@@ -171,7 +176,7 @@
 
         <!-- compile the installer -->
         <javac
-               executable="${build_java_home}/bin/javac"
+               executable="${build_java_home}/${java_command_dir_name}/javac"
                fork="yes"
                srcdir="."
                destdir="install_tmp"
@@ -259,32 +264,100 @@
         <delete dir="mac_tmp" />
     </target>
 
-    
-     <!-- windows-launcher builds the Delphi launcher for BlueJ. 
-          It is not yet functional-->
-    <target name="windows-launcher">
+	<target name="debian-dist">
+		<mkdir dir="bluejdeb" />
+		<copy todir="bluejdeb">
+			<fileset dir="debianfiles" includes="DEBIAN/**" />
+		</copy>
+		
+		<mkdir dir="bluejdeb/usr" />
+		<mkdir dir="bluejdeb/usr/bin" />
+		<copy todir="bluejdeb/usr/bin" file="debianfiles/bluej" />
+		<chmod perm="ugo+x" file="bluejdeb/usr/bin/bluej" verbose="true" />
+		
+		<!-- lib files -->
+		<mkdir dir="bluejdeb/usr/share/bluej" />
+		<mkdir dir="bluejdeb-lib-tmp" />
+        <copy todir="bluejdeb-lib-tmp">
+            <fileset dir="${bluej_home}">
+            	<patternset refid="bluej.libdirs" />
+            	<patternset refid="bluej.libfiles" />
+            </fileset>
+        </copy>
+		<move todir="bluejdeb/usr/share/bluej">
+			<fileset dir="bluejdeb-lib-tmp/lib">
+				<patternset includes="**" />
+			</fileset>
+		</move>
+		<delete dir="bluejdeb-lib-tmp" />
+		
+		<!-- examples and documentation -->
+		<mkdir dir="bluej-examples-tmp" />
+        <copy todir="bluej-examples-tmp">
+            <fileset dir="${bluej_home}">
+                <patternset refid="bluej.examples" />
+            </fileset>
+        </copy>
+		<mkdir dir="bluejdeb/usr/share/doc/BlueJ" />
+        <move todir="bluejdeb/usr/share/doc/BlueJ">
+            <fileset dir="bluej-examples-tmp/examples">
+                <patternset includes="**" />
+            </fileset>
+        </move>
+		<delete dir="bluej-examples-tmp" />
+		<copy todir="bluejdeb/usr/share/doc/BlueJ" file="../doc/LICENSE.txt" />
+		<copy todir="bluejdeb/usr/share/doc/BlueJ" file="../doc/THIRDPARTYLICENSE.txt" />
+
+		<!-- desktop app extras -->
+		<copy todir="bluejdeb/usr/share">
+			<fileset dir="debianfiles">
+				<patternset includes="applications/**,icons/**,pixmaps/**" />
+			</fileset>
+		</copy>
+
+	    <!-- update version number -->
+	    <replaceregexp byline="true">
+	        <regexp pattern="VERSION" />
+	        <substitution expression="${bluej.version.debian}" />
+	        <fileset dir="bluejdeb/DEBIAN" includes="control" />
+	    </replaceregexp>
+		
+		<!-- you must do this as root, sigh -->
+		<chown owner="root">
+			<fileset dir="bluejdeb">
+				<patternset includes="**" />
+			</fileset>
+		</chown>
+		<chgrp group="root">
+			<fileset dir="bluejdeb">
+				<patternset includes="**" />
+			</fileset>
+		</chgrp>
+		
+		<chmod perm="+x" file="bluejdeb/DEBIAN/postinst" />
+		<chmod perm="+x" file="bluejdeb/DEBIAN/postrm" />
+		<exec executable="dpkg-deb" searchpath="true">
+			<arg value="-b" />
+			<arg file="bluejdeb" />
+			<arg value="bluej-${bluej.version}.deb" />
+		</exec>
+		
+		<delete dir="bluejdeb" />
+	</target>
         
-        <!-- update registry version number in launcher Delphi src to bluej version -->
-        <replaceregexp byline="true">
-            <regexp pattern="bluejregkey : string = .*" />
-            <substitution expression="bluejregkey : string = '\\\\Software\\\\BlueJ\\\\BlueJ\\\\${bluej.version}';" />
-            <fileset dir="winlaunch" includes="main.pas" />
-        </replaceregexp>
-        
-        <!-- here is where we should call the delphi command-line compiler -->
-            
-    </target>
-    
     <!-- windows-dist requires that a bluej-dist.jar file is placed into
          the package directory. This is unjarred and then rebuilt into
          the windows installer package (left as winsetup/bluejsetup.exe)-->
-    <target name="windows-dist" depends="windows-launcher">
+    <target name="windows-dist">
         <delete dir="install_tmp" />
         <unzip src="${dist.jar}" dest="install_tmp" />
 
         <!-- make sure line endings are in windows format -->
-        <fixcrlf srcdir="install_tmp" eol="crlf">
-            <patternset refid="bluej.textfiles" />
+        <fixcrlf srcdir="install_tmp" eol="crlf" encoding="ISO-8859-1">
+            <patternset refid="bluej.textfiles.iso88591" />
+        </fixcrlf>
+        <fixcrlf srcdir="install_tmp" eol="crlf" encoding="UTF-8">
+            <patternset refid="bluej.textfiles.utf8" />
         </fixcrlf>
         
         <!-- update version number in innosetup config file -->
@@ -340,11 +413,13 @@
 	            <exclude name="package/${bluej.source.zip}"/>
 	            <exclude name="package/BlueJ*.jar"/>
 	            <exclude name="package/BlueJ*.zip"/>
+            	<exclude name="package/bluej*.deb"/>
 	            <exclude name="package/bluej-dist.jar"/>
 	            <exclude name="package/install_tmp/"/>
-	            <include name="test/**/*" />    
-	            <include name="build.properties" />   
-	            <include name="build.xml" />  
+	            <include name="test/**/*"/>
+            	<exclude name="test/classes/**"/>
+	            <include name="build.properties"/>   
+	            <include name="build.xml"/>  
 	            <exclude name="**/.DS_Store"/>
 	        </zipfileset>
         </zip>

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -33,24 +33,20 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
-import java.rmi.RemoteException;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
-import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import bluej.Config;
-import bluej.extensions.ProjectNotOpenException;
 import bluej.pkgmgr.Project;
 import bluej.utility.BlueJFileReader;
 import bluej.utility.Debug;
@@ -138,21 +134,14 @@ public class JarCreator
      * @param worldClass Name of the main class.
      * @param lockScenario Should the exported scenario include 'act'
      *            and speedslider.
+     * @param applet Whether the export is for an applet on a webpage (true) or for a stand-alone JAR (false) 
      */
-    public JarCreator(GProject project, File exportDir, String jarName, String worldClass, boolean lockScenario) 
+    public JarCreator(GProject project, File exportDir, String jarName, String worldClass, boolean lockScenario, boolean applet) 
     {   
         this(exportDir, jarName);
         
         // get the project directory        
-        try {
-            projectDir = project.getDir();
-        }
-        catch (ProjectNotOpenException e) {
-            e.printStackTrace();
-        }
-        catch (RemoteException e) {
-            e.printStackTrace();
-        }
+        projectDir = project.getDir();
         
         String scenarioName = project.getName();
         
@@ -186,7 +175,7 @@ public class JarCreator
         addSkipDir(Project.projectLibDirName);
         
         // Set the main class
-        String mainClass = "greenfoot.export.GreenfootScenarioViewer";
+        String mainClass = (applet ? GreenfootScenarioViewer.class : GreenfootScenarioMain.class).getCanonicalName();
         setMainClass(mainClass);
         
         // Add the properties read by the GreenfootScenarioViewer
@@ -234,17 +223,7 @@ public class JarCreator
         
         isZip = true;
         
-        // get the project directory        
-        try {
-            projectDir = project.getDir();
-        }
-        catch (ProjectNotOpenException e) {
-            e.printStackTrace();
-        }
-        catch (RemoteException e) {
-            e.printStackTrace();
-        }
-        
+        projectDir = project.getDir();
         
         addFile(projectDir);        
         
@@ -313,7 +292,7 @@ public class JarCreator
             copyLibsToDir(extraJars, exportDir);            
         }
         catch (IOException exc) {
-            Debug.reportError("problen writing jar file: " + exc);
+            Debug.reportError("problem writing jar file: " + exc);
         }
         finally {
             try {
@@ -530,12 +509,18 @@ public class JarCreator
      * Writes a file or directory to a jar. Recursively called for
      * subdirectories. outputFile should be the canonical file representation of
      * the Jar file we are creating (to prevent including itself in the Jar
-     * file)
+     * file). If the source file does not exist, this method will just return without 
+     * doing anything.
      * @param onlyDirContents If sourceFile is a dir, this parameter indicates that the contents of the dir should be added, not the dir itself.
      */
     private void writeFileToJar(File sourceFile, String pathPrefix, ZipOutputStream stream, File outputFile, boolean onlyDirContents)
         throws IOException
     {
+        if(!sourceFile.exists()) {
+            // if the file is not available, just return.
+            return;
+        }
+        
         if(sourceFile.isDirectory()) {
             if(!onlyDirContents) {
                 pathPrefix += sourceFile.getName()  + "/";
@@ -554,11 +539,16 @@ public class JarCreator
     }
     
     /**
-     * Write the contents of a jar into another jar stream. 
+     * Write the contents of a jar into another jar stream. If the source file does not exist, this method will just return without 
+     * doing anything.
      */
     private void writeJarToJar(File inputJar, ZipOutputStream outputStream)
         throws IOException
     {
+        if(!inputJar.exists()) {
+            // if the file is not available, just return.
+            return;
+        }
         
         JarInputStream inputStream = new JarInputStream(
                 new BufferedInputStream(new FileInputStream(inputJar)));
@@ -580,13 +570,17 @@ public class JarCreator
     private void copyLibsToDir(List<File> userLibs, File destDir)
     {
         for (Iterator<File> it = userLibs.iterator(); it.hasNext();) {
-            File lib = (File) it.next();
-            File destFile = new File(destDir, lib.getName());
-            try {
-                FileUtility.copyFile(lib, destFile);
-            }
-            catch (IOException e) {
-                Debug.reportError("Error when copying file: " + lib + " to: " + destFile, e);               
+            File lib = it.next();
+
+            // Ignore files that do not exist
+            if(lib.exists()) {
+                File destFile = new File(destDir, lib.getName());
+                try {
+                    FileUtility.copyFile(lib, destFile);
+                }
+                catch (IOException e) {
+                    Debug.reportError("Error when copying file: " + lib + " to: " + destFile, e);               
+                }
             }
         }
     }
@@ -683,7 +677,8 @@ public class JarCreator
         File template = Config.getLanguageFile(baseName);
         
         try {
-            BlueJFileReader.translateFile(template, outputFile, translations, Charset.forName("UTF-8"));
+            Charset utf8 = Charset.forName("UTF-8");
+            BlueJFileReader.translateFile(template, outputFile, translations, utf8, utf8);
         }
         catch (IOException e) {
             Debug.reportError("Exception during file translation from " + template + " to " + outputFile);

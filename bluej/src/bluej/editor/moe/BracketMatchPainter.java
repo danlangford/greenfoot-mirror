@@ -19,14 +19,6 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-// Copyright (c) 2000, 2005 BlueJ Group, Deakin University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html 
-// Any queries should be directed to Michael Kolling mik@bluej.org
-
 package bluej.editor.moe;
 
 import java.awt.*;
@@ -62,7 +54,7 @@ public class BracketMatchPainter extends DefaultHighlighter.DefaultHighlightPain
                                            end,Position.Bias.Backward,
                                            bounds);
             rect = shape.getBounds();                
-            g.drawRect(rect.x, rect.y, rect.width -1, rect.height - 1);
+            g.fillRect(rect.x, rect.y, rect.width -1, rect.height - 1);
         } catch (BadLocationException ble) {
             Debug.reportError("bad location exception thrown");
             ble.printStackTrace();

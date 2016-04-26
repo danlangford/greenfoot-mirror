@@ -19,48 +19,37 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
-// Copyright (c) 2000 BlueJ Group, Monash University
-//
-// This software is made available under the terms of the "MIT License"
-// A copy of this license is included with this source distribution
-// in "license.txt" and is also available at:
-// http://www.opensource.org/licenses/mit-license.html
-// Any queries should be directed to Michael Kolling: mik@mip.sdu.dk
-
 package bluej.debugmgr.texteval;
 
-/**
- * MoeSyntaxView.java - adapted from
- * SyntaxView.java - jEdit's own Swing view implementation
- * to add Syntax highlighting to the BlueJ programming environment.
- */
+import java.awt.Color;
+import java.awt.Graphics;
+import java.awt.Image;
+import java.awt.Rectangle;
+import java.awt.Shape;
 
-import javax.swing.text.*;
-
-import java.awt.*;
+import javax.swing.text.Element;
+import javax.swing.text.Segment;
+import javax.swing.text.Utilities;
 
 import bluej.Config;
 import bluej.editor.moe.BlueJSyntaxView;
-
-import org.syntax.jedit.*;
-import org.syntax.jedit.tokenmarker.*;
+import bluej.editor.moe.MoeSyntaxDocument;
 
 /**
- * A Swing view implementation that colorizes lines of a
- * SyntaxDocument using a TokenMarker.
+ * Syntax colouring for the codepad.
  *
- * This class should not be used directly; a SyntaxEditorKit
- * should be used instead.
- *
- * @author Slava Pestov
  * @author Bruce Quig
  * @author Michael Kolling
  *
- * @version $Id: TextEvalSyntaxView.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: TextEvalSyntaxView.java 6650 2009-09-10 05:44:40Z davmac $
  */
 
 public class TextEvalSyntaxView extends BlueJSyntaxView
 {
+    public static final short TAG_WIDTH = 14;
+    protected static final int BREAKPOINT_OFFSET = TAG_WIDTH + 2;
+    protected static final int LEFT_MARGIN = BREAKPOINT_OFFSET;
+
     // Attributes for lines and document
     public static final String OUTPUT = "output";
     public static final String ERROR = "error";
@@ -83,40 +72,39 @@ public class TextEvalSyntaxView extends BlueJSyntaxView
      */
     public TextEvalSyntaxView(Element elem)
     {
-        super(elem);
+        super(elem, LEFT_MARGIN);
     }
 
- 	/**
+    /**
      * Draw a line for the text eval area.
-	 */
-	public void paintTaggedLine(Segment lineText, int lineIndex, Graphics g, int x, int y, 
-            SyntaxDocument document, TokenMarker tokenMarker, Color def, Element line) 
+     */
+    public void paintTaggedLine(Segment lineText, int lineIndex, Graphics g, int x, int y, 
+            MoeSyntaxDocument document, Color def, Element line) 
     {
-		if(hasTag(line, OUTPUT)) {
-		    g.setColor(outputColor);
-		    Utilities.drawTabbedText(lineText, x+BREAKPOINT_OFFSET, y, g, this, 0);
-		}
-		else if(hasTag(line, ERROR)) {
-		    g.setColor(errorColor);
-		    Utilities.drawTabbedText(lineText, x+BREAKPOINT_OFFSET, y, g, this, 0);
-		}
-        else if(hasObject(line, OBJECT)) {
-            g.drawImage(objectImage, x-1, y+3-objectImage.getHeight(null), null);
+        if(hasTag(line, OUTPUT)) {
             g.setColor(outputColor);
-            Utilities.drawTabbedText(lineText, x+BREAKPOINT_OFFSET, y, g, this, 0);
+            Utilities.drawTabbedText(lineText, x, y, g, this, 0);
+        }
+        else if(hasTag(line, ERROR)) {
+            g.setColor(errorColor);
+            Utilities.drawTabbedText(lineText, x, y, g, this, 0);
+        }
+        else if(hasObject(line, OBJECT)) {
+            g.drawImage(objectImage, x-1-BREAKPOINT_OFFSET, y+3-objectImage.getHeight(null), null);
+            g.setColor(outputColor);
+            Utilities.drawTabbedText(lineText, x, y, g, this, 0);
         }
         else if(hasTag(line, CONTINUE)) {
-            g.drawImage(continueImage, x-1, y+3-continueImage.getHeight(null), null);
-            paintSyntaxLine(lineText, lineIndex, x+BREAKPOINT_OFFSET, y, g, 
-                    document, tokenMarker, def);   
+            g.drawImage(continueImage, x-1-BREAKPOINT_OFFSET, y+3-continueImage.getHeight(null), null);
+            paintSyntaxLine(lineText, lineIndex, x, y, g, 
+                    document, def);   
         }
-		else {
-            g.drawImage(promptImage, x-1, y+3-promptImage.getHeight(null), null);
-		    paintSyntaxLine(lineText, lineIndex, x+BREAKPOINT_OFFSET, y, g, 
-		            document, tokenMarker, def);   
-		}
-	}
-
+        else {
+            g.drawImage(promptImage, x-1-BREAKPOINT_OFFSET, y+3-promptImage.getHeight(null), null);
+            paintSyntaxLine(lineText, lineIndex, x, y, g, 
+                    document, def);   
+        }
+    }
     
     /**
      * Check whether a given line is tagged with a given tag.
@@ -129,11 +117,9 @@ public class TextEvalSyntaxView extends BlueJSyntaxView
         return line.getAttributes().getAttribute(tag) != null;
     }
     
-    
-   /**
-    * redefined paint method to paint breakpoint area
-    *
-    */
+    /**
+     * redefined paint method to paint breakpoint area
+     */
     public void paint(Graphics g, Shape allocation)
     {
         Rectangle bounds = allocation.getBounds();
@@ -144,6 +130,6 @@ public class TextEvalSyntaxView extends BlueJSyntaxView
         // paint the tag separator line
         g.setColor(Color.lightGray);
         g.drawLine(bounds.x + TAG_WIDTH, 0,
-                   bounds.x + TAG_WIDTH, bounds.y + bounds.height);
+                bounds.x + TAG_WIDTH, bounds.y + bounds.height);
     }
 }

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,13 +21,14 @@
  */
 package greenfoot.platforms.standalone;
 
+import greenfoot.Actor;
 import greenfoot.World;
 import greenfoot.core.WorldHandler;
 import greenfoot.export.GreenfootScenarioViewer;
 import greenfoot.gui.input.InputManager;
 import greenfoot.platforms.WorldHandlerDelegate;
+import greenfoot.record.InteractionListener;
 
-import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 
 
@@ -35,7 +36,6 @@ import java.awt.event.MouseEvent;
  * Implementation for running scenarios in a standalone application or applet.
  * 
  * @author Poul Henriksen
- *
  */
 public class WorldHandlerDelegateStandAlone implements WorldHandlerDelegate
 {    
@@ -49,16 +49,6 @@ public class WorldHandlerDelegateStandAlone implements WorldHandlerDelegate
         this.lockScenario = lockScenario;
     }
     
-    public void dragFinished(Object o)
-    {
-        worldHandler.finishDrag(o);
-    }
-
-    public void keyReleased(KeyEvent e)
-    {
-        // Not used in standalone
-    }
-
     public boolean maybeShowPopup(MouseEvent e)
     {
         // Not used in standalone
@@ -69,15 +59,15 @@ public class WorldHandlerDelegateStandAlone implements WorldHandlerDelegate
     {
         // Not used in standalone
     }
-
-    public void processKeyEvent(KeyEvent e)
+    
+    public void mouseMoved(MouseEvent e)
     {
         // Not used in standalone
     }
 
     public void setWorld(final World oldWorld, final World newWorld)
     {
-        ActorDelegateStandAlone.initWorld(newWorld);
+        // Not needed
     }
 
     public void setWorldHandler(WorldHandler handler)
@@ -115,5 +105,25 @@ public class WorldHandlerDelegateStandAlone implements WorldHandlerDelegate
     public void discardWorld(World world)
     {
     	// Nothing special to do.    
+    }
+
+    public void addActor(Actor actor, int x, int y)
+    {
+        // Nothing to be done
+    }
+
+    public void initialisingWorld(World world)
+    {
+        // Nothing to be done        
+    }
+    
+    public void simulationActive()
+    {
+        // Nothing to be done        
+    }
+    
+    public InteractionListener getInteractionListener()
+    {
+        return null;
     }
 }

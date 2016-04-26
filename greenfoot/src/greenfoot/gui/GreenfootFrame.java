@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,11 +21,13 @@
  */
 package greenfoot.gui;
 
+import bluej.BlueJTheme;
 import greenfoot.Actor;
 import greenfoot.World;
 import greenfoot.actions.AboutGreenfootAction;
 import greenfoot.actions.CloseProjectAction;
 import greenfoot.actions.CompileAllAction;
+import greenfoot.actions.ToggleDebuggerAction;
 import greenfoot.actions.ExportProjectAction;
 import greenfoot.actions.NewClassAction;
 import greenfoot.actions.NewProjectAction;
@@ -40,10 +42,14 @@ import greenfoot.actions.RunOnceSimulationAction;
 import greenfoot.actions.RunSimulationAction;
 import greenfoot.actions.SaveCopyAction;
 import greenfoot.actions.SaveProjectAction;
+import greenfoot.actions.SaveWorldAction;
 import greenfoot.actions.ShowApiDocAction;
 import greenfoot.actions.ShowCopyrightAction;
 import greenfoot.actions.ShowReadMeAction;
 import greenfoot.actions.ShowWebsiteAction;
+import greenfoot.actions.ToggleAction;
+import greenfoot.actions.ToggleSoundAction;
+import greenfoot.core.ClassStateManager;
 import greenfoot.core.GClass;
 import greenfoot.core.GCoreClass;
 import greenfoot.core.GPackage;
@@ -62,9 +68,9 @@ import greenfoot.gui.classbrowser.ClassView;
 import greenfoot.gui.classbrowser.Selectable;
 import greenfoot.gui.classbrowser.SelectionListener;
 import greenfoot.gui.input.mouse.LocationTracker;
-import greenfoot.gui.inspector.GreenfootResultInspector;
 import greenfoot.gui.inspector.GreenfootClassInspector;
 import greenfoot.gui.inspector.GreenfootObjectInspector;
+import greenfoot.gui.inspector.GreenfootResultInspector;
 import greenfoot.platforms.ide.SimulationDelegateIDE;
 import greenfoot.platforms.ide.WorldHandlerDelegateIDE;
 import greenfoot.sound.SoundFactory;
@@ -75,6 +81,7 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.HeadlessException;
+import java.awt.Menu;
 import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowEvent;
@@ -86,10 +93,11 @@ import java.util.Map;
 
 import javax.swing.Action;
 import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
+import javax.swing.ButtonModel;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
@@ -97,8 +105,6 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
-import javax.swing.UIManager;
-import javax.swing.UnsupportedLookAndFeelException;
 
 import rmiextension.wrappers.RBlueJ;
 import rmiextension.wrappers.event.RCompileEvent;
@@ -115,18 +121,18 @@ import bluej.pkgmgr.Package;
 import bluej.prefmgr.PrefMgr;
 import bluej.testmgr.record.ClassInspectInvokerRecord;
 import bluej.testmgr.record.InvokerRecord;
-
+import bluej.utility.DBox;
 import com.apple.eawt.Application;
 import com.apple.eawt.ApplicationAdapter;
 import com.apple.eawt.ApplicationEvent;
+
+import java.awt.Image;
 
 /**
  * The main frame for a Greenfoot project (one per project)
  * 
  * @author Poul Henriksen
  * @author mik
- *
- * @version $Id: GreenfootFrame.java 6789 2009-10-13 07:04:57Z davmac $
  */
 public class GreenfootFrame extends JFrame
     implements WindowListener, CompileListener, WorldListener, SelectionListener,
@@ -153,6 +159,8 @@ public class GreenfootFrame extends JFrame
     private ClassBrowser classBrowser;
     private ControlPanel controlPanel;
     private JScrollPane classScrollPane;
+    /** The panel that needs to be revalidated when the world size changes */
+    private JComponent centrePanel;
     
     private NewClassAction newClassAction;
     private SaveProjectAction saveProjectAction;
@@ -162,6 +170,10 @@ public class GreenfootFrame extends JFrame
     private CloseProjectAction closeProjectAction;
     private RemoveSelectedClassAction removeSelectedClassAction;
     private CompileAllAction compileAllAction;
+    private SaveWorldAction saveWorldAction;
+    
+    private ToggleDebuggerAction toggleDebuggerAction;
+	private ToggleSoundAction toggleSoundAction;
     
     private JMenu recentProjectsMenu;
     
@@ -181,52 +193,33 @@ public class GreenfootFrame extends JFrame
     
     private static GreenfootFrame instance;
     
-    public static GreenfootFrame getGreenfootFrame(final RBlueJ blueJ)
+    public static GreenfootFrame getGreenfootFrame(final RBlueJ blueJ, ClassStateManager classStateManager)
     {
-    	instance = new GreenfootFrame(blueJ);                        
+    	instance = new GreenfootFrame(blueJ, classStateManager);                        
         return instance;
     }
     
     /**
      * Creates a new top level frame with all the GUI components.
+     * @param classStateManager 
      */
-    private GreenfootFrame(RBlueJ blueJ)
+    private GreenfootFrame(RBlueJ blueJ, ClassStateManager classStateManager)
         throws HeadlessException
     {
         super("Greenfoot");
-        try {
-            if (Config.isWinOS()) {
-                // UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            }
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        catch (InstantiationException e) {
-            e.printStackTrace();
-        }
-        catch (IllegalAccessException e) {
-            e.printStackTrace();
-        }
-        catch (UnsupportedLookAndFeelException e) {
-            e.printStackTrace();
-        }
         
         LocationTracker.instance(); //force initialisation
-        ImageIcon icon = new ImageIcon(GreenfootUtil.getGreenfootLogoPath());
-        setIconImage(icon.getImage());
+        Image icon = BlueJTheme.getApplicationIcon("greenfoot");
+        if (icon != null) {
+            setIconImage(icon);
+        }
 
-        makeFrame();
+        makeFrame(classStateManager);
         addWindowListener(this);
         
         restoreFrameState();
 
         prepareMacOSApp();
-        
-        setVisible(true);
-        worldCanvas.requestFocusInWindow();
-        worldCanvas.requestFocus();
     }
     
     /**
@@ -235,7 +228,7 @@ public class GreenfootFrame extends JFrame
     private void restoreFrameState()
     {
         if (project == null) {
-        	// We don't have a project yet: just use default size
+            // We don't have a project yet: just use default size
             setBounds(40, 40, 700, 500);
             setResizeWhenPossible(true);
             return;
@@ -249,6 +242,16 @@ public class GreenfootFrame extends JFrame
 
             int width = projectProperties.getInt("mainWindow.width");
             int height = projectProperties.getInt("mainWindow.height");
+            
+            Dimension d = Toolkit.getDefaultToolkit().getScreenSize();
+            
+            if (x > (d.width - 50)) {
+                x = d.width - 50;
+            }
+
+            if (y > (d.height - 50)) {
+                y = d.height - 50;
+            }
 
             setBounds(x, y, width, height);
             setResizeWhenPossible(false);
@@ -262,38 +265,37 @@ public class GreenfootFrame extends JFrame
     }
 
     
-
     /**
-     * Prepare MacOS specific behaviour (About menu, Preferences menu, Quit
-     * menu)
+     * Prepare MacOS specific behaviour (About menu, Preferences menu, Quit menu)
      */
     private Application prepareMacOSApp()
     {
-        Application macApp = new Application();
-        macApp.setEnabledPreferencesMenu(true);
-        macApp.addApplicationListener(new ApplicationAdapter() {
-            public void handleAbout(ApplicationEvent e)
-            {
-                AboutGreenfootAction.getInstance(GreenfootFrame.this).actionPerformed(null);
-                e.setHandled(true);
-            }
+        Application macApp = Application.getApplication();
+        if (macApp != null) {
+            macApp.setEnabledPreferencesMenu(true);
+            macApp.addApplicationListener(new ApplicationAdapter() {
+                public void handleAbout(ApplicationEvent e)
+                {
+                    AboutGreenfootAction.getInstance(GreenfootFrame.this).actionPerformed(null);
+                    e.setHandled(true);
+                }
 
-            public void handlePreferences(ApplicationEvent e)
-            {
-               PreferencesAction.getInstance().actionPerformed(null);
-               e.setHandled(true);
-            }
+                public void handlePreferences(ApplicationEvent e)
+                {
+                    PreferencesAction.getInstance().actionPerformed(null);
+                    e.setHandled(true);
+                }
 
-            public void handleQuit(ApplicationEvent e)
-            {
-                exit();
-                e.setHandled(true);
-            }
-        });
+                public void handleQuit(ApplicationEvent e)
+                {
+                    exit();
+                    e.setHandled(true);
+                }
+            });
+        }
 
         return macApp;
     }
-    
     
     /**
      * Open a given project into this frame.
@@ -307,7 +309,7 @@ public class GreenfootFrame extends JFrame
             setTitle("Greenfoot: " + project.getName());
             enableProjectActions();
 
-            worldCanvas.setVisible(true);
+            worldCanvas.setVisible(false);
 
             // Class browser
             buildClassBrowser();
@@ -326,10 +328,12 @@ public class GreenfootFrame extends JFrame
             }
             
             worldHandler.instantiateNewWorld();
-            worldHandlerDelegate.getWorldTitle().setVisible(true);
             if (needsResize()) {
                 pack();
             }
+            // set our project to be this possibly new project
+            toggleDebuggerAction.setProject(project);
+            toggleSoundAction.setProject(project);
             isClosedProject = false;
         }
     }
@@ -341,9 +345,9 @@ public class GreenfootFrame extends JFrame
     {
         setTitle("Greenfoot: ");
         project.removeCompileListener(this);
+        project.closeEditors();
         worldCanvas.setVisible(false);
         classBrowser.setVisible(false);
-        worldHandlerDelegate.getWorldTitle().setVisible(false);
         project = null;
         enableProjectActions();
         repaint();
@@ -370,16 +374,18 @@ public class GreenfootFrame extends JFrame
     /**
      * Create the GUI components for this project in the top level frame.
      * This includes opening the project and displaying the project classes.
+     * @param classStateManager 
      */
-    private void makeFrame()
+    private void makeFrame(ClassStateManager classStateManager)
     {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         
         // Some first-time initializations
         worldCanvas = new WorldCanvas(null);
+        worldCanvas.setWorldSize(200, 100);
+        worldCanvas.setVisible(false);
         
-        
-        worldHandlerDelegate = new WorldHandlerDelegateIDE(this);
+        worldHandlerDelegate = new WorldHandlerDelegateIDE(this, classStateManager);
         WorldHandler.initialise(worldCanvas, worldHandlerDelegate);
         worldHandler = WorldHandler.getInstance();
         worldHandler.addWorldListener(this);
@@ -395,13 +401,14 @@ public class GreenfootFrame extends JFrame
 
         // build the centre panel. this includes the world and the controls
         
-        JPanel centrePanel = new JPanel(new BorderLayout(4, 4));
+        centrePanel = new JPanel(new BorderLayout(4, 4)) {
+            @Override
+            public boolean isValidateRoot()
+            {
+                return true;
+            }
+        };
 
-        // the world panel. this includes the world title and world
-        
-        JPanel worldPanel = new JPanel(new BorderLayout());
-        worldPanel.setBorder(BorderFactory.createEtchedBorder());        
-        
         sim.addSimulationListener(new SimulationListener() {
             public void simulationChanged(SimulationEvent e)
             {
@@ -416,25 +423,24 @@ public class GreenfootFrame extends JFrame
 
         sim.addSimulationListener(SoundFactory.getInstance().getSoundCollection());
         
-        // Panel that contains the border so that borders are not drawn on our
-        // canvas, but just outside it.
-        Box borderPanel = new Box(BoxLayout.LINE_AXIS);
-        borderPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
-        borderPanel.add(worldCanvas);
+        worldCanvas.setBorder(BorderFactory.createLineBorder(Color.BLACK));
         
-        JPanel canvasPanel = new JPanel(new CenterLayout());        
-        canvasPanel.add(borderPanel, BorderLayout.CENTER);
-        JScrollPane worldScrollPane = new JScrollPane(canvasPanel);
+        JPanel canvasPanel = new JPanel(new IDECenterLayout(worldHandlerDelegate));
+        canvasPanel.setBorder(BorderFactory.createEtchedBorder());        
+        
+        JScrollPane worldScrollPane = new JScrollPane(worldCanvas);
+        DBox worldBox = new DBox(DBox.Y_AXIS, 0.5f); // scroll pane
+        worldBox.addAligned(worldScrollPane);
+
+        canvasPanel.add(worldBox);
+        // Set the scroll bar increments so that using the scroll wheel works well:
+        setScrollIncrements(worldScrollPane);
         worldScrollPane.setOpaque(false);
         // Why are these not opaque? Maybe they have to be on some platforms? looks fine on Mac OS X Leopard.
         worldScrollPane.getViewport().setOpaque(false);
         worldScrollPane.setBorder(null);
         
-       
-        worldPanel.add(worldHandlerDelegate.getWorldTitle(), BorderLayout.NORTH);
-        worldPanel.add(worldScrollPane, BorderLayout.CENTER);
-
-        centrePanel.add(worldPanel, BorderLayout.CENTER);
+        centrePanel.add(canvasPanel, BorderLayout.CENTER);
         
         // the control panel
         
@@ -450,11 +456,23 @@ public class GreenfootFrame extends JFrame
 
         JButton readMeButton = GreenfootUtil.createButton(showReadMeAction); 
         readMeButton.setIcon(new ImageIcon(getClass().getClassLoader().getResource(readMeIconFile)));
-        eastPanel.add(readMeButton, BorderLayout.NORTH);
+        readMeButton.setMaximumSize(new Dimension(Short.MAX_VALUE, Short.MAX_VALUE));
+        eastPanel.add(readMeButton, BorderLayout.NORTH);       
         
         // the class browser 
         
-        classScrollPane = new JScrollPane(classBrowser);
+        classScrollPane = new JScrollPane(classBrowser) {
+            public Dimension getPreferredSize()
+            {
+                Dimension size = super.getPreferredSize();
+                // Always leave room for the vertical scroll bar to appear
+                // This stops a horizontal scroll bar getting added when the vertical one appears
+                size.width += getVerticalScrollBar().getWidth();
+                return size;
+            }
+            
+        };
+        setScrollIncrements(classScrollPane);
         classScrollPane.setOpaque(false);
         classScrollPane.getViewport().setOpaque(false);
         classScrollPane.setBorder(BorderFactory.createEtchedBorder());
@@ -467,7 +485,6 @@ public class GreenfootFrame extends JFrame
         // set the icon image: currently empty, but used to force same button look as readme button
         button.setIcon(new ImageIcon(getClass().getClassLoader().getResource(compileIconFile)));
         eastPanel.add(button, BorderLayout.SOUTH);
-
         
         // arrange the major components in the content pane
         JPanel contentPane = new JPanel();
@@ -479,7 +496,18 @@ public class GreenfootFrame extends JFrame
         contentPane.add(eastPanel, BorderLayout.EAST);
 
         pack();
-        worldDimensions = worldCanvas.getPreferredSize();        
+    }
+
+    /**
+     * Sets the scroll increments on a scroll pane to be something sensible
+     * and useable.
+     */
+    private static void setScrollIncrements(JScrollPane scrollPane)
+    {
+        scrollPane.getVerticalScrollBar().setUnitIncrement(20);
+        scrollPane.getVerticalScrollBar().setBlockIncrement(30);
+        scrollPane.getHorizontalScrollBar().setUnitIncrement(20);
+        scrollPane.getHorizontalScrollBar().setBlockIncrement(30);
     }
 
     /**
@@ -514,7 +542,8 @@ public class GreenfootFrame extends JFrame
      * Return the preferred size for the frame. The preferred size adds a bit of
      * spacing to the default size to get a margin around the world display.
      */
-    public  Dimension getPreferredSize() {
+    public  Dimension getPreferredSize()
+    {
         Dimension dim = super.getPreferredSize();
         dim.setSize(dim.width + WORLD_MARGIN, dim.height + WORLD_MARGIN);
         return dim;
@@ -532,32 +561,30 @@ public class GreenfootFrame extends JFrame
 
     /**
      * Read the classes from a given project and display them in the class browser.
-     * <br>
-     * Call only from the event thread.
      */
     private void populateClassBrowser(ClassBrowser classBrowser, GProject project)
     {
-    	if (project != null) {
-    	    try {
-    	        GPackage pkg = project.getDefaultPackage();
+        if (project != null) {
+            try {
+                GPackage pkg = project.getDefaultPackage();
 
-    	        GClass[] classes = pkg.getClasses();
-    	        //add the system classes
-    	        classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(World.class, project)));
-    	        classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(Actor.class, project)));
+                GClass[] classes = pkg.getClasses();
+                //add the system classes
+                classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(World.class, project)));
+                classBrowser.quickAddClass(new ClassView(classBrowser, new GCoreClass(Actor.class, project)));
 
-    	        for (int i = 0; i < classes.length; i++) {
-    	            GClass gClass = classes[i];
-    	            classBrowser.quickAddClass(new ClassView(classBrowser, gClass));
-    	        }
+                for (int i = 0; i < classes.length; i++) {
+                    GClass gClass = classes[i];
+                    classBrowser.quickAddClass(new ClassView(classBrowser, gClass));
+                }
 
-    	        classBrowser.updateLayout();
-    	    }
-    	    catch (Exception exc) {
-    	        //Debug.reportError("Could not open classes in scenario", exc);
-    	        exc.printStackTrace();
-    	    }
-    	}
+                classBrowser.updateLayout();
+            }
+            catch (Exception exc) {
+                //Debug.reportError("Could not open classes in scenario", exc);
+                exc.printStackTrace();
+            }
+        }
     }
 
     private void setupActions()
@@ -566,6 +593,7 @@ public class GreenfootFrame extends JFrame
     	saveProjectAction = new SaveProjectAction(this);
     	saveCopyAction = new SaveCopyAction(this);
     	showReadMeAction = new ShowReadMeAction(this);
+    	saveWorldAction = worldHandlerDelegate.getSaveWorldAction();
     	exportProjectAction = new ExportProjectAction(this);
     	closeProjectAction = new CloseProjectAction(this);
     	removeSelectedClassAction = new RemoveSelectedClassAction(this);
@@ -595,10 +623,6 @@ public class GreenfootFrame extends JFrame
         projectMenu.addSeparator();
         addMenuItem(exportProjectAction, projectMenu, KeyEvent.VK_E, false, KeyEvent.VK_E);
 
-//        addMenuItem(new NYIAction("Save As...", this), projectMenu, KeyEvent.VK_S, true, -1);
-//        projectMenu.addSeparator();
-//        addMenuItem(new NYIAction("Page Setup...", this), projectMenu, KeyEvent.VK_P, true, -1);
-//        addMenuItem(new NYIAction("Print...", this), projectMenu, KeyEvent.VK_P, false, KeyEvent.VK_P);
         if(! Config.isMacOS()) {
             projectMenu.addSeparator();
             addMenuItem(QuitAction.getInstance(), projectMenu, KeyEvent.VK_Q, false, KeyEvent.VK_Q);
@@ -608,7 +632,12 @@ public class GreenfootFrame extends JFrame
         
         addMenuItem(newClassAction, editMenu, KeyEvent.VK_N, false, KeyEvent.VK_N);
         addMenuItem(removeSelectedClassAction, editMenu, KeyEvent.VK_D, false, KeyEvent.VK_R);
-        //addMenuItem(editImagesAction, editMenu, KeyEvent.VK_I, false, KeyEvent.VK_I);
+                
+        if (!Config.usingMacScreenMenubar()) { // no "Preferences" here for
+            // Mac
+            editMenu.addSeparator();
+            addMenuItem(PreferencesAction.getInstance(), editMenu, KeyEvent.VK_COMMA, false, KeyEvent.VK_COMMA);
+        }
         
         JMenu ctrlMenu = addMenu(Config.getString("menu.controls"), menuBar, 'c');
         
@@ -616,8 +645,14 @@ public class GreenfootFrame extends JFrame
         addMenuItem(RunSimulationAction.getInstance(), ctrlMenu, KeyEvent.VK_R, false, KeyEvent.VK_R);
         addMenuItem(PauseSimulationAction.getInstance(), ctrlMenu, KeyEvent.VK_R, true, KeyEvent.VK_P);
         addMenuItem(ResetWorldAction.getInstance(), ctrlMenu, KeyEvent.VK_T, false, KeyEvent.VK_T);
-//        addMenuItem(new NYIAction("Increase Speed", this), ctrlMenu, KeyEvent.VK_PLUS, false, KeyEvent.VK_PLUS);
-//        addMenuItem(new NYIAction("Decrease Speed", this), ctrlMenu, KeyEvent.VK_MINUS, false, KeyEvent.VK_MINUS);
+        
+        ctrlMenu.addSeparator();
+        toggleDebuggerAction = new ToggleDebuggerAction(Config.getString("menu.debugger"), project);
+        createCheckboxMenuItem(toggleDebuggerAction, false, ctrlMenu, KeyEvent.VK_B, false, KeyEvent.VK_B);
+        
+        toggleSoundAction = new ToggleSoundAction(Config.getString("menu.soundRecorder"), project);
+        createCheckboxMenuItem(toggleSoundAction, false, ctrlMenu, KeyEvent.VK_U, false, KeyEvent.VK_U);
+        addMenuItem(saveWorldAction, ctrlMenu, -1, false, KeyEvent.VK_W);
         ctrlMenu.addSeparator();
         addMenuItem(compileAllAction, ctrlMenu, KeyEvent.VK_K, false, -1);
         
@@ -646,8 +681,9 @@ public class GreenfootFrame extends JFrame
     private JMenu addMenu(String name, JMenuBar menubar, char mnemonic)
     {
         JMenu menu = new JMenu(name);
-        if(!Config.isMacOS())
+        if(!Config.isMacOS()) {
             menu.setMnemonic(mnemonic);
+        }
         menubar.add(menu);
         return menu;
     }
@@ -658,14 +694,52 @@ public class GreenfootFrame extends JFrame
     private void addMenuItem(Action action, JMenu menu, int accelKey, boolean shift, int mnemonicKey)
     {
         if(accelKey != -1) {
-            if(shift)
+            if(shift) {
                 action.putValue(Action.ACCELERATOR_KEY, KeyStroke.getKeyStroke(accelKey, shiftAccelModifier));
-            else
+            }
+            else {
                 action.putValue(Action.ACCELERATOR_KEY, KeyStroke.getKeyStroke(accelKey, accelModifier));
+            }
         }
-        if(!Config.isMacOS() && mnemonicKey != -1)
+        if(!Config.isMacOS() && mnemonicKey != -1) {
             action.putValue(Action.MNEMONIC_KEY, Integer.valueOf(mnemonicKey));
+        }
         menu.add(action);
+    }
+
+    /**
+     * Adds a new checkbox menu item to the {@link Menu} menu provided. 
+     * Uses the {@link ToggleAction} action to setup the changing 
+     * selected state of the action, often determined by events elsewhere 
+     * in the BlueJ/Greenfoot code.
+     * @param action		To be added to the {@link Menu}.
+     * @param selected		Default state of the action if its {@link ButtonModel} is null.
+     * @param menu			That the {@link ToggleAction} will be added to.
+     * @param accelKey		Quick keyboard shortcut for this action.
+     * @param shift			Used to determine if the accelKey needs shift pressed to happen
+     * @param mnemonicKey	Quick keyboard shortcut via the menu for this action.
+     */
+    private void createCheckboxMenuItem(ToggleAction action, boolean selected, JMenu menu, int accelKey, boolean shift, int mnemonicKey)
+    {
+        if(accelKey != -1) {
+            if(shift) {
+                action.putValue(Action.ACCELERATOR_KEY, KeyStroke.getKeyStroke(accelKey, shiftAccelModifier));
+            }
+            else {
+                action.putValue(Action.ACCELERATOR_KEY, KeyStroke.getKeyStroke(accelKey, accelModifier));
+            }
+        }
+        if(!Config.isMacOS() && mnemonicKey != -1) {
+            action.putValue(Action.MNEMONIC_KEY, Integer.valueOf(mnemonicKey));
+        }
+        JCheckBoxMenuItem item = new JCheckBoxMenuItem(action);
+        ButtonModel bm = action.getToggleModel();
+        if (bm == null) {
+        	item.setSelected(selected);
+        } else {
+            item.setModel(bm);
+        }
+        menu.add(item);
     }
     
     /**
@@ -695,11 +769,12 @@ public class GreenfootFrame extends JFrame
         saveCopyAction.setEnabled(state);
         newClassAction.setEnabled(state);
         showReadMeAction.setEnabled(state);
+        saveWorldAction.setEnabled(state);
         exportProjectAction.setEnabled(state);
         
         // Disable simulation buttons
         if (state == false) {
-        	WorldHandler.getInstance().discardWorld();
+            WorldHandler.getInstance().discardWorld();
             removeSelectedClassAction.setEnabled(false);
         }
         
@@ -768,7 +843,8 @@ public class GreenfootFrame extends JFrame
      * <p>
      * Should be run on the event thread.
      */
-    private void resize() {
+    private void resize()
+    {
         setResizeWhenPossible(false);
         pack();
     }
@@ -848,10 +924,12 @@ public class GreenfootFrame extends JFrame
     
     public void worldCreated(WorldEvent e)
     {
-        World newWorld = worldHandler.getWorld();
+        World newWorld = e.getWorld();
         if (needsResize() && newWorld != null) {
             resize();
         }
+        worldCanvas.setVisible(true);
+        centrePanel.revalidate();
         worldDimensions = worldCanvas.getPreferredSize();
         project.setLastWorldClassName(newWorld.getClass().getName());
     }
@@ -859,6 +937,7 @@ public class GreenfootFrame extends JFrame
     public void worldRemoved(WorldEvent e)
     {
         removeAllInspectors();
+        worldCanvas.setVisible(false);
     }
 
     // ------------- end of WorldListener interface ------------
@@ -881,7 +960,7 @@ public class GreenfootFrame extends JFrame
             }
     	}
     	else {
-    		removeSelectedClassAction.setEnabled(false);
+    	    removeSelectedClassAction.setEnabled(false);
     	}
     }
     
@@ -901,13 +980,13 @@ public class GreenfootFrame extends JFrame
 
         final Inspector insp = inspector;
         EventQueue.invokeLater(new Runnable() {
-                public void run() {
-                    insp.update();
-                    insp.updateLayout();
-                    insp.setVisible(true);
-                    insp.bringToFront();
-                }
-            });
+            public void run() {
+                insp.update();
+                insp.updateLayout();
+                insp.setVisible(true);
+                insp.bringToFront();
+            }
+        });
 
         return inspector;
     }
@@ -947,11 +1026,11 @@ public class GreenfootFrame extends JFrame
         insp.update();
         insp.updateLayout();
         EventQueue.invokeLater(new Runnable() {
-                public void run() {
-                    insp.setVisible(true);
-                    insp.bringToFront();
-        }
-            });
+            public void run() {
+                insp.setVisible(true);
+                insp.bringToFront();
+            }
+        });
 
         return inspector;
     }
@@ -981,17 +1060,22 @@ public class GreenfootFrame extends JFrame
     public void removeAllInspectors()
     {
         for (Iterator<Inspector> it = objectInspectors.values().iterator(); it.hasNext();) {
-            Inspector inspector = (Inspector) it.next();
+            Inspector inspector = it.next();
             inspector.setVisible(false);
             inspector.dispose();
         }
         objectInspectors.clear();
         
         for (Iterator<Inspector> it = classInspectors.values().iterator(); it.hasNext();) {
-            Inspector inspector = (Inspector) it.next();
+            Inspector inspector = it.next();
             inspector.setVisible(false);
             inspector.dispose();
         }
         classInspectors.clear();
+    }
+
+    public WorldHandlerDelegateIDE getWorldHandlerDelegate()
+    {
+        return worldHandlerDelegate;
     }
 }

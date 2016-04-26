@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -36,25 +36,24 @@ import bluej.utility.*;
  * @author  Michael Kolling
  * @author  Andrew Patterson
  * @author  Bruce Quig
- * @version $Id: JavacCompilerInternal.java 6215 2009-03-30 13:28:25Z polle $
  */
 class JavacCompilerInternal extends Compiler
 {
     // private ErrorStream firstStream = null;
-	
-	public JavacCompilerInternal()
-	{
-		setDebug(true);
-        setDeprecation(true);
-	}
-	
 
-	public boolean compile(File[] sources, CompileObserver watcher, boolean internal)
-	{
-		List args = new ArrayList();		
+    public JavacCompilerInternal()
+    {
+        setDebug(true);
+        setDeprecation(true);
+    }
+
+
+    public boolean compile(File[] sources, CompileObserver watcher, boolean internal)
+    {
+        List<String> args = new ArrayList<String>();		
 
         args.addAll(getCompileOptions());      
-                
+
         for(int i = 0; i < sources.length; i++)
             args.add(sources[i].getPath());
 
@@ -62,7 +61,7 @@ class JavacCompilerInternal extends Compiler
         String[] params = new String[length];
         args.toArray(params);
 
-        Class compiler = null;
+        Class<?> compiler = null;
         Method compileMethod = null;
 
         /* problem number one is that between 1.3 and 1.4 the compile
@@ -70,18 +69,19 @@ class JavacCompilerInternal extends Compiler
            use reflection to fix this.
            based on an idea from the JDEE code by jslopez@alum.mit.edu */
 
-        // There are two "compile" methods, one which takes a printwriter as an
+        // There are two "compile" methods, one which takes a PrintWriter as an
         // argument. We'd prefer to use that one if we can find it.
         boolean compileMethodTakesPrintWriter = false;
-        
+
         try {
             compiler = Class.forName("com.sun.tools.javac.Main");
 
-            if (compiler == null)
+            if (compiler == null) {
                 return false;
+            }
 
-            Class[] ppw = new Class[] {String[].class, PrintWriter.class};
-            Class[] p = new Class[] {String[].class};
+            Class<?>[] ppw = new Class[] {String[].class, PrintWriter.class};
+            Class<?>[] p = new Class[] {String[].class};
 
             try {
                 compileMethod = compiler.getMethod("compile", ppw);
@@ -90,7 +90,7 @@ class JavacCompilerInternal extends Compiler
             catch (NoSuchMethodException nsme) {
                 compileMethod = compiler.getMethod("compile", p);
             }
-            
+
         } catch (ClassNotFoundException e) {
             Debug.message("com.sun.tools.javac.Main compiler is not available");
             return false;
@@ -99,8 +99,9 @@ class JavacCompilerInternal extends Compiler
             return false;
         }
 
-        if (compileMethod == null)
+        if (compileMethod == null) {
             return false;
+        }
 
         PrintStream systemErr = System.err;
         JavacErrorWriter output = new JavacErrorWriter(internal);
@@ -131,7 +132,7 @@ class JavacCompilerInternal extends Compiler
             e.printStackTrace(System.out);
             return false;
         }
-        
+
         if (! compileMethodTakesPrintWriter) {
             try {
                 outputS.close();
@@ -140,19 +141,19 @@ class JavacCompilerInternal extends Compiler
             System.setErr(systemErr);   // restore
         }
 
-		if (output.hasError()) {
-			watcher.errorMessage(output.getFilename(),
-						output.getLineNo(),
-						output.getMessage());
-		}
+        if (output.hasError()) {
+            watcher.errorMessage(output.getFilename(),
+                    output.getLineNo(),
+                    output.getMessage());
+        }
 
         // Handle compiler warning messages        
         if (output.hasWarnings()) {
             watcher.warningMessage(output.getFilename(),
-						output.getLineNo(),
-						output.getWarning());
+                    output.getLineNo(),
+                    output.getWarning());
         }
-        
-		return result==0;
-	}
+
+        return result==0;
+    }
 }

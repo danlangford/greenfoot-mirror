@@ -13,9 +13,9 @@
     <property file="${bluej.projectdir}/build.properties"/>
 
     <!-- Greenfoot Version Number -->
-    <property name="greenfoot.version.major" value="1"/>
-    <property name="greenfoot.version.minor" value="5"/>
-    <property name="greenfoot.version.micro" value="6"/>
+    <property name="greenfoot.version.major" value="2"/>
+    <property name="greenfoot.version.minor" value="0"/>
+    <property name="greenfoot.version.micro" value="0"/>
     
     <!-- Change when API has changed in a way that is likely to break some scenarios. 
     A warning will be shown to the user - update the greenfoot-labels file to
@@ -25,7 +25,7 @@
     <!-- Change when API has changed in a way that is visible to the user, but is very 
     unlikely to break scenarios (documentation changes, addition of method).
     Changing this number will stripe the user's classes and require a recompile. -->
-    <property name="greenfoot.apiversion.nonbreaking" value="1"/>
+    <property name="greenfoot.apiversion.nonbreaking" value="2"/>
     
     <!-- Change when API has only changed internally and not in any way visible to the user. 
     It should not be possible for this change to break existing scenarios. 
@@ -57,10 +57,10 @@
         <pathelement location="${bluej.projectdir}/boot/classes"/>
         <pathelement location="${bluej.projectdir}/lib/antlr.jar"/>
         <pathelement location="${bluej.projectdir}/lib/junit.jar"/>
-        <pathelement location="${bluej.projectdir}/lib/MRJ141Stubs.jar"/>
+        <pathelement location="${bluej.projectdir}/lib/AppleJavaExtensions.jar"/>
         <pathelement location="${bluej.projectdir}/lib/commons-httpclient-3.1.jar"/>
         <pathelement location="${bluej.projectdir}/lib/commons-logging-api-1.1.1.jar"/> 
-        <!-- ENABLESOUND pathelement location="${jlayer.jar.path}"/-->
+        <pathelement location="${jlayer.jar.path}"/>
     </path>
     <!-- The sourcepath to the bluej classes-->
     <path id="bluej.src.path">
@@ -98,6 +98,16 @@
     <fileset id="tutorial.files" dir="resources/tutorial/">
         <include name="**"/>
     </fileset>
+	
+	<!-- Source files that make up the Greenfoot API -->
+    <fileset id="api-source.files" dir="${src}" defaultexcludes="yes">
+          <include name="greenfoot/Actor.java" />
+          <include name="greenfoot/World.java" />
+          <include name="greenfoot/GreenfootImage.java" />
+          <include name="greenfoot/GreenfootSound.java" />
+          <include name="greenfoot/Greenfoot.java" />
+          <include name="greenfoot/MouseInfo.java" />
+	</fileset>
 
     <!-- scenarios to be included in standard distribution -->
     <patternset id="distribution.scenarios">
@@ -173,19 +183,13 @@ LICENSE.txt file that accompanied this code.${line.separator}
     <target name="compile" depends="init" description="Compile the source and run rmic" >
         <!-- Compile the java code from ${src} into ${build} -->
         <javac  
-                executable="${build_java_home}/bin/javac" 
+                executable="${build_java_home}/${java_command_dir_name}/javac"
                 fork="yes"
                 srcdir="${src}" 
                 destdir="${build}" 
                 classpathref="bluej.class.path" 
                 debug="true">
-            <compilerarg line="-target 1.5" />
-            <exclude name="greenfoot/util/ExternalAppLauncher.java"/>
-            
-            <!-- TODO: ENABLESOUND Remove  when we want to include GreenfootSound support -->
-            <exclude name="greenfoot/sound/Mp3AudioInputStream.java"/>
-              
-            
+            <compilerarg line="-target 1.6" />
         </javac>
         <!-- Compile the RMI-classes -->
         <rmic base="${build}" includes="**/*Impl.class" excludes="bluej/**">
@@ -226,8 +230,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <macrodef name="compile-scenario">
             <attribute name="scenario" />
             <sequential>
-                <javac srcdir="scenarios/@{scenario}" debug="true"
-target="1.5">
+                <javac srcdir="scenarios/@{scenario}" debug="true" target="1.6">
                     <classpath>
                         <path refid="greenfoot.class.path"/>
                         <path refid="bluej.class.path"/>
@@ -256,19 +259,15 @@ target="1.5">
     <target name="create-api-doc">
         <mkdir dir="${apidoc}"/>
         <javadoc destdir="${apidoc}"
-   Windowtitle="Greenfoot API"
-   Doctitle="Greenfoot API"
-   bottom="&lt;a href=http://www.greenfoot.org/&gt;Greenfoot homepage&lt;/a&gt;">
-
-            <fileset dir="${src}" defaultexcludes="yes">
-                <include name="greenfoot/Actor.java" />
-                <include name="greenfoot/World.java" />
-                <include name="greenfoot/GreenfootImage.java" />
-                <!-- ENABLESOUND include name="greenfoot/GreenfootSound.java" /-->
-                <include name="greenfoot/Greenfoot.java" />
-                <include name="greenfoot/MouseInfo.java" />
-            </fileset>
+                 Windowtitle="Greenfoot API"
+                 Doctitle="Greenfoot API"
+                 bottom="&lt;a href=http://www.greenfoot.org/&gt;Greenfoot homepage&lt;/a&gt;">
+            <fileset refid="api-source.files"/>
         </javadoc>
+    	<mkdir dir="${bluej.projectdir}/lib/english/greenfoot/api"/>
+    	<copy todir="${bluej.projectdir}/lib/english/greenfoot/api">
+            <fileset refid="api-source.files"/>
+    	</copy>
     </target>
 
     <target name="copy-projects" description="Copies the startupProject to bluej" >
@@ -309,13 +308,6 @@ target="1.5">
         </copy>
     </target>
 
-
-    <!--target name="copy-templates" description="Copies the templates for new class files to bluej">
-        <copy todir="${bluej.lib.greenfoot}/templates">
-            <fileset dir="resources/templates"/>
-        </copy>
-    </target-->
-
     <target name="update-images" description="Copies the images from the resource directory out into the various places where the images are required.">
         <!-- Installer image windows: greenfoot-install.bmp -->
         <copy file="resources/images/greenfoot-install.bmp" todir="${bluej.projectdir}/package"/>
@@ -330,8 +322,8 @@ target="1.5">
 
         <!-- Greenfoot icon for application: greenfoot-16.png -->
         <copy file="resources/images/greenfoot-icon-16.png" tofile="images/greenfoot.png"/>
-        <!-- About image: greenfoot-about.png -->
-        <copy file="resources/images/greenfoot-about.png" todir="images"/>
+        <!-- About image: currently: use same as splash image -->
+        <copy file="resources/images/greenfootsplash.jpg" tofile="images/greenfoot-about.jpg"/>
         <!-- Readme label icon -->
         <copy file="resources/images/readme.png" todir="images"/>
         <!-- Empty image - just to force same layout of compile and readme button -->
@@ -364,6 +356,10 @@ target="1.5">
         <echo message="The greenfoot Mac-installer is in ${package}/Greenfoot-mac-${greenfoot.version.nodots}.zip"/>
         <echo message="And don't forget to copy this to the gallery: ${package}/Greenfoot-core-${greenfoot.apiversion}.jar"/>
     </target>
+	
+	<target name="debian-dist">
+        <ant dir="${bluej.projectdir}/package" antfile="greenfoot-build.xml" target="debian-dist" />
+	</target>
 
     <target name="clean" description="clean up" >
         <!-- Installer image windows: greenfoot-install.bmp -->
@@ -417,7 +413,7 @@ target="1.5">
 
     <target name="run-greenfoot"  depends="ready-to-run">
         <!-- run the java code built into the jar files -->
-        <java classname="bluej.Boot" fork="yes" jvm="${build_java_home}/bin/java">
+        <java classname="bluej.Boot" fork="yes" jvm="${build_java_home}/${java_command_dir_name}/java">
             <classpath>
                 <pathelement location="${bluej.projectdir}/boot/classes" />
                 <!-- <path refid="bluej.class.path"/> -->
@@ -443,7 +439,7 @@ target="1.5">
 
     <target name="run-greenfoot-with-local-gallery"  depends="ready-to-run">
         <!-- run the java code built into the jar files -->
-        <java classname="bluej.Boot" fork="yes" jvm="${build_java_home}/bin/java">
+        <java classname="bluej.Boot" fork="yes" jvm="${build_java_home}/${java_command_dir_name}/java">
             <classpath>
                 <pathelement location="${bluej.projectdir}/boot/classes" />
                 <!-- <path refid="bluej.class.path"/> -->
@@ -471,7 +467,7 @@ target="1.5">
 
     <target name="run-scenario-viewer"  depends="ready-to-run,compile-scenarios">
         <!-- run the java code built into the jar files -->
-        <java classname="greenfoot.export.GreenfootScenarioViewer" fork="yes" jvm="${build_java_home}/bin/java">
+        <java classname="greenfoot.export.GreenfootScenarioViewer" fork="yes" jvm="${build_java_home}/${java_command_dir_name}/java">
             <arg value="${greenfoot.standalone.scenario}"/>
             <arg value="${greenfoot.standalone.main}"/>
             <arg value="${greenfoot.standalone.labels}"/>
@@ -500,7 +496,7 @@ target="1.5">
         </nbprofiledirect>
 
         <!-- run the java code built into the jar files -->
-        <java classname="greenfoot.export.GreenfootScenarioViewer" fork="yes" jvm="${build_java_home}/bin/java">
+        <java classname="greenfoot.export.GreenfootScenarioViewer" fork="yes" jvm="${build_java_home}/${java_command_dir_name}/java">
             <arg value="${greenfoot.standalone.scenario}"/>
             <arg value="${greenfoot.standalone.main}"/>
             <arg value="${greenfoot.standalone.labels}"/>
@@ -519,14 +515,14 @@ target="1.5">
 
         <!-- Compile the java code from ${src} into ${build} -->
         <javac  
-            executable="${build_java_home}/bin/javac" 
+            executable="${build_java_home}/${java_command_dir_name}/javac"
             fork="yes"
             destdir="${standalone.build}" 
             
             classpathref="bluej.class.path" 
             debug="true"
             sourcepath=""            
-            target="1.5"
+            target="1.6"
         >
             <src path="${src}"/>
 
@@ -563,6 +559,7 @@ target="1.5">
             <include name="greenfoot/event/TriggeredListener.java"/>
 
             <include name="greenfoot/export/GreenfootScenarioViewer.java"/>
+            <include name="greenfoot/export/GreenfootScenarioMain.java"/>
 
             <include name="greenfoot/gui/ControlPanel.java"/>
             <include name="greenfoot/gui/DragListener.java"/>
@@ -579,17 +576,14 @@ target="1.5">
 
             <include name="greenfoot/platforms/*.java"/>
             <include name="greenfoot/platforms/standalone/*.java"/>
+            
+            <include name="greenfoot/record/InteractionListener.java"/>
 
             <include name="greenfoot/sound/**/*.java"/>
-            
-            <!-- TODO: ENABLESOUND Remove  when we want to include GreenfootSound support -->
-            <exclude name="greenfoot/sound/Mp3AudioInputStream.java"/>
             
             <include name="greenfoot/util/**/*.java"/>
 
             <exclude name="greenfoot/util/ExternalAppLauncher.java"/>
-            
-            
         </javac>
 
         <!-- Greenfoot icon for classes: greenfoot-16.png -->

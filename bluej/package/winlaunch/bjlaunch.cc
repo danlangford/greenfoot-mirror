@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -19,6 +19,7 @@
  This file is subject to the Classpath exception as provided in the  
  LICENSE.txt file that accompanied this code.
  */
+
 #define UNICODE
 
 #include <windows.h>
@@ -176,44 +177,44 @@ static char * wideToACP(std::basic_string<WCHAR> s)
 
 // Escape (quote) a command line parameter if necessary.
 // Windows uses a really stupid escaping system - any number of backslashes not followed
-// by a quote are not escapes.
-string escapeCmdlineParam(string param)
+// by a quote are not escapes; (2n) or (2n+1) backslashes followed by a quote correspond
+// to (n) backslashes followed by a quote when unescaped.
+string escapeCmdlineParam(string arg)
 {
-	bool hasSpace = param.find(TEXT(' ')) != string::npos;
+	bool hasSpace = arg.find(TEXT(' ')) != string::npos;
 	
-	if (hasSpace || param.find(TEXT('\"')) != string::npos) {
-		// Contains a space
-		string output;
-		if (hasSpace) {
-			output = TEXT("\"");
-		}
-		unsigned bsCount = 0;
-		for (string::iterator i = param.begin(); i != param.end(); i++) {
-			TCHAR c = *i;
-			if (c == TEXT('\\')) {
-				bsCount++;
-			}
-			else if (c == TEXT('\"')) {
-				// Possibly a number of backslashes before a quote.
-				// We need to double the number of backslashes:
-				for (unsigned j = 0; j < bsCount; j++) {
-					output += TEXT('\\');
-				}
-				bsCount = 0;
-			}
-			else {
-				bsCount = 0;
-			}
-			output += c;
-		}
-		if (hasSpace) {
-			output += TEXT('\"');
-		}
-		return output;
+	if (! hasSpace && arg.find(TEXT('\"')) == string::npos) {
+		return arg;
 	}
-	else {
-		return param;
+	
+	// Contains a space or a quote; must quote the argument
+	string output;
+	if (hasSpace) {
+		output = TEXT("\"");
 	}
+	unsigned bsCount = 0;
+	for (string::iterator i = arg.begin(); i != arg.end(); i++) {
+		TCHAR c = *i;
+		if (c == TEXT('\\')) {
+			bsCount++;
+		}
+		else if (c == TEXT('\"')) {
+			// Possibly a number of backslashes before a quote.
+			// We need to double the number of backslashes:
+			for (unsigned j = 0; j < bsCount; j++) {
+				output += TEXT('\\');
+			}
+			bsCount = 0;
+		}
+		else {
+			bsCount = 0;
+		}
+		output += c;
+	}
+	if (hasSpace) {
+		output += TEXT('\"');
+	}
+	return output;
 }
 
 
@@ -455,10 +456,10 @@ bool launchVM(string jdkLocation)
 
 
 // Find VMs under a VM provider key eg (sun, ibm)
-static void findRegistryVMs(string providerKey)
+static void findRegistryVMs(string providerKey, int extraFlags)
 {
 	HKEY regKey;
-	LONG rval = RegOpenKeyEx(HKEY_LOCAL_MACHINE, providerKey.c_str(), 0, KEY_READ, &regKey);
+	LONG rval = RegOpenKeyEx(HKEY_LOCAL_MACHINE, providerKey.c_str(), 0, KEY_READ | extraFlags, &regKey);
 	
 	TCHAR buffer[1024];
 	
@@ -469,7 +470,7 @@ static void findRegistryVMs(string providerKey)
 			rval = RegEnumKeyEx(regKey, dwIndex, buffer, &bufSize, NULL, NULL, NULL, NULL);
 			if (rval == ERROR_SUCCESS) {
 				HKEY subKey;
-				LONG vval = RegOpenKeyEx(regKey, buffer, 0, KEY_QUERY_VALUE, &subKey);
+				LONG vval = RegOpenKeyEx(regKey, buffer, 0, KEY_QUERY_VALUE | extraFlags, &subKey);
 				if (vval == ERROR_SUCCESS) {
 					if (lstrcmp(buffer, TEXT(REQUIREDJAVA)) > 0) {
 						// Ok - suitable version
@@ -487,11 +488,17 @@ static void findRegistryVMs(string providerKey)
 	}
 }
 
+#ifndef KEY_WOW64_64KEY
+#define KEY_WOW64_64KEY 0x100
+#endif
+
 // Find VMs from the registry
 static void findRegistryVMs()
 {
-	findRegistryVMs(TEXT("Software\\JavaSoft\\Java Development Kit"));
-	findRegistryVMs(TEXT("Software\\IBM\\Java Development Kit"));
+	findRegistryVMs(TEXT("Software\\JavaSoft\\Java Development Kit"), 0);
+	findRegistryVMs(TEXT("Software\\JavaSoft\\Java Development Kit"), KEY_WOW64_64KEY);
+	findRegistryVMs(TEXT("Software\\IBM\\Java Development Kit"), 0);
+	findRegistryVMs(TEXT("Software\\IBM\\Java Development Kit"), KEY_WOW64_64KEY);
 }
 
 
@@ -505,6 +512,37 @@ string extractFilePath(string filename)
 	else {
 		return filename.substr(0, bspos);
 	}
+}
+
+static bool isStdSpace(TCHAR ch)
+{
+	return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+}
+
+static string trimString(const string &src)
+{
+	std::size_t slen = src.length();
+	int i;
+	for (i = 0; i < slen; i++) {
+		TCHAR srcChar = src[i];
+		if (! isStdSpace(srcChar)) {
+			break;
+		}
+	}
+
+	if (i == slen) {
+		return string();
+	}
+	
+	int j;
+	for (j = slen - 1; j > i; j--) {
+		TCHAR srcChar = src[i];
+		if (! isStdSpace(srcChar)) {
+			break;
+		}
+	}
+	
+	return src.substr(i, j - i + 1);
 }
 
 
@@ -580,7 +618,7 @@ int WINAPI WinMain
 
 	// Locate user home directory
 	{
-		string userHomeString = getBlueJProperty("bluej.userHome");
+		string userHomeString = trimString(getBlueJProperty("bluej.userHome"));
 		if (! userHomeString.empty()) {
 			userHomePath = new TCHAR[userHomeString.length() + 1];
 			lstrcpy(userHomePath, userHomeString.c_str());
@@ -596,7 +634,7 @@ int WINAPI WinMain
 
 	// Get bluej.windows.vm.args
 	{
-		string windowsvmargsString = getBlueJProperty("bluej.windows.vm.args");
+		string windowsvmargsString = trimString(getBlueJProperty("bluej.windows.vm.args"));
 		if (! windowsvmargsString.empty()) {
 			int argCount = 0;
 			// TODO it's technically wrong to use CommandLineToArgvW, as the

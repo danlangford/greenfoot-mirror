@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -24,8 +24,12 @@ package greenfoot.platforms.ide;
 import greenfoot.Actor;
 import greenfoot.ObjectTracker;
 import greenfoot.World;
+import greenfoot.actions.SaveWorldAction;
+import greenfoot.core.ClassStateManager;
 import greenfoot.core.GClass;
+import greenfoot.core.GNamedValue;
 import greenfoot.core.GProject;
+import greenfoot.core.Simulation;
 import greenfoot.core.WorldHandler;
 import greenfoot.core.WorldInvokeListener;
 import greenfoot.gui.DragGlassPane;
@@ -34,39 +38,34 @@ import greenfoot.gui.MessageDialog;
 import greenfoot.gui.input.InputManager;
 import greenfoot.localdebugger.LocalObject;
 import greenfoot.platforms.WorldHandlerDelegate;
+import greenfoot.record.GreenfootRecorder;
+import greenfoot.record.InteractionListener;
 import greenfoot.util.GreenfootUtil;
 
 import java.awt.Color;
-import java.awt.Component;
-import java.awt.EventQueue;
+import java.awt.Cursor;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.rmi.RemoteException;
 import java.util.List;
 
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
-import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
 import rmiextension.wrappers.RObject;
 import bluej.Config;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.gentype.JavaType;
-import bluej.debugmgr.NamedValue;
 import bluej.debugmgr.objectbench.ObjectBenchEvent;
 import bluej.debugmgr.objectbench.ObjectBenchInterface;
 import bluej.debugmgr.objectbench.ObjectBenchListener;
 import bluej.debugmgr.objectbench.ObjectWrapper;
-import bluej.extensions.PackageNotFoundException;
-import bluej.extensions.ProjectNotOpenException;
 import bluej.prefmgr.PrefMgr;
 import bluej.utility.Debug;
 
@@ -75,10 +74,9 @@ import bluej.utility.Debug;
  * Implementation for running in the Greenfoot IDE.
  * 
  * @author Poul Henriksen
- *
  */
 public class WorldHandlerDelegateIDE
-    implements WorldHandlerDelegate, ObjectBenchInterface
+    implements WorldHandlerDelegate, ObjectBenchInterface, InteractionListener
 {
     protected final Color envOpColour = Config.getItemColour("colour.menu.environOp");
 
@@ -91,27 +89,31 @@ public class WorldHandlerDelegateIDE
     private GProject project;
     
     private GreenfootFrame frame;
+    
+    // Records actions manually performed on the world:
+    private GreenfootRecorder greenfootRecorder;
+    private SaveWorldAction saveWorldAction;
 
-    private JLabel worldTitle;
+    private boolean worldInitialising;
 
-    public WorldHandlerDelegateIDE(GreenfootFrame frame)
+    public WorldHandlerDelegateIDE(GreenfootFrame frame, ClassStateManager classStateManager)
     {
-        worldTitle = new JLabel();
-        worldTitle.setBorder(BorderFactory.createEmptyBorder(18, 0, 4, 0));
-        worldTitle.setHorizontalAlignment(SwingConstants.CENTER);
         this.frame = frame;
+        saveWorldAction = new SaveWorldAction(this, classStateManager);
+        greenfootRecorder = new GreenfootRecorder(saveWorldAction);
     }
 
     /**
      * Make a popup menu suitable for calling methods on, inspecting and
      * removing an object in the world.
      */
-    private JPopupMenu makePopupMenu(final Actor obj)
+    private JPopupMenu makeActorPopupMenu(final Actor obj)
     {
         JPopupMenu menu = new JPopupMenu();
 
-        ObjectWrapper.createMethodMenuItems(menu, obj.getClass(), new WorldInvokeListener(obj, this, frame, project),
-                LocalObject.getLocalObject(obj), null);
+        ObjectWrapper.createMethodMenuItems(menu, obj.getClass(),
+                new WorldInvokeListener(frame, obj, this, frame, project),
+                LocalObject.getLocalObject(obj), null, false);
 
         // "inspect" menu item
         JMenuItem m = getInspectMenuItem(obj);
@@ -123,12 +125,41 @@ public class WorldHandlerDelegateIDE
             public void actionPerformed(ActionEvent e)
             {
                 worldHandler.getWorld().removeObject(obj);
+                worldHandler.notifyRemovedActor(obj);
                 worldHandler.repaint();
             }
         });
         m.setFont(PrefMgr.getStandoutMenuFont());
         m.setForeground(envOpColour);
         menu.add(m);
+        return menu;
+    }
+
+    /**
+     * Create a pop-up allowing the user to call methods, inspect and "Save the World"
+     * on the World object.
+     */
+    private JPopupMenu makeWorldPopupMenu(final World world)
+    {
+        if (world == null)
+            return null;
+        
+        JPopupMenu menu = new JPopupMenu();
+        
+        ObjectWrapper.createMethodMenuItems(menu, world.getClass(),
+                new WorldInvokeListener(frame, world, WorldHandlerDelegateIDE.this,
+                        frame, project),
+                LocalObject.getLocalObject(world), null, false);
+        // "inspect" menu item
+        JMenuItem m = getInspectMenuItem(world);
+
+        // "save the world" menu item
+        JMenuItem saveTheWorld = new JMenuItem(saveWorldAction);
+        saveTheWorld.setFont(PrefMgr.getStandoutMenuFont());
+        saveTheWorld.setForeground(envOpColour);
+        
+        menu.add(m);
+        menu.add(saveTheWorld);
         return menu;
     }
 
@@ -146,19 +177,12 @@ public class WorldHandlerDelegateIDE
                 String instanceName = "";
                 try {
                     RObject rObject = ObjectTracker.getRObject(obj);
-                    instanceName = rObject.getInstanceName();
-                }
-                catch (ProjectNotOpenException e1) {
-                    e1.printStackTrace();
-                }
-                catch (PackageNotFoundException e1) {
-                    e1.printStackTrace();
+                    if (rObject != null) {
+                        instanceName = rObject.getInstanceName();
+                    }
                 }
                 catch (RemoteException e1) {
-                    e1.printStackTrace();
-                }
-                catch (bluej.extensions.ClassNotFoundException e1) {
-                    e1.printStackTrace();
+                    Debug.reportError("Could not get instance name for inspection", e1);
                 }
                 frame.getInspectorInstance(dObj, instanceName, null, null, parent);
             }
@@ -169,20 +193,22 @@ public class WorldHandlerDelegateIDE
     }
 
     /**
-     * Shows the popup menu if the mouseevent is a popup trigger.
+     * Shows a pop-up menu if the MouseEvent is a pop-up trigger.
+     * Pop-up menu depends on if the MouseEvent occurred on an Actor
+     * or the world.
      */
     public boolean maybeShowPopup(MouseEvent e)
     {
         if (e.isPopupTrigger()) {
+            JPopupMenu menu;
             Actor obj = worldHandler.getObject(e.getX(), e.getY());
-            if (obj != null) {
-                JPopupMenu menu = makePopupMenu(obj);
-                // JPopupMenu menu = new JPopupMenu();
-                // ObjectWrapper.createMenuItems(menu, ...);
-                // new ObjectWrapper();
-                // JPopupMenu menu = ObjectTracker.instance().getJPopupMenu(obj,
-                // e);
-                // menu.setVisible(true);
+            // if null then the user clicked on the world
+            if (obj == null) {
+            	menu = makeWorldPopupMenu(worldHandler.getWorld());
+            } else {
+                menu = makeActorPopupMenu(obj);
+            }
+            if (menu != null) {
                 menu.show(worldHandler.getWorldCanvas(), e.getX(), e.getY());
             }
             return true;
@@ -190,81 +216,45 @@ public class WorldHandlerDelegateIDE
         }
         return false;
     }
+    
+    /**
+     * Displays the world pop-up menu in the location specified
+     * by the parameter MouseEvent.
+     * @param e	Used to get the component to display in as well as the x
+     * and y coordinates.
+     */
+    public void showWorldPopupMenu(MouseEvent e) {
+    	JPopupMenu menu = makeWorldPopupMenu(worldHandler.getWorld());
+    	if (menu != null) {
+    	    menu.show(e.getComponent(), e.getX(), e.getY());
+    	}
+    }
 
+    /**
+     * Clear the world from the cache.
+     * @param world		World to discard
+     */
     public void discardWorld(World world)
     {        
         ObjectTracker.clearRObjectCache();
     }
     
+    // It is important that we reset the recorder here in this method, which is called at the start of the world's constructor.
+    // Doing it in setWorld is too late, as we will miss the recording/naming needed
+    // that happens when the prepare method creates new actors -- prepare is invoked from the world's constructor.
+    public void initialisingWorld(World world)
+    {
+        worldInitialising = true;
+        greenfootRecorder.reset(world);        
+    }
+    
     public void setWorld(final World oldWorld, final World newWorld)
     {
+        worldInitialising = false;
         if (oldWorld != null) {
             discardWorld(oldWorld);
         }
-
-        EventQueue.invokeLater(new Runnable() {
-            public void run()
-            {
-                createWorldTitle(newWorld);
-                MouseListener listeners[] = worldTitle.getMouseListeners();
-                for (int i = 0; i < listeners.length; i++) {
-                    worldTitle.removeMouseListener(listeners[i]);
-                }
-
-                worldTitle.addMouseListener(new MouseAdapter() {
-                    public void mouseReleased(MouseEvent e)
-                    {
-                        maybeShowPopup(e);
-                    }
-
-                    public void mousePressed(MouseEvent e)
-                    {
-                        maybeShowPopup(e);
-                    }
-
-                    private void maybeShowPopup(MouseEvent e)
-                    {
-                        if (e.isPopupTrigger() && worldHandler.getWorld() != null) {
-                            JPopupMenu menu = new JPopupMenu();
-
-                            ObjectWrapper.createMethodMenuItems(menu, newWorld.getClass(), new WorldInvokeListener(
-                                    newWorld, WorldHandlerDelegateIDE.this, frame, project), LocalObject
-                                    .getLocalObject(newWorld), null);
-                            // "inspect" menu item
-                            JMenuItem m = getInspectMenuItem(newWorld);
-                            menu.add(m);
-                            menu.show(worldTitle, e.getX(), e.getY());
-                        }
-                    }
-                });
-
-            }
-
-            
-        });
     }
-    
-    /**
-     * Creates and sets the title of the world in the UI.
-     * 
-     * @param newWorld The world for which a title should be set
-     */
-    private void createWorldTitle(final World newWorld)
-    {
-        if (newWorld == null) {
-            return;
-        }
-        String className = newWorld.getClass().getName();
-        String objName = className.substring(0, 1).toLowerCase() + className.substring(1);
-        worldTitle.setText(objName);
-        worldTitle.setEnabled(true);
-    }
-    
-    public void dragFinished(Object o)
-    {
-        worldHandler.finishDrag(o);
-    }
-    
     
     /**
      * Fire an object event for the named object. This will
@@ -273,65 +263,28 @@ public class WorldHandlerDelegateIDE
      */
     public void fireObjectEvent(Actor actor)
     {
-        class GNamedValue implements NamedValue {
-            private String name;
-            public GNamedValue(String instanceName)
-            {
-                name = instanceName;
-            }
-
-            public JavaType getGenType()
-            {
-                // TODO Auto-generated method stub
-                return null;
-            }
-
-            public String getName()
-            {
-                return name;
-            }
-
-            public boolean isFinal()
-            {
-                // TODO Auto-generated method stub
-                return false;
-            }
-
-            public boolean isInitialized()
-            {
-                return true;
-            }            
-        }
         GNamedValue value =null;
         try {
             RObject rObj = ObjectTracker.getRObject(actor);
-            value =  new GNamedValue(rObj.getInstanceName());
+            if (rObj != null) {
+                value =  new GNamedValue(rObj.getInstanceName(), null);
+            }
         }
         catch (RemoteException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            Debug.reportError("Error when trying to get object instance name", e);
         }
-        catch (ProjectNotOpenException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        catch (PackageNotFoundException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        catch (bluej.extensions.ClassNotFoundException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        } 
-        // guaranteed to return a non-null array
-        Object[] listeners = worldHandler.getListenerList().getListenerList();
-        // process the listeners last to first, notifying
-        // those that are interested in this event
-        for (int i = listeners.length-2; i>=0; i-=2) { 
-            if (listeners[i] == ObjectBenchListener.class) {
-                ((ObjectBenchListener)listeners[i+1]).objectEvent(
-                        new ObjectBenchEvent(this,
-                                ObjectBenchEvent.OBJECT_SELECTED, value));
+        
+        if (value != null) {
+            // guaranteed to return a non-null array
+            Object[] listeners = worldHandler.getListenerList().getListenerList();
+            // process the listeners last to first, notifying
+            // those that are interested in this event
+            for (int i = listeners.length-2; i>=0; i-=2) { 
+                if (listeners[i] == ObjectBenchListener.class) {
+                    ((ObjectBenchListener)listeners[i+1]).objectEvent(
+                            new ObjectBenchEvent(this,
+                                    ObjectBenchEvent.OBJECT_SELECTED, value));
+                }
             }
         }
     }
@@ -372,15 +325,27 @@ public class WorldHandlerDelegateIDE
             }
         }
     }
+    
+    public void mouseMoved(MouseEvent e)
+    {
+        // While dragging, other methods set the mouse cursor instead:
+        if (false == worldHandler.isDragging()) {
+            Actor actor = worldHandler.getObject(e.getX(), e.getY());
+            if (actor == null) {
+                worldHandler.getWorldCanvas().setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+            } else {
+                worldHandler.getWorldCanvas().setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            }
+        }
+    }
 
+    /**
+     * Attach to a particular project. This should be called whenever the project
+     * changes.
+     */
     public void attachProject(Object project)
     {
         this.project = (GProject) project;
-    }
-
-    public Component getWorldTitle()
-    {
-        return worldTitle;
     }
 
     public void setWorldHandler(WorldHandler handler)
@@ -390,42 +355,44 @@ public class WorldHandlerDelegateIDE
 
     public void instantiateNewWorld()
     {
-        Class<?> cls = getLastWorldClass();
+        Class<? extends World> cls = getLastWorldClass();
         
         cls = getLastWorldClass();
         if(cls == null) {
-            try {
-            	List<Class<?>> worldClasses = project.getDefaultPackage().getWorldClasses();
-            	if(worldClasses.isEmpty() ) {
-            		return;
-            	}
-            	cls = worldClasses.get(0);
+            List<Class<? extends World>> worldClasses = project.getDefaultPackage().getWorldClasses();
+            if(worldClasses.isEmpty() ) {
+                return;
             }
-            catch (ProjectNotOpenException pnoe) {
-            	return;
-            }
-            catch (RemoteException re) {
-            	re.printStackTrace();
-            	return;
-            }
+            cls = worldClasses.get(0);
         }
         
-        try {
-            World w = (World) cls.newInstance();      
-            worldHandler.setWorld(w);
-        }
-        catch (LinkageError e) { }
-        catch (InstantiationException e) {
-            showMissingConstructorDialog();
-        }
-        catch (IllegalAccessException e) {
-            showMissingConstructorDialog();
-        }
-        catch (Throwable ise) {
-            // This can happen if a static initializer block throws a Throwable.
-            // Or for other reasons.
-            ise.printStackTrace();
-        }
+        final Class<? extends World> icls = cls;
+        Simulation.getInstance().runLater(new Runnable() {
+            @Override
+            public void run()
+            {
+                try {
+                    Constructor<?> cons = icls.getConstructor(new Class<?>[0]);
+                    World w = (World) Simulation.newInstance(cons);
+                    worldHandler.setWorld(w);
+                }
+                catch (LinkageError e) { }
+                catch (NoSuchMethodException nsme) {
+                    showMissingConstructorDialog();
+                }
+                catch (InstantiationException e) {
+                    // abstract class; shouldn't happen
+                }
+                catch (IllegalAccessException e) {
+                    showMissingConstructorDialog();
+                }
+                catch (InvocationTargetException ite) {
+                    // This can happen if a static initializer block throws a Throwable.
+                    // Or for other reasons.
+                    ite.getCause().printStackTrace();
+                }
+            }
+        });
     }
 
     private void showMissingConstructorDialog()
@@ -434,18 +401,31 @@ public class WorldHandlerDelegateIDE
         MessageDialog msgDialog = new MessageDialog(frame, missingConstructorMsg, missingConstructorTitle, 50, new JButton[]{button});
         msgDialog.display();
     }
-
-    public Class<?> getLastWorldClass()
+    
+    /**
+     * Get the last-instantiated world class if known and possible. May return null.
+     */
+    public GClass getLastWorldGClass()
     {
+        if (project == null) {
+            return null;
+        }
+        
         String lastWorldClass = project.getLastWorldClassName();
         if(lastWorldClass == null) {
             return null;
         }
         
+        return project.getDefaultPackage().getClass(lastWorldClass);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Class<? extends World> getLastWorldClass()
+    {
         try {
-            GClass gclass = project.getDefaultPackage().getClass(lastWorldClass);
+            GClass gclass = getLastWorldGClass();
             if (gclass != null) {
-                Class<?> rclass = gclass.getJavaClass();
+                Class<? extends World> rclass = (Class<? extends World>) gclass.getJavaClass();
                 if (GreenfootUtil.canBeInstantiated(rclass)) {
                     return  rclass;
                 }
@@ -470,4 +450,105 @@ public class WorldHandlerDelegateIDE
         
         return inputManager;
     }
+    
+    public void addActor(Actor actor, int x, int y)
+    {
+        greenfootRecorder.addActorToWorld(actor, x, y);
+    }
+
+    public void createdActor(Object actor, String[] args, JavaType[] argTypes)
+    {
+        greenfootRecorder.createActor(actor, args, argTypes);
+    }
+
+    public void methodCall(Object obj, String actorName, String name, String[] args, JavaType[] argTypes)
+    {
+        greenfootRecorder.callActorMethod(obj, actorName, name, args, argTypes);        
+    }
+
+    public void staticMethodCall(String className, String name, String[] args, JavaType[] argTypes)
+    {
+        greenfootRecorder.callStaticMethod(className, name, args, argTypes);        
+    }
+
+    public void movedActor(Actor actor, int xCell, int yCell)
+    {
+        greenfootRecorder.moveActor(actor, xCell, yCell);
+    }
+
+    public void removedActor(Actor obj)
+    {
+        greenfootRecorder.removeActor(obj);        
+    }
+
+    public List<String> getInitWorldCode()
+    {
+        return greenfootRecorder.getCode();
+    }
+
+    public void objectAddedToWorld(Actor object)
+    {
+        if (worldInitialising) {
+            try {
+                // This code is nasty; we look at the stack trace to see if
+                // we have been called from the prepare() method of the world class.
+                //
+                // We do this so that when the prepare() method is called again from the
+                // code, we give the first names to those objects that are created in the prepare()
+                // method -- which should then be identical to the names the objects had when
+                // they were first recorded.  That way we can record additional code,
+                // and the names of the live objects will be the same as the names of the objects
+                // when the code was initially recorded.
+                //
+                // I don't know if getting the stack trace is slow, but it's probably
+                // still more efficient (in time and memory) than giving every actor a name.
+                // Also, this code only runs in the IDE, not in the stand-alone version
+                // And I've now added a check above to make sure this is only done while the 
+                // world is being initialised (which is when prepare() would be called).
+                StackTraceElement[] methods = Thread.currentThread().getStackTrace();
+                
+                boolean gonePastUs = false;
+                for (StackTraceElement item : methods) {
+    
+                    if (GreenfootRecorder.METHOD_NAME.equals(item.getMethodName()) && item.getClassName().endsWith(getLastWorldGClass().getName())) {
+                        // This call gives the object a name,
+                        // which will be necessary for appending operations with the object to the world's code:
+                        greenfootRecorder.nameActor(object);
+                        return;
+                    }
+                    
+                    if (gonePastUs && item.getClassName().startsWith("java.")) {
+                        //We won't find any java.* classes between us and the prepare method, so if
+                        //we do hit one, we know we won't find anything; this should speed things up a bit:
+                        return;
+                    }
+                    
+                    gonePastUs = gonePastUs || "objectAddedToWorld".equals(item.getMethodName());
+                }
+            } catch (Exception e) {
+                // Never mind then...
+            }
+        }
+    }
+
+    public void clearRecorderCode()
+    {
+        greenfootRecorder.clearCode(false);        
+    }
+    
+    public void simulationActive()
+    {
+        greenfootRecorder.clearCode(true);
+    }
+
+    public SaveWorldAction getSaveWorldAction()
+    {
+        return saveWorldAction;
+    }
+    
+    public InteractionListener getInteractionListener()
+    {
+        return this;
+    }
+    
 }

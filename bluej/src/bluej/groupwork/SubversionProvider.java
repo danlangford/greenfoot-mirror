@@ -27,6 +27,7 @@ import java.lang.reflect.Method;
 
 import org.tigris.subversion.javahl.*;
 
+import bluej.Config;
 import bluej.groupwork.svn.SvnRepository;
 import bluej.utility.Debug;
 
@@ -57,7 +58,7 @@ public class SubversionProvider implements TeamworkProvider
         SVNClientInterface client = null;
         
         try {
-            Class clientImplClass = Class.forName("org.tmatesoft.svn.core.javahl.SVNClientImpl");
+            Class<?> clientImplClass = Class.forName("org.tmatesoft.svn.core.javahl.SVNClientImpl");
             
             Method newInstanceMethod = clientImplClass.getMethod("newInstance", new Class[0]);
             Object svnClient = newInstanceMethod.invoke(null, new Object[0]);
@@ -92,6 +93,7 @@ public class SubversionProvider implements TeamworkProvider
         return "Subversion";
     }
     
+    @SuppressWarnings("deprecation")
     public TeamworkCommandResult checkConnection(TeamSettings settings)
     {
         client.username(settings.getUserName());
@@ -104,6 +106,10 @@ public class SubversionProvider implements TeamworkProvider
         catch (ClientException ce) {
             return new TeamworkCommandError(ce.getMessage(), ce.getLocalizedMessage());
         }
+        catch (UnsupportedSettingException e) {
+        	return new TeamworkCommandUnsupportedSetting(e.getLocalizedMessage());
+        }
+        
     }
     
     public String[] getProtocols()
@@ -123,16 +129,23 @@ public class SubversionProvider implements TeamworkProvider
     
     public Repository getRepository(File projectDir, TeamSettings settings)
     {
-        SVNClientInterface client = getClient();
-        client.username(settings.getUserName());
-        client.password(settings.getPassword());
-        return new SvnRepository(projectDir, makeSvnUrl(settings), client);
+    	try {
+    		SVNClientInterface client = getClient();
+    		client.username(settings.getUserName());
+    		client.password(settings.getPassword());
+    		return new SvnRepository(projectDir, makeSvnUrl(settings), client);
+    	}
+    	catch (UnsupportedSettingException e) {
+    		Debug.reportError("SubversionProvider.getRepository", e);
+    		return null;
+    	}
     }
     
     /**
      * Construct a subversion URL based on the given team settings
      */
     protected String makeSvnUrl(TeamSettings settings)
+      throws UnsupportedSettingException
     {
         String protocol = settings.getProtocol();
         String userName = settings.getUserName();
@@ -140,6 +153,10 @@ public class SubversionProvider implements TeamworkProvider
         String server = settings.getServer();
         String prefix = settings.getPrefix();
         String group = settings.getGroup();
+        
+        if (userName.contains("@")) {
+        	throw new UnsupportedSettingException(Config.getString("team.error.username.at"));
+        }
         
         String svnUrl = protocol + "://" + userName + "@" + server;
         if (prefix.length() != 0 && ! prefix.startsWith("/")) {

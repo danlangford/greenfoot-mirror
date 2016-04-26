@@ -48,7 +48,7 @@ import bluej.utility.MultiLineLabel;
  * The BlueJ about box.
  * 
  * @author Poul Henriksen
- * @version $Id: AboutGreenfootDialog.java 6216 2009-03-30 13:41:07Z polle $
+ * @version $Id: AboutGreenfootDialog.java 8442 2010-09-30 12:19:12Z mik $
  */
 public class AboutGreenfootDialog extends JDialog
 {
@@ -65,7 +65,7 @@ public class AboutGreenfootDialog extends JDialog
         aboutPanel.setBackground(Color.white);
 
         // insert logo
-        URL splashURL = this.getClass().getClassLoader().getResource("greenfoot-about.png");
+        URL splashURL = this.getClass().getClassLoader().getResource("greenfoot-about.jpg");
         Icon icon = new ImageIcon(splashURL);
         JLabel logoLabel = new JLabel(icon);
         aboutPanel.add(logoLabel, BorderLayout.WEST);
@@ -74,12 +74,15 @@ public class AboutGreenfootDialog extends JDialog
         MultiLineLabel text = new MultiLineLabel(LEFT_ALIGNMENT, 6);
         text.setBackground(Color.white);
         text.addText("The Greenfoot team:" + "\n ", false, true);
+        text.addText("      Neil Brown\n");        
         text.addText("      Poul Henriksen\n");
         text.addText("      Michael K\u00F6lling\n");
         text.addText("      Davin McCall\n");
         text.addText("      Bruce Quig\n");
         text.addText("      John Rosenberg\n");
-
+        text.addText("      Philip Stevens\n");        
+        text.addText("      Ian Utting\n");
+        text.addText("      Marion Zalk\n");        
         aboutPanel.add(text, BorderLayout.CENTER);
 
         // footer text

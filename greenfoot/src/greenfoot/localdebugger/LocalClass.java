@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,34 +30,32 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
-import bluej.Config;
 import bluej.debugger.DebuggerClass;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.gentype.JavaType;
-import bluej.debugger.jdi.JdiReflective;
 import bluej.utility.JavaUtils;
 
 /**
  * Represent a local class as a DebuggerClass.
  * 
  * @author Davin McCall
- * @version $Id: LocalClass.java 6216 2009-03-30 13:41:07Z polle $
  */
 public class LocalClass extends DebuggerClass
 {
-    private Class cl;
+    private Class<?> cl;
     private static Field [] noFields = new Field[0];
      
     /**
      * Constructor for LocalClass.
      */
-    public LocalClass(Class cl)
+    public LocalClass(Class<?> cl)
     {
         this.cl = cl;
     }
     
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#getName()
      */
     public String getName()
@@ -79,7 +77,7 @@ public class LocalClass extends DebuggerClass
         return fieldType.toString();
     }
     
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#getStaticFieldCount()
      */
     public int getStaticFieldCount()
@@ -87,7 +85,7 @@ public class LocalClass extends DebuggerClass
         return getFields().length;
     }
 
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#getStaticFieldName(int)
      */
     public String getStaticFieldName(int slot)
@@ -96,7 +94,7 @@ public class LocalClass extends DebuggerClass
         return field.getName();
     }
 
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#getStaticFieldObject(int)
      */
     public DebuggerObject getStaticFieldObject(int slot)
@@ -109,12 +107,12 @@ public class LocalClass extends DebuggerClass
         return null;
     }
 
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#getStaticFields(boolean)
      */
-    public List getStaticFields(boolean includeModifiers)
+    public List<String> getStaticFields(boolean includeModifiers, Map<String, List<String>> restrictedClasses)
     {
-        List r = new ArrayList();
+        List<String> r = new ArrayList<String>();
         
         Field [] fields = getFields();
         for (int i = 0; i < fields.length; i++) {
@@ -133,12 +131,15 @@ public class LocalClass extends DebuggerClass
                 }
                 else {
                     Object fieldval = fields[i].get(null);
-                    if (fieldval instanceof String)
+                    if (fieldval instanceof String) {
                         desc += '\"' + fieldval.toString() + '\"';
-                    else if (fieldval == null)
-                        desc += Config.getString("debugger.null");
-                    else
+                    }
+                    else if (fieldval == null) {
+                        desc += "null";
+                    }
+                    else {
                         desc += DebuggerObject.OBJECT_REFERENCE;
+                    }
                 }
             }
             catch (IllegalAccessException iae) {
@@ -151,7 +152,7 @@ public class LocalClass extends DebuggerClass
         return r;
     }
 
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#staticFieldIsPublic(int)
      */
     public boolean staticFieldIsPublic(int slot)
@@ -160,7 +161,7 @@ public class LocalClass extends DebuggerClass
         return false;
     }
 
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#staticFieldIsObject(int)
      */
     public boolean staticFieldIsObject(int slot)
@@ -170,7 +171,7 @@ public class LocalClass extends DebuggerClass
             && fieldNotNull(field);
     }
 
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#isInterface()
      */
     public boolean isInterface()
@@ -178,7 +179,7 @@ public class LocalClass extends DebuggerClass
         return cl.isInterface();
     }
 
-    /* (non-Javadoc)
+    /*
      * @see bluej.debugger.DebuggerClass#isEnum()
      */
     public boolean isEnum()
@@ -193,26 +194,27 @@ public class LocalClass extends DebuggerClass
      */
     private Field [] getFields()
     {
-        ArrayList allFields = new ArrayList();
-        Class c = cl;
+        ArrayList<Field> allFields = new ArrayList<Field>();
+        Class<?> c = cl;
         
         while (c != null) {
             Field [] declFields = c.getDeclaredFields();
-            ArrayList sfields = new ArrayList();
+            ArrayList<Field> sfields = new ArrayList<Field>();
             for (int i = 0; i < declFields.length; i++) {
                 Field field = declFields[i];
-                if ((field.getModifiers() & Modifier.STATIC) != 0 && keepField(c, field))
+                if ((field.getModifiers() & Modifier.STATIC) != 0 && keepField(c, field)) {
                     sfields.add(field);
+                }
             }
             
-            declFields = (Field []) sfields.toArray(noFields);
+            declFields = sfields.toArray(noFields);
             AccessibleObject.setAccessible(declFields, true);
             allFields.addAll(Arrays.asList(declFields));
             c = c.getSuperclass();
 
         }
 
-        return (Field []) allFields.toArray(noFields);
+        return allFields.toArray(noFields);
     }
     
     /**
@@ -231,7 +233,7 @@ public class LocalClass extends DebuggerClass
      * Whether a given field should be used.
      * @return True if the field should be used, false if it should be ignored
      */
-    private boolean keepField(Class cls, Field field) 
+    private boolean keepField(Class<?> cls, Field field) 
     {
         if(cls.equals(World.class)) {
             return false;

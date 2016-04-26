@@ -28,6 +28,7 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -45,8 +46,8 @@ import javax.swing.JScrollPane;
 
 import bluej.BlueJTheme;
 import bluej.Config;
-import bluej.groupwork.StatusHandle;
 import bluej.groupwork.Repository;
+import bluej.groupwork.StatusHandle;
 import bluej.groupwork.StatusListener;
 import bluej.groupwork.TeamStatusInfo;
 import bluej.groupwork.TeamUtils;
@@ -62,13 +63,13 @@ import bluej.utility.DBoxLayout;
 import bluej.utility.DialogManager;
 import bluej.utility.EscapeDialog;
 import bluej.utility.SwingWorker;
+import bluej.utility.Utility;
 
 
 /**
  * A Swing based user interface for showing files to be updated
  * @author Bruce Quig
  * @author Davin McCall
- * @version $Id: UpdateFilesFrame.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class UpdateFilesFrame extends EscapeDialog
 {
@@ -117,8 +118,17 @@ public class UpdateFilesFrame extends EscapeDialog
             repository = project.getRepository();
             
             if (repository != null) {
-                project.saveAllEditors();
-                project.saveAllGraphLayout();
+                try {
+                    project.saveAllEditors();
+                    project.saveAll();
+                }
+                catch (IOException ioe) {
+                    String msg = DialogManager.getMessage("team-error-saving-project");
+                    if (msg != null) {
+                        msg = Utility.mergeStrings(msg, ioe.getLocalizedMessage());
+                        DialogManager.showErrorText(this, msg);
+                    }
+                }
                 startProgress();
                 updateWorker = new UpdateWorker();
                 updateWorker.start();

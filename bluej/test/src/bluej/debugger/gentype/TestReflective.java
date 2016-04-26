@@ -22,30 +22,38 @@
 package bluej.debugger.gentype;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
-import bluej.debugger.gentype.GenTypeClass;
-import bluej.debugger.gentype.Reflective;
+import bluej.parser.entity.ParsedArrayReflective;
 
 /**
  * A version of Reflective which can be easily customised to suit the needs
  * of a test.
  * 
  * @author Davin McCall
- * @version $Id: TestReflective.java 6215 2009-03-30 13:28:25Z polle $
  */
 public class TestReflective extends Reflective
 {
     public String name;
-    public List typeParams;
-    public List superTypes; // list of GenTypeClass
+    public List<GenTypeDeclTpar> typeParams;
+    public List<GenTypeClass> superTypes; // list of GenTypeClass
+    public Map<String,FieldReflective> fields = Collections.emptyMap();
     
     public TestReflective(String name)
     {
         this.name = name;
-        typeParams = new ArrayList();
-        superTypes = new ArrayList();
+        typeParams = new ArrayList<GenTypeDeclTpar>();
+        superTypes = new ArrayList<GenTypeClass>();
+    }
+    
+    public TestReflective(String name, Reflective superClass)
+    {
+        this(name);
+        superTypes.add(new GenTypeClass(superClass));
     }
     
     public String getName()
@@ -53,14 +61,22 @@ public class TestReflective extends Reflective
         return name;
     }
     
+    @Override
     public boolean isInterface()
     {
         return false;
     }
     
+    @Override
     public boolean isStatic()
     {
         return false;
+    }
+    
+    @Override
+    public boolean isPublic()
+    {
+        return true;
     }
     
     public Reflective getRelativeClass(String name)
@@ -68,33 +84,62 @@ public class TestReflective extends Reflective
         return null;
     }
     
-    public List getTypeParams()
+    public List<GenTypeDeclTpar> getTypeParams()
     {
         return typeParams;
     }
     
-    public List getSuperTypesR()
+    public List<Reflective> getSuperTypesR()
     {
-        List n = new ArrayList();
-        Iterator i = superTypes.iterator();
+        List<Reflective> n = new ArrayList<Reflective>();
+        Iterator<GenTypeClass> i = superTypes.iterator();
         while (i.hasNext()) {
-            n.add(((GenTypeClass)i.next()).getReflective());
+            n.add(i.next().getReflective());
         }
         return n;
     }
     
-    public List getSuperTypes()
+    public List<GenTypeClass> getSuperTypes()
     {
         return superTypes;
     }
     
     public Reflective getArrayOf()
     {
-        return null;
+        return new ParsedArrayReflective(this, "L" + getName() + ";");
     }
     
     public boolean isAssignableFrom(Reflective r)
     {
+        if (r == this) {
+            return true;
+        }
+        
+        List<Reflective> supers = r.getSuperTypesR();
+        for (Reflective superR : supers) {
+            if (isAssignableFrom(superR)) {
+                return true;
+            }
+        }
+        
         return false;
+    }
+    
+    @Override
+    public Map<String,FieldReflective> getDeclaredFields()
+    {
+        return fields;
+    }
+    
+    @Override
+    public Map<String,Set<MethodReflective>> getDeclaredMethods()
+    {
+        return Collections.emptyMap();
+    }
+    
+    @Override
+    public List<Reflective> getInners()
+    {
+        return Collections.emptyList();
     }
 }

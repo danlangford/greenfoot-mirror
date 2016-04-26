@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,30 +21,54 @@
  */
 package rmiextension.wrappers;
 
+import greenfoot.util.DebugUtil;
+
+import java.awt.EventQueue;
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.rmi.ConnectException;
+import java.rmi.ConnectIOException;
 import java.rmi.RemoteException;
+import java.rmi.ServerError;
+import java.rmi.ServerException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
 import rmiextension.wrappers.event.RProjectListener;
+import bluej.debugger.DebuggerThread;
+import bluej.debugmgr.ExecControls;
+import bluej.extensions.BClass;
+import bluej.extensions.BField;
+import bluej.extensions.BObject;
 import bluej.extensions.BPackage;
 import bluej.extensions.BProject;
 import bluej.extensions.PackageAlreadyExistsException;
+import bluej.extensions.PackageNotFoundException;
 import bluej.extensions.ProjectNotOpenException;
 import bluej.pkgmgr.Project;
 import bluej.pkgmgr.target.ReadmeTarget;
 import bluej.utility.Debug;
 
 /**
+ * Implementation of the remote project interface.
+ * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: RProjectImpl.java 6720 2009-09-18 13:49:11Z davmac $
  */
 public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
     implements RProject
 {
-    /**	The BlueJ-package (from extensions) that is wrapped */
+    /** The BlueJ-package (from extensions) that is wrapped */
     private BProject bProject;
+    
+    /** The Greenfoot simulation thread */
+    private DebuggerThread simulationThread;
+    
+    /**
+     * A launcher object with a field called "transportField", used to
+     * allow obtaining a remote reference to a debug VM object.
+     */
+    private BObject transportObject;
     
     private List<RProjectListener> listeners = new ArrayList<RProjectListener>();
 
@@ -60,9 +84,26 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
     {
         super();
         this.bProject = bProject;
+        
+        try {
+            Project thisProject = Project.getProject(bProject.getDir());
+            thisProject.getExecControls().setRestrictedClasses(DebugUtil.restrictedClassesAsNames());
+        } catch (ProjectNotOpenException e) {
+            Debug.message("Project not open while setting up debugger");
+        }
     }
 
-    /* (non-Javadoc)
+    /**
+     * Set the object used for passing objects from the remote (debug VM) to the local VM.
+     * The object should have a field of type Object called "transportField".
+     */
+    public synchronized void setTransportObject(BObject transportObject)
+    {
+        this.transportObject = transportObject;
+        notifyAll();
+    }
+    
+    /*
      * @see rmiextension.wrappers.RProject#close()
      */
     public void close()
@@ -84,22 +125,42 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
      */
     public void notifyClosing()
     {
-        List<RProjectListener> listeners = new ArrayList<RProjectListener>(this.listeners);
-        Iterator i = listeners.iterator();
+        List<RProjectListener> listeners;
+        synchronized (this.listeners) {
+            listeners = new ArrayList<RProjectListener>(this.listeners);
+        }
+        
+        Iterator<RProjectListener> i = listeners.iterator();
         while (i.hasNext()) {
-            RProjectListener listener = (RProjectListener) i.next();
+            RProjectListener listener = i.next();
             try {
                 listener.projectClosing();
             }
+            catch (ServerError se) {
+                Debug.reportError("Error when scenario closing: ", se);
+            }
+            catch (ServerException se) {
+                Debug.reportError("Error when scenario closing: ", se);
+            }
+            catch (ConnectException ce) {
+                // Almost certainly due to the other VM having already terminated:
+                // So we'll ignore it.
+                removeListener(listener);
+            }
+            catch (ConnectIOException cioe) {
+                // Almost certainly due to the other VM having already terminated:
+                // So we'll ignore it.
+                removeListener(listener);
+            }
             catch (RemoteException re) {
                 Debug.reportError("Error when scenario closing: ", re);
+                removeListener(listener);
             }
         }
     }
 
-    /**
-     * @return
-     * @throws ProjectNotOpenException
+    /*
+     * @see rmiextension.wrappers.RProject#getDir()
      */
     public File getDir()
         throws ProjectNotOpenException
@@ -107,9 +168,8 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
         return bProject.getDir();
     }
 
-    /**
-     * @return
-     * @throws ProjectNotOpenException
+    /*
+     * @see rmiextension.wrappers.RProject#getName()
      */
     public String getName()
         throws ProjectNotOpenException
@@ -117,21 +177,24 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
         return bProject.getName();
     }
 
-    /**
-     * @param name
-     * @return
-     * @throws ProjectNotOpenException
+    /*
+     * @see rmiextension.wrappers.RProject#getPackage(java.lang.String)
      */
     public RPackage getPackage(String name)
         throws ProjectNotOpenException, RemoteException
     {
         BPackage bPackage = bProject.getPackage(name);
         RPackage wrapper = null;
-        wrapper = WrapperPool.instance().getWrapper(bPackage);
+        if (bPackage != null) {
+            wrapper = WrapperPool.instance().getWrapper(bPackage);
+        }
 
         return wrapper;
     }
 
+    /*
+     * @see rmiextension.wrappers.RProject#newPackage(java.lang.String)
+     */
     public RPackage newPackage(String fullyQualifiedName)
         throws ProjectNotOpenException, PackageAlreadyExistsException, RemoteException
     {
@@ -142,9 +205,8 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
         return wrapper;
     }
 
-    /**
-     * @return
-     * @throws ProjectNotOpenException
+    /*
+     * @see rmiextension.wrappers.RProject#getPackages()
      */
     public RPackage[] getPackages()
         throws ProjectNotOpenException, RemoteException
@@ -160,9 +222,8 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
         return wrapper;
     }
 
-    /**
-     * Request a save of all open files in the project.
-     * @throws ProjectNotOpenException
+    /*
+     * @see rmiextension.wrappers.RProject#save()
      */
     public void save()
         throws ProjectNotOpenException
@@ -170,7 +231,7 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
         bProject.save();
     }
     
-    /* (non-Javadoc)
+    /*
      * @see rmiextension.wrappers.RProject#openReadmeEditor()
      */
     public void openReadmeEditor()
@@ -182,21 +243,151 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
         readmeTarget.open();
     }
     
-    /* (non-Javadoc)
+    /*
      * @see rmiextension.wrappers.RProject#addListener(rmiextension.wrappers.event.RProjectListener)
      */
     public void addListener(RProjectListener listener)
         throws RemoteException
     {
-        listeners.add(listener);
+        synchronized (listeners) {
+            listeners.add(listener);
+        }
     }
     
-    /* (non-Javadoc)
+    /*
      * @see rmiextension.wrappers.RProject#removeListener(rmiextension.wrappers.event.RProjectListener)
      */
     public void removeListener(RProjectListener listener)
-        throws RemoteException
     {
-        listeners.remove(listener);
+        synchronized (listeners) {
+            listeners.remove(listener);
+        }
+    }
+    
+    /*
+     * @see rmiextension.wrappers.RProject#getRemoteObject()
+     */
+    @Override
+    public synchronized RObject getRemoteObject() throws RemoteException
+    {
+        try {
+            while (transportObject == null) {
+                wait();
+            }
+            BClass bClass = transportObject.getBClass();
+            BField field = bClass.getField("transportField");
+            final BObject value = (BObject) field.getValue(transportObject);
+            
+            if (value != null) {
+                EventQueue.invokeAndWait(new Runnable() {
+                    @Override
+                    public void run()
+                    {
+                        try {
+                            String cName = value.getBClass().getName();
+                            cName = cName.toLowerCase();
+                            value.addToBench(cName);
+                        }
+                        catch (bluej.extensions.ClassNotFoundException cnfe) { }
+                        catch (PackageNotFoundException pnfe) { }
+                        catch (ProjectNotOpenException pnoe) { }
+                    }
+                });
+                
+                value.getInstanceName();
+                return WrapperPool.instance().getWrapper(value);
+            }
+        }
+        catch (InterruptedException ie) { }
+        catch (bluej.extensions.ClassNotFoundException cnfe) { }
+        catch (PackageNotFoundException pnfe) { }
+        catch (ProjectNotOpenException pnoe) { }
+        catch (InvocationTargetException ite) {
+            Debug.reportError("Error adding object to bench", ite);
+        }
+        return null;
+    }
+
+    /*
+     * @see rmiextension.wrappers.RProject#isExecControlVisible()
+     */
+    @Override
+    public boolean isExecControlVisible() throws RemoteException
+    {
+        class ExecControlsChecker implements Runnable
+        {
+            public boolean visible;
+            
+            @Override
+            public void run()
+            {
+                try {
+                    Project thisProject = Project.getProject(bProject.getDir());
+                    ExecControls execControls = thisProject.getExecControls();
+                    execControls.setRestrictedClasses(DebugUtil.restrictedClassesAsNames());
+                    visible = execControls.isVisible();
+                }
+                catch (ProjectNotOpenException pnoe) {
+                    // This is ignorable.
+                }
+            }
+        }
+        
+        ExecControlsChecker checker = new ExecControlsChecker();
+        try {
+            EventQueue.invokeAndWait(checker);
+        }
+        catch (InvocationTargetException ite) {
+            Debug.reportError("Error checking exec controls visibility", ite);
+        }
+        catch (InterruptedException ie) { }
+        
+        return checker.visible;
+    }
+
+    /*
+     * @see rmiextension.wrappers.RProject#toggleExecControls()
+     */
+    @Override
+    public void toggleExecControls() throws RemoteException 
+    {
+        EventQueue.invokeLater(new Runnable() {
+            @Override
+            public void run()
+            {
+                try {
+                    Project thisProject = Project.getProject(bProject.getDir());
+                    ExecControls execControls = thisProject.getExecControls();
+                    execControls.makeSureThreadIsSelected(simulationThread);
+                    execControls.showHide(!execControls.isVisible());
+                    execControls.setRestrictedClasses(DebugUtil.restrictedClassesAsNames());
+                }
+                catch (ProjectNotOpenException pnoe) {
+                    // This is ignorable.
+                }
+            } 
+        });
+    }
+    
+    /**
+     * Set the Greenfoot simulation thread.
+     */
+    public void setSimulationThread(DebuggerThread simulationThread)
+    {
+        this.simulationThread = simulationThread;
+        try {
+            final Project thisProject = Project.getProject(bProject.getDir());
+            EventQueue.invokeLater(new Runnable() {
+                @Override
+                public void run()
+                {
+                    if (thisProject.hasExecControls()) {
+                        ExecControls execControls = thisProject.getExecControls();
+                        execControls.makeSureThreadIsSelected(RProjectImpl.this.simulationThread);
+                    }
+                }
+            });
+        }
+        catch (ProjectNotOpenException pnoe) { }
     }
 }

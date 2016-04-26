@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -35,38 +35,41 @@ import javax.swing.JScrollPane;
 import bluej.Config;
 import bluej.debugmgr.NamedValue;
 import bluej.debugmgr.ValueCollection;
+import bluej.pkgmgr.PkgMgrFrame;
 import bluej.testmgr.record.InvokerRecord;
+import bluej.utility.JavaNames;
 
 /**
- * The object responsible for the panel that displays objects
+ * The class responsible for the panel that displays objects
  * at the bottom of the package manager.
+ * 
  * @author  Michael Cahill
  * @author  Andrew Patterson
- * @version $Id: ObjectBench.java 6312 2009-05-07 04:44:13Z davmac $
  */
 public class ObjectBench extends JPanel implements ValueCollection,
     FocusListener, KeyListener, MouseListener, ObjectBenchInterface
 {
-    private static final Color BACKGROUND_COLOR = Config.getItemColour("colour.objectbench.background");
+    private static final Color BACKGROUND_COLOR = Config.getOptionalItemColour("colour.objectbench.background");
 
     private JScrollPane scroll;
     private ObjectBenchPanel obp;
     private List<ObjectWrapper> objects;
     private ObjectWrapper selectedObject;
+    private PkgMgrFrame pkgMgrFrame;
 	
     // All invocations done since our last reset.
     private List<InvokerRecord> invokerRecords;
-
    
     /**
      * Construct an object bench which is used to hold
      * a bunch of object reference Components.
      */
-    public ObjectBench()
+    public ObjectBench(PkgMgrFrame pkgMgrFrame)
     {
         super();
         objects = new ArrayList<ObjectWrapper>();
         createComponent();
+        this.pkgMgrFrame = pkgMgrFrame;
     }
 
     /**
@@ -78,10 +81,14 @@ public class ObjectBench extends JPanel implements ValueCollection,
 
         String newname = wrapper.getName();
         int count = 1;
+        
+        if (JavaNames.isJavaKeyword(newname)) {
+            newname = "x" + newname;
+        }
 
         while(hasObject(newname)) {
             count++;
-            newname = wrapper.getName() + "_" + count;
+            newname = wrapper.getName() + count;
         }
         wrapper.setName(newname);
 
@@ -506,8 +513,8 @@ public class ObjectBench extends JPanel implements ValueCollection,
         while(it.hasNext()) {
             InvokerRecord ir = it.next();
             
-			if (ir.toFixtureSetup() != null)
-	            sb.append(ir.toFixtureSetup());
+            if (ir.toFixtureSetup() != null)
+                sb.append(ir.toFixtureSetup());
         }                    
 
         return sb.toString();
@@ -522,10 +529,10 @@ public class ObjectBench extends JPanel implements ValueCollection,
         while(it.hasNext()) {
             InvokerRecord ir = it.next();
 
-            String testMethod = ir.toTestMethod();
-			if (testMethod != null) {
-	            sb.append(testMethod);
-			}
+            String testMethod = ir.toTestMethod(pkgMgrFrame);
+            if (testMethod != null) {
+                sb.append(testMethod);
+            }
         }                    
 
         return sb.toString();
@@ -542,9 +549,12 @@ public class ObjectBench extends JPanel implements ValueCollection,
         // a panel holding the actual object components
         obp = new ObjectBenchPanel();
         obp.setBackground(BACKGROUND_COLOR);
+        obp.setOpaque(false);
+        setOpaque(false);
         
         scroll = new JScrollPane(obp);
         scroll.setBorder(Config.normalBorder);
+        scroll.setOpaque(false);
         Dimension sz = obp.getMinimumSize();
         Insets in = scroll.getInsets();
         sz.setSize(sz.getWidth()+in.left+in.right, sz.getHeight()+in.top+in.bottom);
@@ -620,5 +630,36 @@ public class ObjectBench extends JPanel implements ValueCollection,
         {
             return getWidth() / ObjectWrapper.WIDTH;
         }
+
+        protected void paintComponent(Graphics g)
+        {
+            super.paintComponent(g);
+            
+            if (g instanceof Graphics2D && false == pkgMgrFrame.isEmptyFrame()) {
+                Graphics2D g2d = (Graphics2D)g;
+                
+                int w = getWidth();
+                int h = getHeight();
+                
+                boolean codePadVisible = pkgMgrFrame.isTextEvalVisible();
+                 
+                // Paint a gradient from top to bottom:
+                GradientPaint gp;
+                if (codePadVisible) {
+                    gp = new GradientPaint(
+                            w/4, 0, new Color(209, 203, 179),
+                            w*3/4, h, new Color(235, 230, 200));
+                } else {
+                    gp = new GradientPaint(
+                        w/4, 0, new Color(235, 230, 200),
+                        w*3/4, h, new Color(209, 203, 179));
+                }
+   
+                g2d.setPaint(BACKGROUND_COLOR != null ? BACKGROUND_COLOR : gp);
+                g2d.fillRect(0, 0, w+1, h+1);
+            }
+        }
+        
+        
     }
 }

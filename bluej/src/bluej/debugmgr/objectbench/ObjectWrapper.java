@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,7 +21,18 @@
  */
 package bluej.debugmgr.objectbench;
 
-import java.awt.*;
+import java.awt.AWTEvent;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.Stroke;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
@@ -41,13 +52,15 @@ import javax.swing.JPopupMenu;
 import bluej.BlueJEvent;
 import bluej.Config;
 import bluej.debugger.DebuggerObject;
+import bluej.debugger.ExceptionDescription;
 import bluej.debugger.gentype.GenTypeClass;
+import bluej.debugger.gentype.GenTypeParameter;
 import bluej.debugger.gentype.JavaType;
+import bluej.debugmgr.ExecutionEvent;
 import bluej.debugmgr.ExpressionInformation;
 import bluej.debugmgr.Invoker;
 import bluej.debugmgr.NamedValue;
 import bluej.debugmgr.ResultWatcher;
-import bluej.debugmgr.inspector.ResultInspector;
 import bluej.extensions.BObject;
 import bluej.extensions.ExtensionBridge;
 import bluej.extmgr.MenuManager;
@@ -68,11 +81,10 @@ import bluej.views.ViewFilter;
 /**
  * A wrapper around a Java object that handles calling methods, inspecting, etc.
  *
- * The wrapper is represented by the red oval that is visible on the
+ * <p>The wrapper is represented by the red oval that is visible on the
  * object bench.
  *
  * @author  Michael Kolling
- * @version $Id: ObjectWrapper.java 6475 2009-07-31 14:30:38Z davmac $
  */
 public class ObjectWrapper extends JComponent implements InvokeListener, NamedValue
 {
@@ -89,27 +101,32 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
     static final Color envOpColour = Config.getItemColour("colour.menu.environOp");
     static final Color textColour = Color.white;
     
+    // Images
+    private static final Image objectImage = Config.getImageAsIcon("image.bench.object").getImage();
+    private static final Image selectedObjectImage = Config.getImageAsIcon("image.bench.object-selected").getImage();
+    
     // Strokes
     static final Stroke selectedStroke = new BasicStroke(2.0f);
     static final Stroke normalStroke = new BasicStroke(1.0f);
-    
-    protected static final int HGAP = 5;    // horiz. gap between objects (left of each object)
-    protected static final int VGAP = 6;    // vert. gap between objects (above and below of each object)
-    public static final int WIDTH = 95;    // width including gap
-    public static final int HEIGHT = 66;   // height including gap
 
     // vertical offset between instance and class name
     public static final int WORD_GAP = 20;
     public static final int SHADOW_SIZE = 5;
+    
+    protected static final int HGAP = 5;    // horiz. gap between objects (left of each object)
+    protected static final int VGAP = 6;    // vert. gap between objects (above and below of each object)
+    public static final int WIDTH = objectImage.getWidth(null);    // width including gap
+    public static final int HEIGHT = objectImage.getHeight(null);   // height including gap
 
     private static int itemHeight = 19;   // wild guess until we find out
     private static boolean itemHeightKnown = false;
     private static int itemsOnScreen;
 
-    // The Java object that this wraps
+    /** The Java object that this wraps */
     protected DebuggerObject obj;
     protected GenTypeClass iType;
 
+    /** Fully qualified type this object represents, including type parameters */
     private String className;
     private String instanceName;
     protected String displayClassName;
@@ -122,13 +139,6 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
 
     private boolean isSelected = false;
     
-    private Color[] colours = {
-            new Color(0,0,0,11), //furthest out
-            new Color(0,0,0,22),     
-            new Color(0,0,0,33),
-            new Color(0,0,0,66)//closes to the center
-    };
-
     /**
      * Get an object wrapper for a user object. 
      * 
@@ -145,9 +155,6 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
                                             GenTypeClass iType,
                                             String instanceName)
     {
-        if(pmf.isEmptyFrame())
-            throw new IllegalArgumentException();
-
         if (obj.isArray()) {
             return new ArrayWrapper(pmf, ob, obj, instanceName);
         }
@@ -158,12 +165,10 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
 
     protected ObjectWrapper(PkgMgrFrame pmf, ObjectBench ob, DebuggerObject obj, GenTypeClass iType, String instanceName)
     {
-        if(pmf.isEmptyFrame())
-            throw new IllegalArgumentException();
-
         // first one we construct will give us more info about the size of the screen
-        if(!itemHeightKnown)
+        if(!itemHeightKnown) {
             itemsOnScreen = (int)Config.screenBounds.getHeight() / itemHeight;
+        }
 
         this.pmf = pmf;
         this.pkg = pmf.getPackage();
@@ -291,7 +296,7 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
         // If the class is inaccessible, use the invocation type.
         if (cl != null) {
             if (! classIsAccessible(cl)) {
-                cl = pkg.loadClass(iType.rawName());
+                cl = pkg.loadClass(iType.classloaderName());
                 while (cl != null && ! classIsAccessible(cl)) {
                     cl = cl.getSuperclass();
                     if (cl != null) {
@@ -322,7 +327,7 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
         menu = new JPopupMenu(getName() + " operations");
 
         // add the menu items to call the methods
-        createMethodMenuItems(menu, cl, iType, this, obj, pkg.getQualifiedName());
+        createMethodMenuItems(menu, cl, iType, this, obj, pkg.getQualifiedName(), true);
 
         // add inspect and remove options
         JMenuItem item;
@@ -360,12 +365,13 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
      * @param currentPackageName Name of the package that this object will be
      *            shown from (used to determine wheter to show package protected
      *            methods)
+     * @param showObjectMethods Whether to show the submenu with methods from java.lang.Object
      */
     public static void createMethodMenuItems(JPopupMenu menu, Class<?> cl, InvokeListener il, DebuggerObject obj,
-            String currentPackageName)
+            String currentPackageName, boolean showObjectMethods)
     {
         GenTypeClass gt = new GenTypeClass(new JavaReflective(cl));
-        createMethodMenuItems(menu, cl, gt, il, obj, currentPackageName);
+        createMethodMenuItems(menu, cl, gt, il, obj, currentPackageName, showObjectMethods);
     }
     
     /**
@@ -379,9 +385,10 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
      * @param currentPackageName Name of the package that this object will be
      *            shown from (used to determine wheter to show package protected
      *            methods)
+     * @param showObjectMethods Whether to show the submenu for methods inherited from java.lang.Object
      */
     public static void createMethodMenuItems(JPopupMenu menu, Class<?> cl, GenTypeClass gtype, InvokeListener il, DebuggerObject obj,
-            String currentPackageName)
+            String currentPackageName, boolean showObjectMethods)
     {
         if (cl != null) {
             View view = View.getView(cl);
@@ -434,12 +441,14 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
                 // map generic type paramaters to the current superclass
                 curType = curType.mapToSuper(currentClass.getName());
                 
-                declaredMethods = view.getDeclaredMethods();
-                JMenu subMenu = new JMenu(inheritedFrom + " "
-                               + JavaNames.stripPrefix(currentClass.getName()));
-                subMenu.setFont(PrefMgr.getStandoutMenuFont());
-                createMenuItems(subMenu, declaredMethods, il, filter, (itemsOnScreen / 2), curType.getMap(), actions, methodsUsed);
-                menu.insert(subMenu, 0);
+                if (!"java.lang.Object".equals(currentClass.getName()) || showObjectMethods) { 
+                    declaredMethods = view.getDeclaredMethods();
+                    JMenu subMenu = new JMenu(inheritedFrom + " "
+                                   + JavaNames.stripPrefix(currentClass.getName()));
+                    subMenu.setFont(PrefMgr.getStandoutMenuFont());
+                    createMenuItems(subMenu, declaredMethods, il, filter, (itemsOnScreen / 2), curType.getMap(), actions, methodsUsed);
+                    menu.insert(subMenu, 0);
+                }
             }
 
             menu.addSeparator();
@@ -465,7 +474,7 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
      * @param actions 
      */
     private static void createMenuItems(JComponent menu, MethodView[] methods, InvokeListener il, ViewFilter filter,
-            int sizeLimit, Map<?, ?> genericParams, Hashtable<JMenuItem, MethodView> actions, Hashtable<String, String> methodsUsed)
+            int sizeLimit, Map<String,GenTypeParameter> genericParams, Hashtable<JMenuItem, MethodView> actions, Hashtable<String, String> methodsUsed)
     {
         JMenuItem item;
         boolean menuEmpty = true;
@@ -531,10 +540,6 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
         }
     }
 
-    public JPopupMenu getMenu(){
-    	return menu;
-    }
-
     /**
      * Creates a List containing all classes in an inheritance hierarchy
      * working back to Object
@@ -598,43 +603,18 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
     protected void drawUMLObjectShape(Graphics2D g, int x, int y, int w, int h, int shad, int corner)
     {
         boolean isSelected = isSelected() && ob.hasFocus();
-        drawShadow(g, x, y, w, h, shad, corner);
-        // draw red round rectangle
-        g.setColor(bg);
-        g.fillRoundRect(x, y, w-shad, h-shad, corner, corner);
-        //draw outline
-        g.setColor(Color.BLACK);
-        if(isSelected)
-            g.setStroke(selectedStroke);
-        g.drawRoundRect(x, y, w-shad, h-shad, corner, corner);
-        if(isSelected)
-            g.setStroke(normalStroke);
+        g.drawImage(isSelected ? selectedObjectImage : objectImage, x, y, null);
     }
-
-    /**
-	 * Draw the shadow of an object wrapper.
-	 */
-	private void drawShadow(Graphics2D g, int x, int y, int w, int h, int shad, int corner) 
-    {
-		g.setColor(colours[0]);
-		g.fillRoundRect(x+shad,y+shad,w-shad,h-shad,corner,corner);
-		g.setColor(colours[1]);
-		g.fillRoundRect(x+shad,y+shad,w-shad-1,h-shad-1,corner,corner);
-		g.setColor(colours[2]);
-		g.fillRoundRect(x+shad,y+shad,w-shad-2,h-shad-2,corner,corner);
-		g.setColor(colours[3]);
-		g.fillRoundRect(x+shad,y+shad,w-shad-3,h-shad-3,corner,corner);
-	}
 
     /**
      * Draw the text onto an object wrapper (objectname: classname).
      */
-	protected void drawUMLObjectText(Graphics2D g, int x, int y, int w, int shad, 
-                                     String objName, String className)
+    protected void drawUMLObjectText(Graphics2D g, int x, int y, int w, int shad, 
+            String objName, String className)
     {
-    	
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setColor(textColour);
-        g.setFont(PrefMgr.getStandardFont());
+        g.setFont(PrefMgr.getTargetFont());
 
         FontMetrics fm = g.getFontMetrics();
         int fontHeight = fm.getAscent() + 5;
@@ -642,27 +622,24 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
         int maxWidth = w - shad - 4;    // our uml object will be (w-shad) pixels wide
                                         // we leave 2 pixels of space either side of shape
 
+        // 54 is a hard hack; the height of the red part of the object image:
+        int totalGap = 54 - (fontHeight + fm.getAscent()); 
+        int start = totalGap / 2;
+        
         // draw top string (normally instance name)
         int aWidth = fm.stringWidth(objName);
-        if(aWidth > maxWidth)
+        if(aWidth > maxWidth) {
             aWidth = maxWidth;
+        }
 
-        Utility.drawCentredText(g, objName, x+2, y+5, maxWidth, fontHeight);
-
-        int lineX = x + 2 + ((maxWidth - aWidth)/2);
-        int lineY = y + 5 + fontHeight;
-
-        g.drawLine(lineX, lineY, lineX + aWidth, lineY);
+        Utility.drawCentredText(g, objName, x+2, y+start, maxWidth, fontHeight);
 
         // draw bottom string (normally class name)
         int bWidth = fm.stringWidth(className);
         if(bWidth > maxWidth)
             bWidth = maxWidth;
 
-        Utility.drawCentredText(g, className, x+2, y+25, maxWidth, fontHeight);
-        lineX = x + 2 + ((maxWidth - bWidth)/2);
-        lineY = y + 25 + fontHeight;
-        g.drawLine(lineX, lineY, lineX + bWidth, lineY);
+        Utility.drawCentredText(g, className, x+2, y+start+fontHeight, maxWidth, fontHeight);
     }
 
     /**
@@ -752,7 +729,7 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
      */
     protected void inspectObject()
     {
-        InvokerRecord ir = new ObjectInspectInvokerRecord(getName(), obj.isArray());
+        InvokerRecord ir = new ObjectInspectInvokerRecord(getName());
       	pkg.getProject().getInspectorInstance(obj, getName(), pkg, ir, pmf);  // shows the inspector
     }
 
@@ -775,53 +752,92 @@ public class ObjectWrapper extends JComponent implements InvokeListener, NamedVa
         watcher = new ResultWatcher() {
             private ExpressionInformation expressionInformation = new ExpressionInformation(method,getName(),obj.getGenType());
             
+            public void beginCompile()
+            {
+                pmf.setWaitCursor(true);
+            }
+            
+            public void beginExecution(InvokerRecord ir)
+            {
+                BlueJEvent.raiseEvent(BlueJEvent.METHOD_CALL, ir.toExpression());
+                pmf.setWaitCursor(false);
+            }
+            
             public void putResult(DebuggerObject result, String name, InvokerRecord ir)
             {
+                ExecutionEvent executionEvent = new ExecutionEvent(pkg, obj.getClassName(), instanceName);
+                executionEvent.setMethodName(method.getName());
+                executionEvent.setParameters(method.getParamTypes(false), ir.getArgumentValues());
+                executionEvent.setResult(ExecutionEvent.NORMAL_EXIT);
+                executionEvent.setResultObject(result);
+                BlueJEvent.raiseEvent(BlueJEvent.EXECUTION_RESULT, executionEvent);
+                
+                pkg.getProject().updateInspectors();
                 expressionInformation.setArgumentValues(ir.getArgumentValues());
                 ob.addInteraction(ir);
                 
                 // a void result returns a name of null
-                if (name == null)
-                    return;
-                                    
-                ResultInspector viewer =
+                if (result != null && ! result.isNullObject()) {
                     pkg.getProject().getResultInspectorInstance(result, name, pkg,
-                                           ir, expressionInformation, pmf);
-                BlueJEvent.raiseEvent(BlueJEvent.METHOD_CALL,
-                                      viewer.getResult());
+                            ir, expressionInformation, pmf);
+                }
             }
-            public void putError(String msg) { }
-            public void putException(String msg) { }
-            public void putVMTerminated() { }
+            
+            public void putError(String msg, InvokerRecord ir)
+            {
+                pmf.setWaitCursor(false);
+            }
+            
+            public void putException(ExceptionDescription exception, InvokerRecord ir)
+            {
+                ExecutionEvent executionEvent = new ExecutionEvent(pkg, obj.getClassName(), instanceName);
+                executionEvent.setParameters(method.getParamTypes(false), ir.getArgumentValues());
+                executionEvent.setResult(ExecutionEvent.EXCEPTION_EXIT);
+                executionEvent.setException(exception);
+                BlueJEvent.raiseEvent(BlueJEvent.EXECUTION_RESULT, executionEvent);
+                
+                pkg.getProject().updateInspectors();
+                pkg.exceptionMessage(exception);
+            }
+            
+            public void putVMTerminated(InvokerRecord ir)
+            {
+                ExecutionEvent executionEvent = new ExecutionEvent(pkg, obj.getClassName(), instanceName);
+                executionEvent.setParameters(method.getParamTypes(false), ir.getArgumentValues());
+                executionEvent.setResult(ExecutionEvent.TERMINATED_EXIT);
+                BlueJEvent.raiseEvent(BlueJEvent.EXECUTION_RESULT, executionEvent);
+            }
         };
 
-        Invoker invoker = new Invoker(pmf, method, this, watcher);
-        invoker.invokeInteractive();
+        if (pmf.checkDebuggerState()) {
+            Invoker invoker = new Invoker(pmf, method, this, watcher);
+            invoker.invokeInteractive();
+        }
     }
     
     public void callConstructor(ConstructorView cv)
     {
         // do nothing (satisfy the InvokeListener interface)
     }
-    
-	/**
-	 * @return Returns the isSelected.
-	 */
-	public boolean isSelected() 
+
+    /**
+     * @return Returns the isSelected.
+     */
+    public boolean isSelected() 
     {
-		return isSelected;
-	}
-    
-	/**
-	 * @param isSelected The isSelected to set.
-	 */
-	public void setSelected(boolean isSelected) 
+        return isSelected;
+    }
+
+    /**
+     * @param isSelected The isSelected to set.
+     */
+    public void setSelected(boolean isSelected) 
     {
-		this.isSelected = isSelected;
-		if(isSelected) {
-		    pmf.setStatus(getName() + " : " + displayClassName);
-		}
+        this.isSelected = isSelected;
+        if(isSelected) {
+            pmf.setStatus(getName() + " : " + displayClassName);
+        }
         repaint();
         scrollRectToVisible(new Rectangle(0, 0, WIDTH, HEIGHT));
-	}
+    }
 }

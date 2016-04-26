@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -28,70 +28,100 @@ import bluej.classmgr.BPClassLoader;
 import bluej.debugger.jdi.JdiDebugger;
 
 /**
- * A class defining the debugger primitives needed by BlueJ
- * May be supported by different implementations, locally or remotely.
+ * A class defining the debugger primitives needed by BlueJ. May be supported by different
+ * implementations, locally or remotely.
+ * 
+ * <p>Debugger has a listener interface to allow listening for certain events. Events reported to
+ * the listener are guaranteed to be serialised, that is, a callback will not be entered while
+ * the previous callback is still executing.
+ * 
+ * <p>Part of the listener interface is notification of debugger state changes. There possible
+ * states are UNKNOWN, NOTREADY, IDLE, RUNNING, SUSPENDED and LAUNCH_FAILED. Only certain
+ * transitions are possible:
+ * 
+ * <ul>
+ * <li>UNKNOWN to NOTREADY: when the debugger is first launched
+ * <li>NOTREADY to IDLE:  when the debugger finishes launching or restarting
+ * <li>IDLE to RUNNING:  when the debugger begins execution of user code
+ * <li>IDLE to NOTREADY:  when the virtual machine restarts (possibly for external reasons)
+ * <li>RUNNING to IDLE:  when user code finishes or is otherwise terminated
+ * <li>RUNNING to SUSPENDED:  when a breakpoint is hit etc.
+ * <li>SUSPENDED to RUNNING:  when execution is continued after a breakpoint etc.
+ * </ul>
+ * 
+ * Transitions that do not conform to the list are modified by inserting appropriate transitions.
+ * For instance a transition from RUNNING to NOTREADY is represented as a transition first to
+ * IDLE and then to NOTREADY. 
  *
  * @author  Michael Cahill
  * @author  Michael Kolling
  * @author  Andrew Patterson
- * @version $Id: Debugger.java 6215 2009-03-30 13:28:25Z polle $
  */
 public abstract class Debugger
 {
+    // Set this key with a non-null value on any breakpoints that you want to
+    // persist through calls to removeBreakpointsForClass, and through the clear-all breakpoint
+    // removal that happens, for example, when a new class loader is added to the VM
+    public static final String PERSIST_BREAKPOINT_PROPERTY = "VMReference.PERSIST_BREAKPOINT";    
+    
     public static final int NORMAL_EXIT = 0;
-    public static final int FORCED_EXIT = 1;
     public static final int EXCEPTION = 2;
     public static final int TERMINATED = 3;
 
-    // machine states
-    public static final int UNKNOWN = 0;	// cannot move to this state,
-    										// but this can be the oldState in an event
+    /** Virtual machine states **/
+    /** The unknown state can only be the previous state, and only in the first state change */
+    public static final int UNKNOWN = 0;
+    /** The debugger is not yet ready to execute code etc */
     public static final int NOTREADY = 1;
+    /** The debugger is idle: ready to execute */
     public static final int IDLE = 2;
-	public static final int RUNNING = 3;
+    /** The debugger is currently running user code */ 
+    public static final int RUNNING = 3;
+    /** The debugger is suspended, i.e. running user code but stopped at a breakpoint/step */
     public static final int SUSPENDED = 4;
-    public static final int LAUNCH_FAILED = 5; // failed to launch
+    /** The debugger failed to start. */
+    public static final int LAUNCH_FAILED = 5;
 
-	/**
-	 * Create an instance of a debugger.
-	 * The constructor for the debugger should not be
-	 * a long process. Actual startup for the debug
-	 * VM should go in launch().
-	 * 
-	 * @return  a Debugger instance
-	 */
-	public static Debugger getDebuggerImpl(File startingDirectory, DebuggerTerminal terminal)
-	{
-        return new JdiDebugger(startingDirectory, terminal);
-	}
-	
-	/**
-     * Start debugging.
+    /**
+     * Create an instance of a debugger.
+     * The constructor for the debugger should not be
+     * a long process. Actual startup for the debug
+     * VM should go in launch().
      * 
-     * This can be a lengthy process so this should be executed
-     * in a sub thread.
+     * @return  a Debugger instance
+     */
+    public static Debugger getDebuggerImpl(File startingDirectory, DebuggerTerminal terminal)
+    {
+        return new JdiDebugger(startingDirectory, terminal);
+    }
+
+    /**
+     * Launch a VM for running user code, which will be controlled by this debugger instance.
+     * This should be called only once.
+     * 
+     * <p>This can be a lengthy process so this should be executed in a sub thread.
      */
     public abstract void launch();
 
     /**
-     * Finish debugging.
+     * Terminate the debug VM, stop all user processes etc. Optionally restart afterwards.
      */
     public abstract void close(boolean restart);
 
-	/**
-	 * Add a listener for DebuggerEvents
-	 * 
-	 * @param l  the DebuggerListener to add
-	 */
-	public abstract void addDebuggerListener(DebuggerListener l);
+    /**
+     * Add a listener for DebuggerEvents
+     * 
+     * @param l  the DebuggerListener to add
+     */
+    public abstract void addDebuggerListener(DebuggerListener l);
 
-	/**
-	 * Remove a listener for DebuggerEvents.
-	 * 
-	 * @param l  the DebuggerListener to remove
-	 */
-	public abstract void removeDebuggerListener(DebuggerListener l);
-	
+    /**
+     * Remove a listener for DebuggerEvents.
+     * 
+     * @param l  the DebuggerListener to remove
+     */
+    public abstract void removeDebuggerListener(DebuggerListener l);
+
     /**
      * Create a class loader in the debugger.
      */
@@ -101,7 +131,7 @@ public abstract class Debugger
      * Remove all breakpoints in the given class.
      */
     public abstract void removeBreakpointsForClass(String className);
-	
+
     /**
      * Add a debugger object into the project scope.
      * 
@@ -118,62 +148,56 @@ public abstract class Debugger
      */
     public abstract void removeObject(String scopeId, String instanceName);
 
-	/**
-	 * Return the debugger objects that exist in the
-	 * debugger.
-	 * 
-	 * @return			a Map of (String name, DebuggerObject obj) entries
-	 */
-	public abstract Map getObjects();
-	
-	/**
-	 * Guess a suitable name for an object about to be put on the object bench.
-	 * 
-	 * @param	startingName  a fully qualified class name (will be stripped of
-	 *                        qualifying part) or a field name that will be used
-	 *                        as the basis for the new name.
-	 * @return				  a String suitable as a name for an object on the
-	 * 						  object bench. 
-	 */
-	public abstract String guessNewName(String className);
-	
-	/**
+    /**
+     * Return the debugger objects that exist in the
+     * debugger.
+     * 
+     * @return	a Map of (String name, DebuggerObject obj) entries
+     */
+    public abstract Map<String,DebuggerObject> getObjects();
+
+    /**
      * Guess a suitable name for an object about to be put on the object bench.
      * 
-     * @param obj
-     *            the object that will be put on the object bench
+     * @param	startingName  a fully qualified class name (will be stripped of
+     *                        qualifying part) or a field name that will be used
+     *                        as the basis for the new name.
+     * @return  a String suitable as a name for an object on the object bench. 
+     */
+    public abstract String guessNewName(String className);
+
+    /**
+     * Guess a suitable name for an object about to be put on the object bench.
+     * 
+     * @param obj      the object that will be put on the object bench
      * @return a String suitable as a name for an object on the object bench.
      */
     public abstract String guessNewName(DebuggerObject obj);
 
-
     /**
      * Return the machine status; one of the "machine state" constants:
-     * (IDLE, RUNNING, SUSPENDED).
+     * (IDLE, RUNNING, SUSPENDED, NOTREADY).
      */
     public abstract int getStatus();
     
-	/**
-	 * Run the setUp() method of a test class and return the created
-	 * objects.
-	 * 
-	 * @param className	the fully qualified name of the class
-	 * @return			a Map of (String name, DebuggerObject obj) entries
-	 */
-    public abstract Map runTestSetUp(String className);
+    /**
+     * Run the setUp() method of a test class and return the created
+     * objects.
+     * 
+     * @param className	the fully qualified name of the class
+     * @return			a Map of (String name, DebuggerObject obj) entries
+     */
+    public abstract Map<String,DebuggerObject> runTestSetUp(String className);
 
-	/**
-	 * Run a single test method in a test class and return the result.
-	 * 
-	 * @param  className  the fully qualified name of the class
-	 * @param  methodName the name of the method
-	 * @return            a DebuggerTestResult object
-	 */
+    /**
+     * Run a single test method in a test class and return the result.
+     * 
+     * @param  className  the fully qualified name of the class
+     * @param  methodName the name of the method
+     * @return            a DebuggerTestResult object
+     */
     public abstract DebuggerTestResult runTestMethod(String className, String methodName);
 
-	//	BeanShell
-    //public abstract DebuggerObject executeCode(String code);
-    
     /**
      * Dispose all top level windows in the remote machine.
      */
@@ -203,18 +227,19 @@ public abstract class Debugger
     public abstract DebuggerResult instantiateClass(String className, String [] paramTypes, DebuggerObject [] args);
     
     /**
-     * Get a class from the virtual machine, using the current classloader. The class will be
-     * initialized if possible. This can cause execution of user code.
+     * Get a class from the virtual machine, using the current classloader.
+     * 
+     * @param className   The name of the class to load
+     * @param initialize  Whether to initialize the class. Initialization causes execution
+     *                    of user code, which may take an arbitrary amount of time.
+     *                    Initialization will not be performed if the debugger is already
+     *                    running user code (i.e. the state is RUNNING).
+     * 
+     * @throws ClassNotFoundException if the class couldn't be located.
      */
-    public abstract DebuggerClass getClass(String className)
+    public abstract DebuggerClass getClass(String className, boolean initialize)
 		throws ClassNotFoundException;
 
-    /**
-     * Get the value of a static field in a class
-     */
-    public abstract DebuggerObject getStaticValue(String className, String fieldName)
-		throws ClassNotFoundException;
-    
     /**
      * Get a reference to a string in the remote machine whose value is the
      * same as the given value. Returns null if the remote VM terminates
@@ -232,15 +257,43 @@ public abstract class Debugger
      * @param className  The class in which to set the breakpoint.
      * @param line       The line number of the breakpoint.
      * @param set        True to set, false to clear a breakpoint.
+     * @param properties Extra properties to set on the breakpoint.  Can (and usually should) be null.
      * @return           a string of the error message generated performing
      *                   this operation or null
      */
     public abstract String toggleBreakpoint(String className, int line,
-                                            boolean set);
+                                            boolean set, Map<String, String> properties);
 
     /**
-     * A tree model representing the threads running in
-     * the debug VM.
+     * Set/clear a breakpoint at a specified method in a class (specified by name).
+     *
+     * @param className  The class in which to set the breakpoint.
+     * @param line       The line number of the breakpoint.
+     * @param set        True to set, false to clear a breakpoint.
+     * @param properties Extra properties to set on the breakpoint.  Can (and usually should) be null.
+     * @return           a string of the error message generated performing
+     *                   this operation or null
+     */
+    public abstract String toggleBreakpoint(String className, String method, boolean set,
+                                            Map<String,String> properties);
+    
+    /**
+     * Set/clear a breakpoint at a specified method in a class.
+     * It is safe to call this method from a debugger event listener (unlike
+     * the other toggleBreakpoint() methods).
+     *
+     * @param className  The class in which to set the breakpoint.
+     * @param line       The line number of the breakpoint.
+     * @param set        True to set, false to clear a breakpoint.
+     * @param properties Extra properties to set on the breakpoint.  Can (and usually should) be null.
+     * @return           a string of the error message generated performing
+     *                   this operation or null
+     */
+    public abstract String toggleBreakpoint(DebuggerClass debuggerClass, String method, boolean set,
+            Map<String, String> properties);
+    
+    /**
+     * A tree model representing the threads running in the debug VM.
      *  
      * @return  a TreeModel with DebuggerThread objects
      *          as the leaves.
@@ -252,5 +305,4 @@ public abstract class Debugger
      * This method also updates the current display if necessary.
      */
     public abstract void hideSystemThreads(boolean hide);
-
 }

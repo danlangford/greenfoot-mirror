@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,14 +30,12 @@ import greenfoot.gui.classbrowser.ClassView;
 import greenfoot.util.GreenfootUtil;
 
 import java.awt.Image;
-import java.rmi.RemoteException;
 import java.util.Hashtable;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.ImageIcon;
 
-import bluej.extensions.ProjectNotOpenException;
 
 /**
  * Base class for class roles with associated images.
@@ -96,17 +94,8 @@ public abstract class ImageClassRole extends ClassRole
         while (gclass != null) {
             String className = gclass.getQualifiedName();
             GreenfootImage gfImage = null;
-            try {
-                GProject project = gclass.getPackage().getProject();
-                gfImage = project.getProjectProperties().getImage(className);
-            }
-            catch (ProjectNotOpenException pnoe) {}
-            catch (RemoteException re) {
-                re.printStackTrace();
-            }
-            catch (IllegalArgumentException e) {
-                e.printStackTrace();
-            }
+            GProject project = gclass.getPackage().getProject();
+            gfImage = project.getProjectProperties().getImage(className);
             if (gfImage != null) {
                 break;
             }
@@ -115,32 +104,23 @@ public abstract class ImageClassRole extends ClassRole
         return gclass;
     }
     
-    private static GreenfootImage getGreenfootImage(GClass gclass)
+    protected static GreenfootImage getGreenfootImage(GClass gclass)
     {
         gclass = getClassThatHasImage(gclass);
 
-        if(gclass == null) return null;
+        if(gclass == null) {
+            return null;
+        }
         
         String className = gclass.getQualifiedName();
-        try {
-            GProject project = gclass.getPackage().getProject();
-            return project.getProjectProperties().getImage(className);
-        }
-        catch (ProjectNotOpenException pnoe) {}
-        catch (RemoteException re) {
-            re.printStackTrace();
-        }
-        catch (IllegalArgumentException e) {
-            e.printStackTrace();
-        }
-
-        return null;
+        GProject project = gclass.getPackage().getProject();
+        return project.getProjectProperties().getImage(className);
     }
     
     private ImageIcon getImageIcon() {
         GClass gCls = getClassThatHasImage(gClass);
         ImageIcon icon = imageIcons.get(gCls);
-        if(icon == null) {
+        if (icon == null) {
             Image image = getImage(gCls);
             Image scaledImage = GreenfootUtil.getScaledImage(image, iconSize.width, iconSize.height);
             icon = new ImageIcon(scaledImage);
@@ -149,7 +129,8 @@ public abstract class ImageClassRole extends ClassRole
         return icon;
     }
 
-    public ObjectDragProxy createObjectDragProxy() {
+    public ObjectDragProxy createObjectDragProxy()
+    {
         GreenfootImage greenfootImage = getGreenfootImage(gClass);
         Action dropAction = new AbstractAction() {
             public void actionPerformed(java.awt.event.ActionEvent arg0) {
@@ -171,16 +152,21 @@ public abstract class ImageClassRole extends ClassRole
      */
     public void changeImage()
     {
-        project.getProjectProperties().removeCachedImage(classView.getClassName());
-       
-        
+        project.getProjectProperties().removeCachedImage(classView.getClassName());             
         Image image = getImage(gClass);
         if (image != null) {
             Image scaledImage = GreenfootUtil.getScaledImage(image,iconSize.width, iconSize.height);
             ImageIcon icon = getImageIcon();
             icon.setImage(scaledImage);
             classView.setIcon(icon);
+        } 
+        else {
+            classView.setIcon(null);
         }
+        //resets the pop up menu to ensure that a new one is created when next it is requested
+        //this is required because the constructor action images are out of date because of the
+        //image change
+        classView.setPopupMenu(null);
     }
 
     @Override    

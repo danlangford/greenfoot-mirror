@@ -36,8 +36,8 @@ import java.util.List;
 import java.util.ArrayList;
 
 import bluej.*;
-import bluej.Config;
 import bluej.utility.DialogManager;
+import bluej.utility.FileUtility;
 import bluej.prefmgr.*;
 
 /**
@@ -46,7 +46,7 @@ import bluej.prefmgr.*;
  * archive) with an associated description.
  *
  * @author  Andrew Patterson
- * @version $Id: ClassMgrPrefPanel.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: ClassMgrPrefPanel.java 7051 2010-01-25 15:31:24Z nccb $
  */
 public class ClassMgrPrefPanel extends JPanel
     implements PrefPanelListener
@@ -70,19 +70,17 @@ public class ClassMgrPrefPanel extends JPanel
         userLibraries = new ClassPath();
         addConfigEntries(userLibraries, userlibPrefix);
 
-
-        // TODO: There a re a few historical issues here, the first one is that this list is calculated here
-        // but in reality now it is much more dinamic, there is no need to restart BlueJ to have the 
-        // new value applied, so this list should also be dynamic.
+        // TODO: There a re a few historical issues here, the first one is that this list is calculated
+        // here but in reality now it is much more dynamic, there is no need to restart BlueJ to have
+        // the new value applied, so this list should also be dynamic.
         // The second point is that it does not make much sense to say loaded or unloaded since
         // if it is a valid jar the it is in the project classloader.
         // Somthing to fix in the future.
         // It may have more meaning to show what is the project classloader, that would include all
         // libraries, and paths, including +libs 
-        ArrayList userlibList = Project.getUserlibContent();
-        ClassPath aa = new ClassPath((URL[])userlibList.toArray(new URL[userlibList.size()]));
-        List userlibExtLibrariesList = new ArrayList(aa.getEntries());
-
+        ArrayList<URL> userlibList = Project.getUserlibContent();
+        ClassPath cp = new ClassPath(userlibList.toArray(new URL[userlibList.size()]));
+        List<ClassPathEntry> userlibExtLibrariesList = cp.getEntries();
 
         // Construct a user editable table of user libraries and add/remove buttons
 
@@ -200,7 +198,8 @@ public class ClassMgrPrefPanel extends JPanel
      * the Project classloader.
      * @return a non null but possibly empty arrayList of URL.
      */
-    public ArrayList getUserConfigContent () {
+    public ArrayList<URL> getUserConfigContent ()
+    {
         return userLibraries.getURLs();
     }
     
@@ -272,12 +271,11 @@ public class ClassMgrPrefPanel extends JPanel
             resourceID++;
         }
 
-        Iterator it = userLibraries.getEntries().iterator();
+        Iterator<ClassPathEntry> it = userLibraries.getEntries().iterator();
         resourceID = 1;
 
         while (it.hasNext()) {
-            ClassPathEntry nextEntry = (ClassPathEntry)it.next();
-
+            ClassPathEntry nextEntry = it.next();
             Config.putPropString(userlibPrefix + resourceID + ".location",
                                     nextEntry.getPath());
             resourceID++;
@@ -292,24 +290,16 @@ public class ClassMgrPrefPanel extends JPanel
      **/
     private void addUserLibrary()
     {
-        // when adding a new library,
-        // ask the user to select the file or directory
-        JFileChooser chooser = new JFileChooser();
-        {
-            // LibraryFileFilter is a private class defined below
-            chooser.setFileFilter(new LibraryFileFilter());
-            // files for archive libraries, directories for library trees
-            chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
-            chooser.setDialogTitle(Config.getString("prefmgr.misc.addLibTitle"));
-            int returnVal = chooser.showOpenDialog(getParent());
-            if (returnVal == JFileChooser.APPROVE_OPTION) {
-                String librarylocation = chooser.getSelectedFile().getAbsolutePath();
+    	File file = FileUtility.getFile(getParent(), Config.getString("prefmgr.misc.addLibTitle"),
+    			null, new LibraryFileFilter(), false);
+    	
+    	if (file != null) {
+    		String librarylocation = file.getAbsolutePath();
 
-                userLibrariesModel.addEntry(new ClassPathEntry(librarylocation,"", true));
-                
-                classPathModified = true;
-            }
-        }
+            userLibrariesModel.addEntry(new ClassPathEntry(librarylocation,"", true));
+            
+            classPathModified = true;
+    	}
     }
 
     /**

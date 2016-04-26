@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -38,12 +38,9 @@ import bluej.pkgmgr.PkgMgrFrame;
 import bluej.utility.Debug;
 
 /**
- * 
- * 
- * This is the starting point of greenfoot as a BlueJ Extension.
+ * This is the starting point of Greenfoot as a BlueJ Extension.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: RMIExtension.java 6216 2009-03-30 13:41:07Z polle $
  */
 public class RMIExtension extends Extension implements ApplicationListener
 {
@@ -51,14 +48,10 @@ public class RMIExtension extends Extension implements ApplicationListener
 
     /**
      * When this method is called, the extension may start its work.
-     * 
      */
     public void startup(BlueJ bluej)
     {
         theBlueJ = bluej;
-        // GreenfootUtil.initialise(new GreenfootUtilDelegateIDE());
-        // Above is not necessary
-        // theBlueJ.addPackageListener(ProjectLauncher.instance());
         ProjectManager.init(bluej);
 
         try {
@@ -66,13 +59,10 @@ public class RMIExtension extends Extension implements ApplicationListener
         }
         catch (IOException e) {
             Debug.reportError("Could not launch RMI server", e);
-            // This is bad, lets exit.
-            System.exit(1);
+            ProjectManager.greenfootLaunchFailed(null);
         }
 
         theBlueJ.addApplicationListener(this);
-        
-        //GreenfootLauncherBlueJVM.getInstance().launch(this);
     }
 
     /**
@@ -83,10 +73,9 @@ public class RMIExtension extends Extension implements ApplicationListener
     public void maybeOpenProject(File projectPath)
     {
         // Now we need to find out if a greenfoot project is automatically
-        // opening. If not we must openthe dummy project
+        // opening. If not we must open the dummy project.
         boolean openOrphans = "true".equals(Config.getPropString("bluej.autoOpenLastProject"));
-        if (openOrphans && PkgMgrFrame.hadOrphanPackages()) {}
-        else {
+        if (!openOrphans || !PkgMgrFrame.hadOrphanPackages()) {
             if (theBlueJ.getOpenProjects().length == 0) {
                 openProject(projectPath);
             }
@@ -128,7 +117,7 @@ public class RMIExtension extends Extension implements ApplicationListener
      */
     public boolean isCompatible()
     {
-        return true;
+        return Config.isGreenfoot();
     }
 
     /**

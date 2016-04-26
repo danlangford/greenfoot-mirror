@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -25,7 +25,6 @@ import greenfoot.actions.EditClassAction;
 import greenfoot.actions.InspectClassAction;
 import greenfoot.actions.NewSubclassAction;
 import greenfoot.actions.RemoveClassAction;
-import greenfoot.actions.ShowApiDocAction;
 import greenfoot.core.GClass;
 import greenfoot.core.GProject;
 import greenfoot.core.GreenfootMain;
@@ -33,13 +32,13 @@ import greenfoot.core.WorldHandler;
 import greenfoot.core.WorldInvokeListener;
 import greenfoot.event.WorldEvent;
 import greenfoot.event.WorldListener;
+import greenfoot.gui.GreenfootFrame;
 import greenfoot.gui.classbrowser.ClassBrowser;
 import greenfoot.gui.classbrowser.ClassView;
 import greenfoot.localdebugger.LocalClass;
 
 import java.awt.Color;
 import java.awt.Dimension;
-import java.rmi.RemoteException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -50,7 +49,6 @@ import javax.swing.JPopupMenu;
 import bluej.Config;
 import bluej.debugmgr.ConstructAction;
 import bluej.debugmgr.objectbench.ObjectBenchInterface;
-import bluej.extensions.ProjectNotOpenException;
 import bluej.prefmgr.PrefMgr;
 import bluej.utility.Debug;
 import bluej.views.ConstructorView;
@@ -64,7 +62,6 @@ import bluej.views.ViewFilter;
  * "normal" classes.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: ClassRole.java 6363 2009-06-08 14:00:45Z polle $
  */
 public abstract class ClassRole implements WorldListener
 {
@@ -100,14 +97,12 @@ public abstract class ClassRole implements WorldListener
                     continue;
 
                 ObjectBenchInterface ob = WorldHandler.getInstance().getObjectBench();
-                WorldInvokeListener invocListener = new WorldInvokeListener(realClass, ob, GreenfootMain.getInstance().getFrame(), project);
+                GreenfootFrame frame = GreenfootMain.getInstance().getFrame();
+                WorldInvokeListener invocListener = new WorldInvokeListener(frame, realClass, ob, frame, project);
 
                 String prefix = "new ";
                 Action callAction = new ConstructAction(m, invocListener, prefix + m.getLongDesc());
-
-                if (callAction != null) {
-                    actions.add(callAction);
-                }
+                actions.add(callAction);
             }
             catch (Exception e) {
                 Debug.reportError("Exception accessing methods: " + e);
@@ -125,13 +120,7 @@ public abstract class ClassRole implements WorldListener
         GClass gClass = classView.getGClass();
         JPopupMenu popupMenu = new JPopupMenu();
         GProject project = null;
-        try {
-            project = gClass.getPackage().getProject();
-        }
-        catch (ProjectNotOpenException pnoe) {}
-        catch (RemoteException re) {
-            re.printStackTrace();
-        }
+        project = gClass.getPackage().getProject();
 
         Class<?> realClass = gClass.getJavaClass();
         if (realClass != null) {
@@ -158,14 +147,20 @@ public abstract class ClassRole implements WorldListener
             MethodView[] allMethods = view.getAllMethods();
 
             ObjectBenchInterface ob = WorldHandler.getInstance().getObjectBench();
-            WorldInvokeListener invocListener = new WorldInvokeListener(realClass, ob, GreenfootMain.getInstance().getFrame(), project);
-            if (bluej.pkgmgr.target.role.ClassRole.createMenuItems(popupMenu, allMethods, filter, 0, allMethods.length, "", invocListener))
+            GreenfootFrame frame = GreenfootMain.getInstance().getFrame();
+            WorldInvokeListener invocListener = new WorldInvokeListener(frame, realClass, ob, frame, project);
+            if (bluej.pkgmgr.target.role.ClassRole.createMenuItems(popupMenu, allMethods, filter, 0,
+                    allMethods.length, "", invocListener)) {
                 popupMenu.addSeparator();
+            }
         }
 
 
         if (!classView.isCoreClass()) {
-            popupMenu.add(createMenuItem(new EditClassAction(classBrowser)));
+            
+            if (gClass.hasSourceCode()) {
+                popupMenu.add(createMenuItem(new EditClassAction(classBrowser)));
+            }
 
             addPopupMenuItems(popupMenu, false);
 
@@ -204,17 +199,17 @@ public abstract class ClassRole implements WorldListener
         // default implementation does nothing
     }
 
-	public void worldCreated(WorldEvent e) {
-		// Do nothing - only want to handle this for actors
-	}
+    public void worldCreated(WorldEvent e) {
+        // Do nothing - only want to handle this for actors
+    }
 
-	public void worldRemoved(WorldEvent e) {
-		// Do nothing - only want to handle this for actors
-	}
+    public void worldRemoved(WorldEvent e) {
+        // Do nothing - only want to handle this for actors
+    }
 
-	/**
-	 * Called when this role is being removed. Do any cleanup that is needed here.
-	 */
+    /**
+     * Called when this role is being removed. Do any cleanup that is needed here.
+     */
     public abstract void remove();
 	
 }

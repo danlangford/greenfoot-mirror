@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -24,14 +24,18 @@ package bluej.pkgmgr.target;
 import java.awt.Color;
 import java.awt.EventQueue;
 import java.awt.Font;
+import java.awt.Paint;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import javax.swing.AbstractAction;
@@ -39,6 +43,7 @@ import javax.swing.JPopupMenu;
 
 import bluej.Config;
 import bluej.debugger.DebuggerClass;
+import bluej.debugger.gentype.Reflective;
 import bluej.debugmgr.objectbench.InvokeListener;
 import bluej.editor.Editor;
 import bluej.editor.EditorManager;
@@ -49,6 +54,12 @@ import bluej.extmgr.ExtensionsManager;
 import bluej.extmgr.MenuManager;
 import bluej.graph.GraphEditor;
 import bluej.graph.Moveable;
+import bluej.graph.Vertex;
+import bluej.parser.entity.EntityResolver;
+import bluej.parser.entity.PackageResolver;
+import bluej.parser.entity.ParsedReflective;
+import bluej.parser.nodes.ParsedCUNode;
+import bluej.parser.nodes.ParsedTypeNode;
 import bluej.parser.symtab.ClassInfo;
 import bluej.parser.symtab.Selection;
 import bluej.pkgmgr.Package;
@@ -59,13 +70,21 @@ import bluej.pkgmgr.dependency.Dependency;
 import bluej.pkgmgr.dependency.ExtendsDependency;
 import bluej.pkgmgr.dependency.ImplementsDependency;
 import bluej.pkgmgr.dependency.UsesDependency;
-import bluej.pkgmgr.target.role.*;
+import bluej.pkgmgr.target.role.AbstractClassRole;
+import bluej.pkgmgr.target.role.AppletClassRole;
+import bluej.pkgmgr.target.role.ClassRole;
+import bluej.pkgmgr.target.role.EnumClassRole;
+import bluej.pkgmgr.target.role.InterfaceClassRole;
+import bluej.pkgmgr.target.role.MIDletClassRole;
+import bluej.pkgmgr.target.role.StdClassRole;
+import bluej.pkgmgr.target.role.UnitTestClassRole;
 import bluej.prefmgr.PrefMgr;
 import bluej.utility.Debug;
 import bluej.utility.DialogManager;
 import bluej.utility.FileEditor;
 import bluej.utility.FileUtility;
 import bluej.utility.JavaNames;
+import bluej.utility.JavaReflective;
 import bluej.utility.JavaUtils;
 import bluej.views.ConstructorView;
 import bluej.views.MethodView;
@@ -74,13 +93,10 @@ import bluej.views.MethodView;
  * A class target in a package, i.e. a target that is a class file built from
  * Java source code
  * 
- * 
  * @author Michael Cahill
  * @author Michael Kolling
  * @author Bruce Quig
  * @author Damiano Bolla
- * 
- * @version $Id: ClassTarget.java 6475 2009-07-31 14:30:38Z davmac $
  */
 public class ClassTarget extends DependentTarget
     implements Moveable, InvokeListener
@@ -104,7 +120,7 @@ public class ClassTarget extends DependentTarget
     // temporary file name extension to trick windows if changing case only in
     // class name
     private static String TEMP_FILE_EXTENSION = "-temp";
-
+    
     // the role object represents the changing roles that are class
     // target can have ie changing from applet to an interface etc
     // 'role' should never be null
@@ -126,6 +142,8 @@ public class ClassTarget extends DependentTarget
     // classtarget state is normal (ie. the class is compiled).
     private boolean isAbstract;
     
+    // a flag indicating whether an editor should have the naviview expanded/collapsed
+    private Boolean isNaviviewExpanded=null;
     /**
      * fields used in Tarjan's algorithm:
      */
@@ -148,7 +166,9 @@ public class ClassTarget extends DependentTarget
     private boolean modifiedSinceCompile = true;
 
     private String typeParameters = "";
-
+    
+    //properties map to store values used in the editor from the props (if necessary)
+    private Map<String,String> properties = new HashMap<String,String>();
     /**
      * Create a new class target in package 'pkg'.
      * 
@@ -248,6 +268,41 @@ public class ClassTarget extends DependentTarget
         return sourceInfo;
     }
 
+    /**
+     * Get a reflective for the type represented by this target.
+     * 
+     * @return  A suitable reflective, or null.
+     */
+    public Reflective getTypeRefelective()
+    {
+        // If compiled, return a reflective based on actual reflection
+        if (isCompiled()) {
+            Class<?> cl = getPackage().loadClass(getQualifiedName());
+            if (cl != null) {
+                return new JavaReflective(cl);
+            }
+            else {
+                return null;
+            }
+        }
+        
+        // Not compiled; try to get a reflective from the parser
+        ParsedCUNode node = null;
+        getEditor();
+        if (editor != null) {
+            node = editor.getParsedNode();
+        }
+        
+        if (node != null) {
+            ParsedTypeNode ptn = (ParsedTypeNode) node.getTypeNode(getBaseName());
+            if (ptn != null) {
+                return new ParsedReflective(ptn);
+            }
+        }
+        
+        return null;
+    }
+    
     /**
      * Returns the text which the target is displaying as its label. For normal
      * classes this is just the identifier name. For generic classes the generic
@@ -486,6 +541,11 @@ public class ClassTarget extends DependentTarget
         }
 
         getRole().load(props, prefix);
+        String value=props.getProperty(prefix + ".naviview.expanded");
+        if (value!=null){
+            setNaviviewExpanded(Boolean.parseBoolean(value));
+            setProperty(NAVIVIEW_EXPANDED_PROPERTY, String.valueOf(value));
+        }
     }
 
     /**
@@ -505,11 +565,21 @@ public class ClassTarget extends DependentTarget
         }
 
         if (editorOpen()) {
-            openWithInterface = getEditor().isShowingInterface();
+            openWithInterface = getEditor().isShowingInterface();          
         }
+        //saving the state of the naviview (open/close) to the props 
+        //setting the value of the expanded according to the value from the editor (if there is)
+        //else if there was a previous setting use that
+        if (editorOpen() && getProperty(NAVIVIEW_EXPANDED_PROPERTY)!=null){
+            props.put(prefix + ".naviview.expanded", String.valueOf(getProperty(NAVIVIEW_EXPANDED_PROPERTY)));
+        } else if (isNaviviewExpanded!=null)
+                props.put(prefix + ".naviview.expanded", String.valueOf(isNaviviewExpanded()));
+            
         props.put(prefix + ".showInterface", new Boolean(openWithInterface).toString());
 
         getRole().save(props, 0, prefix);
+     
+        
     }
 
     /**
@@ -560,11 +630,11 @@ public class ClassTarget extends DependentTarget
     public void invalidate()
     {
         setState(S_INVALID);
-        for (Iterator it = dependents(); it.hasNext();) {
-            Dependency d = (Dependency) it.next();
+        for (Iterator<? extends Dependency> it = dependents(); it.hasNext();) {
+            Dependency d = it.next();
             ClassTarget dependent = (ClassTarget) d.getFrom();
             
-            if(! dependent.isInvalidState()) {    
+            if (! dependent.isInvalidState()) {    
                 // Invalidate the dependent only if it is not already invalidated. 
                 // Will avoid going into an infinite circular loop.
                 dependent.invalidate();
@@ -574,7 +644,6 @@ public class ClassTarget extends DependentTarget
 
     /**
      * Verify whether this class target is an interface class
-     * 
      * 
      * @return true if class target is an interface class, else returns false
      */
@@ -586,12 +655,21 @@ public class ClassTarget extends DependentTarget
     /**
      * Verify whether this class target is an unit test class
      * 
-     * 
      * @return true if class target is a unit test class, else returns false
      */
     public boolean isUnitTest()
     {
         return (getRole() instanceof UnitTestClassRole);
+    }
+    
+    /**
+     * Verify whether this class target represents an Enum
+     * 
+     * @return true if class target represents an Enum, else false
+     */
+    public boolean isEnum()
+    {
+        return (getRole() instanceof EnumClassRole);
     }
 
     /**
@@ -612,13 +690,13 @@ public class ClassTarget extends DependentTarget
      * 
      * @return The backgroundColour value
      */
-    Color getBackgroundColour()
+    public Paint getBackgroundPaint(int width, int height)
     {
         if (state == S_COMPILING) {
             return compbg;
         }
         else {
-            return getRole().getBackgroundColour();
+            return getRole().getBackgroundPaint(width, height);
         }
     }
 
@@ -757,14 +835,28 @@ public class ClassTarget extends DependentTarget
                 }
             }
             
-            editor = EditorManager.getEditorManager().openClass(filename, docFilename, getBaseName(), this,
-                    isCompiled(), editorBounds);
+            Project project = getPackage().getProject();
+            EntityResolver resolver = new PackageResolver(project.getEntityResolver(),
+                    getPackage().getQualifiedName());
+            
+            if (editorBounds == null) {
+                PkgMgrFrame frame = PkgMgrFrame.findFrame(getPackage());
+                if (frame != null) {
+                    editorBounds = new Rectangle();
+                    editorBounds.x = frame.getX() + 40;
+                    editorBounds.y = frame.getY() + 20;
+                }
+            }
+            
+            editor = EditorManager.getEditorManager().openClass(filename, docFilename,
+                    getBaseName(), this, isCompiled(), editorBounds, resolver,
+                    project.getJavadocResolver());
             
             // editor may be null if source has been deleted
             // for example.
             if (editor != null) {
                 editor.showInterface(showInterface);
-            }
+            }           
         }
         return editor;
     }
@@ -802,7 +894,7 @@ public class ClassTarget extends DependentTarget
                     // This is the intial state. Try and load the class.
                     case 0:
                         try {
-                            clss = getPackage().getDebugger().getClass(getQualifiedName());
+                            clss = getPackage().getDebugger().getClass(getQualifiedName(), true);
                             state = 1;
                             EventQueue.invokeLater(this);
                         }
@@ -842,7 +934,7 @@ public class ClassTarget extends DependentTarget
     public String breakpointToggleEvent(Editor editor, int lineNo, boolean set)
     {
         if (isCompiled() || ! modifiedSinceCompile) {
-            return getPackage().getDebugger().toggleBreakpoint(getQualifiedName(), lineNo, set);
+            return getPackage().getDebugger().toggleBreakpoint(getQualifiedName(), lineNo, set, null);
         }
         else {
             return Config.getString("pkgmgr.breakpointMsg");
@@ -911,9 +1003,10 @@ public class ClassTarget extends DependentTarget
      */
     public void endCompile()
     {
-        Class cl = getPackage().loadClass(getQualifiedName());
+        Class<?> cl = getPackage().loadClass(getQualifiedName());
 
         determineRole(cl);
+        analyseDependencies(cl);
     }
 
     /**
@@ -1016,7 +1109,7 @@ public class ClassTarget extends DependentTarget
     }
 
     /**
-     * Analyse the source code, and save retrieived information.
+     * Analyse the source code, and save retrieved information.
      * This includes comments and parameter names for methods/constructors,
      * class name, type parameters, etc.
      * <p>
@@ -1077,7 +1170,7 @@ public class ClassTarget extends DependentTarget
     {
         String newTypeParameters = "";
         if (info.hasTypeParameter()) {
-            Iterator i = info.getTypeParameterTexts().iterator();
+            Iterator<String> i = info.getTypeParameterTexts().iterator();
             newTypeParameters = "<" + i.next();
            
             while (i.hasNext()) {
@@ -1124,8 +1217,6 @@ public class ClassTarget extends DependentTarget
     /**
      * Analyse the current dependencies in the source code and update the
      * dependencies in the graphical display accordingly.
-     * 
-     * @param info Description of the Parameter
      */
     public void analyseDependencies(ClassInfo info)
     {
@@ -1135,29 +1226,25 @@ public class ClassTarget extends DependentTarget
         removeInheritDependencies();
         unflagAllOutDependencies();
 
+        String pkgPrefix = getPackage().getQualifiedName();
+        pkgPrefix = (pkgPrefix.length() == 0) ? pkgPrefix : pkgPrefix + ".";
+        
         // handle superclass dependency
         if (info.getSuperclass() != null) {
-            DependentTarget superclass = getPackage().getDependentTarget(info.getSuperclass());
-            if (superclass != null) {
-                getPackage().addDependency(new ExtendsDependency(getPackage(), this, superclass), false);
-            }
+            setSuperClass(info.getSuperclass());
         }
 
         // handle implemented interfaces
-        List vect = info.getImplements();
-        for (Iterator it = vect.iterator(); it.hasNext();) {
-            String name = (String) it.next();
-            DependentTarget interfce = getPackage().getDependentTarget(name);
-
-            if (interfce != null) {
-                getPackage().addDependency(new ImplementsDependency(getPackage(), this, interfce), false);
-            }
+        List<String> vect = info.getImplements();
+        for (Iterator<String> it = vect.iterator(); it.hasNext();) {
+            String name = it.next();
+            addInterface(name);
         }
 
         // handle used classes
         vect = info.getUsed();
-        for (Iterator it = vect.iterator(); it.hasNext();) {
-            String name = (String) it.next();
+        for (Iterator<String> it = vect.iterator(); it.hasNext();) {
+            String name = it.next();
             DependentTarget used = getPackage().getDependentTarget(name);
             if (used != null) {
                 if (used.getAssociation() == this || this.getAssociation() == used) {
@@ -1165,12 +1252,11 @@ public class ClassTarget extends DependentTarget
                 }
 
                 getPackage().addDependency(new UsesDependency(getPackage(), this, used), true);
-
             }
         }
 
         // check for inconsistent use dependencies
-        for (Iterator it = usesDependencies(); it.hasNext();) {
+        for (Iterator<UsesDependency> it = usesDependencies(); it.hasNext();) {
             UsesDependency usesDep = ((UsesDependency) it.next());
             if (!usesDep.isFlagged()) {
                 getPackage().setStatus(usesArrowMsg + usesDep);
@@ -1179,11 +1265,77 @@ public class ClassTarget extends DependentTarget
     }
 
     /**
-     * Check to see that name has not changed. If name has changed then update
-     * details. Return true if the name has changed.
+     * Analyse the current dependencies in the compiled class and update the
+     * dependencies in the graphical display accordingly.
+     */
+    public void analyseDependencies(Class<?> cl)
+    {
+        if (cl != null) {
+            removeInheritDependencies();
+
+            Class<?> superClass = cl.getSuperclass();
+            if (superClass != null) {
+                setSuperClass(superClass.getName());
+            }
+
+            Class<?> [] interfaces = cl.getInterfaces();
+            for (int i = 0; i < interfaces.length; i++) {
+                addInterface(interfaces[i].getName());
+            }
+        }
+    }
+    
+    
+    /**
+     * Set the superclass. This adds an extends dependency to the appropriate class.
+     * The old extends dependency (if any) must be removed separately.
      * 
-     * @param newName Description of the Parameter
-     * @return Description of the Return Value
+     * @param superName  the fully-qualified name of the superclass
+     */
+    private void setSuperClass(String superName)
+    {
+        String pkgPrefix = getPackage().getQualifiedName();
+        if (superName.startsWith(pkgPrefix)) {
+            // Must account for the final "." in the fully qualified name, if the package is
+            // not the default package:
+            int prefixLen = pkgPrefix.length();
+            prefixLen = prefixLen == 0 ? 0 : prefixLen + 1;
+            
+            superName = superName.substring(prefixLen);
+            DependentTarget superclass = getPackage().getDependentTarget(superName);
+            if (superclass != null) {
+                getPackage().addDependency(new ExtendsDependency(getPackage(), this, superclass), false);
+                if (superclass.getState() != S_NORMAL) {
+                    setState(S_INVALID);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Add an interface. This adds an implements dependency to the appropriate interface.
+     */
+    private void addInterface(String interfaceName)
+    {
+        String pkgPrefix = getPackage().getQualifiedName();
+        if (interfaceName.startsWith(pkgPrefix)) {
+            int dotlen = pkgPrefix.length();
+            // If not the default package, we must account for the extra '.'
+            dotlen = (dotlen == 0) ? 0 : (dotlen + 1);
+            interfaceName = interfaceName.substring(dotlen);
+            DependentTarget interfce = getPackage().getDependentTarget(interfaceName);
+
+            if (interfce != null) {
+                getPackage().addDependency(new ImplementsDependency(getPackage(), this, interfce), false);
+                if (interfce.getState() != S_NORMAL) {
+                    setState(S_INVALID);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Notification that the class represented by this class target has changed name.
      */
     private boolean doClassNameChange(String newName)
     {
@@ -1308,7 +1460,7 @@ public class ClassTarget extends DependentTarget
      */
     public void popupMenu(int x, int y, GraphEditor graphEditor)
     {
-        Class cl = null;
+        Class<?> cl = null;
 
         if (state == S_NORMAL) {
             // handle error causes when loading classes which are compiled
@@ -1349,7 +1501,7 @@ public class ClassTarget extends DependentTarget
      * @param cl class object associated with this class target
      * @return the created popup menu object
      */
-    protected JPopupMenu createMenu(Class cl)
+    protected JPopupMenu createMenu(Class<?> cl)
     {
         JPopupMenu menu = new JPopupMenu(getBaseName() + " operations");
 
@@ -1429,49 +1581,31 @@ public class ClassTarget extends DependentTarget
     }
 
     /**
-     * Description of the Class
+     * Action to open the editor for a classtarget
      */
     private class EditAction extends AbstractAction
     {
-        /**
-         * Constructor for the EditAction object
-         */
         public EditAction()
         {
             putValue(NAME, editStr);
         }
 
-        /**
-         * Description of the Method
-         * 
-         * @param e Description of the Parameter
-         */
         public void actionPerformed(ActionEvent e)
         {
-        	
-        	open();
-        	
+            open();
         }
     }
 
     /**
-     * Description of the Class
+     * Action to compile a classtarget
      */
     private class CompileAction extends AbstractAction
     {
-        /**
-         * Constructor for the CompileAction object
-         */
         public CompileAction()
         {
             putValue(NAME, compileStr);
         }
 
-        /**
-         * Description of the Method
-         * 
-         * @param e Description of the Parameter
-         */
         public void actionPerformed(ActionEvent e)
         {
         	getPackage().compile(ClassTarget.this);
@@ -1480,55 +1614,39 @@ public class ClassTarget extends DependentTarget
     }
 
     /**
-     * Description of the Class
+     * Action to remove a classtarget from its package
      */
     private class RemoveAction extends AbstractAction
     {
-        /**
-         * Constructor for the RemoveAction object
-         */
         public RemoveAction()
         {
             putValue(NAME, removeStr);
         }
 
-        /**
-         * Description of the Method
-         * 
-         * @param e Description of the Parameter
-         */
         public void actionPerformed(ActionEvent e)
         {
-        	PkgMgrFrame pmf = PkgMgrFrame.findFrame(getPackage());
-        	if (pmf.askRemoveClass()) {
-        		getPackage().getEditor().raiseRemoveTargetEvent(ClassTarget.this);
-        	}
+            PkgMgrFrame pmf = PkgMgrFrame.findFrame(getPackage());
+            if (pmf.askRemoveClass()) {
+                getPackage().getEditor().raiseRemoveTargetEvent(ClassTarget.this);
+            }
         }
     }
 
     /**
-     * Description of the Class
+     * Action to inspect the static members of a class
      */
     private class InspectAction extends AbstractAction
     {
-        /**
-         * Constructor for the InspectAction object
-         */
         public InspectAction()
         {
             putValue(NAME, inspectStr);
         }
 
-        /**
-         * Description of the Method
-         * 
-         * @param e Description of the Parameter
-         */
         public void actionPerformed(ActionEvent e)
         {	
-        	if (doAction()){
-        		inspect();
-        	}
+            if (checkDebuggerState()){
+                inspect();
+            }
         }
     }
 
@@ -1667,7 +1785,7 @@ public class ClassTarget extends DependentTarget
 
         // if this target is the assocation for another Target, remove
         // the association
-        Iterator it = getPackage().getVertices();
+        Iterator<? extends Vertex> it = getPackage().getVertices();
         while (it.hasNext()) {
             Object o = it.next();
             if (o instanceof DependentTarget) {
@@ -1706,16 +1824,13 @@ public class ClassTarget extends DependentTarget
             }
         }
 
-        List allFiles = getRole().getAllFiles(this);
-        for(Iterator i = allFiles.iterator(); i.hasNext(); ) {
-            File f = (File) i.next();
-            f.delete();
+        List<File> allFiles = getRole().getAllFiles(this);
+        for(Iterator<File> i = allFiles.iterator(); i.hasNext(); ) {
+            i.next().delete();
         }
     }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see bluej.editor.EditorWatcher#generateDoc()
      */
     public void generateDoc()
@@ -1723,7 +1838,7 @@ public class ClassTarget extends DependentTarget
         getPackage().generateDocumentation(this);
     }
 
-    /* (non-Javadoc)
+    /*
      * @see bluej.graph.GraphElement#remove()
      */
     public void remove()
@@ -1733,8 +1848,6 @@ public class ClassTarget extends DependentTarget
     }
 
     /*
-     * (non-Javadoc)
-     * 
      * @see bluej.graph.Moveable#isMoveable()
      */
     /**
@@ -1749,7 +1862,7 @@ public class ClassTarget extends DependentTarget
 
     /*
      * Set whether this ClassTarget can be moved by the user (dragged around).
-     * This is set false for unit tests which are assosciated with another class.
+     * This is set false for unit tests which are associated with another class.
      * 
      * @see bluej.graph.Moveable#setIsMoveable(boolean)
      */
@@ -1781,9 +1894,52 @@ public class ClassTarget extends DependentTarget
      * 
      * @return Whether the original request should be executed (dependent on how the user wants to proceed)
      */
-    public boolean doAction()
+    private boolean checkDebuggerState()
     {
-    	return getPackage().getProject().getExecControls()
-    	        .processDebuggerState(PkgMgrFrame.createFrame(getPackage()), true);
+        return PkgMgrFrame.createFrame(getPackage()).checkDebuggerState();
     }
+
+    /**
+     * Returns the naviview expanded value from the properties file
+     * @return 
+     */
+    public boolean isNaviviewExpanded() 
+    {
+        return isNaviviewExpanded;
+    }
+
+    /**
+     * Sets the naviview expanded value from the properties file to this local variable
+     * @param isNaviviewExpanded
+     */
+    public void setNaviviewExpanded(boolean isNaviviewExpanded) 
+    {
+        this.isNaviviewExpanded=isNaviviewExpanded;  
+    }
+
+    /**
+     * Retrieves a property from the editor
+     */
+    public String getProperty(String key) 
+    {
+        return (String)properties.get(key);
+    }
+
+    /**
+     * Sets a property for the editor
+     */
+    public void setProperty(String key, String value) 
+    {
+        properties.put(key, value);
+    }
+    
+    public String getTooltipText()
+    {
+        if (!getSourceInfo().isValid()) {
+            return Config.getString("graph.tooltip.classBroken");
+        } else {
+            return null;
+        }
+    }
+   
 }

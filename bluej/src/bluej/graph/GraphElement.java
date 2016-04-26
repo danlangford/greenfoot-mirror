@@ -52,4 +52,13 @@ public abstract class GraphElement {
      * Post the context menu for this target.
      */
     abstract public void popupMenu(int x, int y, GraphEditor graphEditor);
+    
+    /**
+     * Get the text to display as a tool tip when the user hovers over this element
+     * @return null for no tool-tip, otherwise return the text
+     */
+    public String getTooltipText()
+    {
+        return null;
+    }
 }

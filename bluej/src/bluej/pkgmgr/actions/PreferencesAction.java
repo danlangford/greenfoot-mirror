@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -28,9 +28,7 @@ import bluej.pkgmgr.PkgMgrFrame;
  * preferences as to how BlueJ should behave.
  * 
  * @author Davin McCall
- * @version $Id: PreferencesAction.java 6215 2009-03-30 13:28:25Z polle $
  */
-
 final public class PreferencesAction extends PkgMgrAction {
     
     static private PreferencesAction instance = null;

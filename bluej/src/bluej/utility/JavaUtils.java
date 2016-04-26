@@ -25,19 +25,26 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Type;
+import java.lang.reflect.Modifier;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-import bluej.Config;
+import bluej.debugger.gentype.GenTypeArray;
 import bluej.debugger.gentype.GenTypeClass;
 import bluej.debugger.gentype.GenTypeDeclTpar;
+import bluej.debugger.gentype.GenTypeParameter;
+import bluej.debugger.gentype.GenTypeSolid;
+import bluej.debugger.gentype.JavaPrimitiveType;
 import bluej.debugger.gentype.JavaType;
+import bluej.debugger.gentype.Reflective;
 
 /**
  * Utilities for dealing with reflection, which must behave differently for
@@ -45,10 +52,9 @@ import bluej.debugger.gentype.JavaType;
  * to use. 
  *   
  * @author Davin McCall
- * @version $Id: JavaUtils.java 6215 2009-03-30 13:28:25Z polle $
  */
-public abstract class JavaUtils {
-
+public abstract class JavaUtils
+{
     private static JavaUtils jutils;
     
     /**
@@ -61,19 +67,7 @@ public abstract class JavaUtils {
             return jutils;
         }
         
-        if (Config.isJava15()) {
-            try {
-                Class J15Class = Class.forName("bluej.utility.JavaUtils15");
-                jutils = (JavaUtils)J15Class.newInstance();
-            }
-            catch(ClassNotFoundException cnfe) { }
-            catch(IllegalAccessException iae) { }
-            catch(InstantiationException ie) { }
-        }
-        else {
-            jutils = new JavaUtils14();
-        }
-        
+        jutils = new JavaUtils15();
         return jutils;
     }
     
@@ -84,8 +78,50 @@ public abstract class JavaUtils {
      * @param method The method to get the signature for
      * @return the signature string
      */
-    abstract public String getSignature(Method method);
-    
+    public static String getSignature(Method method)
+    {
+        String name = getFQTypeName(method.getReturnType()).replace('$', '.') + " " + method.getName();
+        Class<?>[] params = method.getParameterTypes();
+        return makeSignature(name, params);
+    }
+
+    /**
+     * Get a fully-qualified type name. For array types return the base type
+     * name plus the appropriate number of "[]" qualifiers.
+     */
+    static public String getFQTypeName(Class<?> type)
+    {
+        Class<?> primtype = type;
+        int dimensions = 0;
+        while (primtype.isArray()) {
+            dimensions++;
+            primtype = primtype.getComponentType();
+        }
+        StringBuffer sb = new StringBuffer();
+        sb.append(primtype.getName());
+        for (int i = 0; i < dimensions; i++)
+            sb.append("[]");
+        return sb.toString();
+    }
+
+    /**
+     * Build the signature string. Format: name(type,type,type)
+     */
+    private static String makeSignature(String name, Class<?>[] params)
+    {
+        StringBuffer sb = new StringBuffer();
+        sb.append(name);
+        sb.append("(");
+        for (int j = 0; j < params.length; j++) {
+            String typeName = getFQTypeName(params[j]).replace('$', '.');
+            sb.append(typeName);
+            if (j < (params.length - 1))
+                sb.append(", ");
+        }
+        sb.append(")");
+        return sb.toString();
+    }
+
     /**
      * Get a "signature" description of a constructor.
      * Looks like:  ClassName(int, int, int)
@@ -93,7 +129,12 @@ public abstract class JavaUtils {
      * @param cons the Constructor to get the signature for
      * @return the signature string
      */
-    abstract public String getSignature(Constructor cons);
+    public static String getSignature(Constructor<?> cons)
+    {
+        String name = JavaNames.getBase(cons.getName());
+        Class<?>[] params = cons.getParameterTypes();
+        return makeSignature(name, params);
+    }
  
     /**
      * Get a "short description" of a method. This is like the signature,
@@ -116,7 +157,8 @@ public abstract class JavaUtils {
      * @param tparams  The map (String -> GenType) for class type parameters
      * @return The description.
      */
-    abstract public String getShortDesc(Method method, String [] paramnames, Map tparams);
+    abstract public String getShortDesc(Method method, String [] paramnames,
+            Map<String,GenTypeParameter> tparams);
 
     /**
      * Get a long String describing the method. A long description is
@@ -135,7 +177,8 @@ public abstract class JavaUtils {
      * @param tparams  The map (String -> GenType) for class type parameters
      * @return The long description string.
      */
-    abstract public String getLongDesc(Method method, String [] paramnames, Map tparams);
+    abstract public String getLongDesc(Method method, String [] paramnames,
+            Map<String,GenTypeParameter> tparams);
     
     /**
      * Get a "short description" of a constructor. This is like the signature,
@@ -144,22 +187,22 @@ public abstract class JavaUtils {
      * @param constructor   The constructor to get the description of
      * @return The description.
      */
-    abstract public String getShortDesc(Constructor constructor, String [] paramnames);
+    abstract public String getShortDesc(Constructor<?> constructor, String [] paramnames);
     
     /**
      * Get a long String describing the constructor. A long description is
      * similar to the short description, but it has type names and parameters
      * included.
      */
-    abstract public String getLongDesc(Constructor constructor, String [] paramnames);
+    abstract public String getLongDesc(Constructor<?> constructor, String [] paramnames);
     
-    abstract public boolean isVarArgs(Constructor cons);
+    abstract public boolean isVarArgs(Constructor<?> cons);
     
     abstract public boolean isVarArgs(Method method);    
    
     abstract public boolean isSynthetic(Method method);
     
-    abstract public boolean isEnum(Class cl);    
+    abstract public boolean isEnum(Class<?> cl);
     
     /**
      * Get the return type of a method.
@@ -182,7 +225,7 @@ public abstract class JavaUtils {
      * @param method   The method fro which to find the type parameters
      * @return  A list of GenTypeDeclTpar
      */
-    abstract public List getTypeParams(Method method);
+    abstract public List<GenTypeDeclTpar> getTypeParams(Method method);
     
     /**
      * Get a list of the type parameters for a generic constructor.
@@ -191,7 +234,7 @@ public abstract class JavaUtils {
      * @param method   The method fro which to find the type parameters
      * @return  A list of GenTypeDeclTpar
      */
-    abstract public List getTypeParams(Constructor cons);
+    abstract public List<GenTypeDeclTpar> getTypeParams(Constructor<?> cons);
     
     /**
      * Get a list of the type parameters for a class. Return an empty list if
@@ -200,19 +243,19 @@ public abstract class JavaUtils {
      * @param cl the class
      * @return A List of GenTypeDeclTpar
      */
-    abstract public List getTypeParams(Class cl);
+    abstract public List<GenTypeDeclTpar> getTypeParams(Class<?> cl);
     
     /**
      * Get the declared supertype of a class.
      */
-    abstract public GenTypeClass getSuperclass(Class cl);
+    abstract public GenTypeClass getSuperclass(Class<?> cl);
     
     /**
      * Get a list of the interfaces directly implemented by the given class.
      * @param cl  The class for which to find the interfaces
      * @return    An array of interfaces
      */
-    abstract public GenTypeClass [] getInterfaces(Class cl);
+    abstract public GenTypeClass [] getInterfaces(Class<?> cl);
     
     /**
      * Gets an array of nicely formatted strings with the types of the parameters.
@@ -240,7 +283,7 @@ public abstract class JavaUtils {
      * 
      * @param constructor The constructor to get the parameters for.
      */
-    abstract public String[] getParameterTypes(Constructor constructor);
+    abstract public String[] getParameterTypes(Constructor<?> constructor);
     
     /**
      * Get an array containing the argument types of the method.
@@ -251,15 +294,8 @@ public abstract class JavaUtils {
      * @param method  the method whose argument types to get
      * @return  the argument types
      */
-    abstract public JavaType[] getParamGenTypes(Constructor constructor);
+    abstract public JavaType[] getParamGenTypes(Constructor<?> constructor);
 
-
-    
-    /**
-     * Build a JavaType structure from a "Class" object.
-     */
-    abstract public JavaType genTypeFromClass(Class t);
-    
     /**
      * Open a web browser to show the given URL. On Java 6+ we can use
      * the desktop integration functionality of the JDK to do this. On
@@ -273,13 +309,13 @@ public abstract class JavaUtils {
         // on Java 5 and earlier.
         
         try {
-            Class cl = Class.forName("java.awt.Desktop");
+            Class<?> cl = Class.forName("java.awt.Desktop");
             Method m = cl.getMethod("isDesktopSupported", new Class[0]);
-            Boolean result = (Boolean) m.invoke(null, null);
+            Boolean result = (Boolean) m.invoke(null, (Object[]) null);
             if (result.booleanValue()) {
                 // The Desktop abstraction is supported
                 m = cl.getMethod("getDesktop", new Class[0]);
-                Object desktop = m.invoke(null, null);
+                Object desktop = m.invoke(null, (Object[]) null);
                 
                 // Invoke the browse method
                 m = cl.getMethod("browse", new Class[] {URI.class});
@@ -302,14 +338,94 @@ public abstract class JavaUtils {
      * @param tparams   A list of GenTypeDeclTpar
      * @return          A map (String -> GenTypeSolid)
      */
-    public static Map TParamsToMap(List tparams)
+    public static Map<String,GenTypeSolid> TParamsToMap(List<GenTypeDeclTpar> tparams)
     {
-        Map rmap = new HashMap();
-        for( Iterator i = tparams.iterator(); i.hasNext(); ) {
-            GenTypeDeclTpar n = (GenTypeDeclTpar)i.next();
-            rmap.put(n.getTparName(), n.getBound().mapTparsToTypes(rmap));
+        Map<String,GenTypeSolid> rmap = new HashMap<String,GenTypeSolid>();
+        for( Iterator<GenTypeDeclTpar> i = tparams.iterator(); i.hasNext(); ) {
+            GenTypeDeclTpar n = i.next();
+            rmap.put(n.getTparName(), n.getBound().mapTparsToTypes(rmap).getUpperBound().asSolid());
         }
         return rmap;
+    }
+    
+    /**
+     * Check whether a member of some container type can be accessed from another type
+     * according to its modifiers.
+     * 
+     * @param container  The type containing the member to which access is being checked
+     * @param targetType The type of the expression from which the member is accessed
+     * @param accessor   The type trying to access the member
+     * @param modifiers  The modifiers of the member
+     * @param isStatic   True if the access is a in static context; false if not
+     * 
+     * @return  true if the access is allowed, false otherwise
+     */
+    public static boolean checkMemberAccess(Reflective container, GenTypeSolid targetType,
+            Reflective accessor, int modifiers, boolean isStatic)
+    {
+        // Access from a static context can only access static members
+        if (isStatic && !Modifier.isStatic(modifiers))
+            return false;
+        
+        if (Modifier.isPublic(modifiers)) {
+            return true;
+        }
+        
+        String accessorName = accessor.getName();
+        if (! Modifier.isPrivate(modifiers)) {
+            String cpackage = JavaNames.getPrefix(container.getName());
+            if (accessorName.startsWith(cpackage)
+                    && accessorName.indexOf('.', cpackage.length() + 1) == -1) {
+                // Classes are in the same package, and the member is not private: access allowed
+                return true;
+            }
+        }
+        
+        // access class == container class, then access is always allowed
+        if (accessorName.equals(container.getName())) {
+            return true;
+        }
+        
+        Reflective outer = accessor.getOuterClass();
+        if (outer != null) {
+            // Inner classes can access outer class members with outer class privileges
+            isStatic |= accessor.isStatic();
+            if (checkMemberAccess(container, targetType, outer, modifiers, isStatic)) {
+                return true;
+            }
+        }
+        
+        // Protected access is allowed if the targetType is a subtype of the acessType
+        Set<Reflective> targetSupers = new HashSet<Reflective>();
+        targetType.erasedSuperTypes(targetSupers);
+        boolean allowProtected = false;
+        for (Reflective ref : targetSupers) {
+            if (accessor.isAssignableFrom(ref)) {
+                allowProtected = true;
+                break;
+            }
+        }
+        
+        List<Reflective> supers = accessor.getSuperTypesR();
+        Set<String> done = new HashSet<String>();
+        while (! supers.isEmpty()) {
+            Reflective r = supers.remove(0);
+            if (done.add(r.getName())) {
+                if (r.getName().equals(container.getName())) {
+                    if (Modifier.isProtected(modifiers)) {
+                        return allowProtected;
+                    }
+                } else {
+                    // We need to check super classes of our super-classes
+                    // as if the method is protected we will be allowed access 
+                    for (Reflective rParent : r.getSuperTypesR()) {
+                        supers.add(rParent);
+                    }
+                }
+            }
+        }
+        
+        return false;
     }
 
     /**
@@ -354,5 +470,216 @@ public abstract class JavaUtils {
         }
         sb.append(")");
         return sb.toString();
+    }
+    
+    /**
+     * Convert a javadoc comment to a string with just the comment body, i.e. strip the
+     * leading asterisks.
+     */
+    public static String javadocToString(String javadoc)
+    {
+        String eol = System.getProperty("line.separator");
+        
+        if (javadoc == null || javadoc.length() < 5) {
+            return null;
+        }
+        
+        StringBuffer outbuf = new StringBuffer();
+        
+        String str = javadoc.substring(3, javadoc.length() - 2);
+        int nl = str.indexOf('\n');
+        int cr = str.indexOf('\r');
+        int pos = 0;
+        while (nl != -1 || cr != -1) {
+            int lineEnd = Math.min(nl, cr);
+            lineEnd = (nl == -1) ? cr : lineEnd;
+            lineEnd = (cr == -1) ? nl : lineEnd;
+            
+            String line = str.substring(pos, lineEnd);
+            line = stripLeadingStars(line);
+            
+            outbuf.append(line);
+            outbuf.append(eol);
+            
+            pos = lineEnd + 1;
+            if (pos == nl) {
+                pos++;
+            }
+
+            nl = str.indexOf('\n', pos);
+            cr = str.indexOf('\r', pos);
+        }
+        
+        String line = stripLeadingStars(str.substring(pos)).trim();
+        if (line.length() > 0) {
+            outbuf.append(line);
+        }
+        
+        return outbuf.toString();
+    }
+    
+    /**
+     * Convert javadoc comment body (as extracted by javadocToString for instance)
+     * to HTML suitable for display by HTMLEditorKit.
+     */
+    public static String javadocToHtml(String javadocString)
+    {
+        // find the first block tag
+        int i;
+        for (i = 0; i < javadocString.length(); i++) {
+            // Here we are the start of the line
+            while (i < javadocString.length() && Character.isWhitespace(javadocString.charAt(i))) {
+                i++;
+            }
+            if (i >= javadocString.length() || javadocString.charAt(i) == '@') {
+                break;
+            }
+            while (i < javadocString.length()
+                    && javadocString.charAt(i) != '\n'
+                    && javadocString.charAt(i) != '\r') {
+                i++;
+            }
+        }
+        
+        if (i >= javadocString.length()) {
+            return makeCommentColour(javadocString);
+        }
+        
+        // Process the block tags
+        String header = javadocString.substring(0, i);
+        String blocksText = javadocString.substring(i);
+        String[] lines = Utility.splitLines(blocksText);
+
+        List<String> blocks = getBlockTags(lines);
+
+        StringBuilder rest = new StringBuilder();
+        StringBuilder params = new StringBuilder();
+        params.append("<h3>Parameters</h3>").append("<table border=0>");
+        boolean hasParamDoc = false;
+
+        for (String block : blocks) {
+            if (block.startsWith("param ")) {
+                int p = "param".length();
+                // Find the parameter name
+                while (Character.isWhitespace(block.charAt(p))) {
+                    p++;
+                }
+                int k = p;
+                while (k < block.length() && !Character.isWhitespace(block.charAt(k))) {
+                    k++;
+                }
+                String paramName = block.substring(p, k);
+                String paramDesc = block.substring(k);
+
+                params.append("<tr><td valign=\"top\">&nbsp;&nbsp;&nbsp;");
+                params.append(makeCommentColour(paramName));
+                params.append("</td><td>");
+                params.append(makeCommentColour(" - " + paramDesc));
+                params.append("</td></tr>");
+                hasParamDoc = true;
+            } else {
+                rest.append(convertBlockTag(block)).append("<br>");
+            }
+        }           
+
+        params.append("</table><p>");
+
+        String result = makeCommentColour(header) + (hasParamDoc ? params.toString() : "<p>") + rest.toString();
+        return result;
+    }
+    
+    private static String makeCommentColour(String text)
+    {
+        return "<font color='#994400'>" + text + "</font>";
+    }
+
+    /**
+     * For a set of text lines representing block tags in a a javadoc comment, with some block
+     * tags potentially flowing over more than one line, return a list of Strings corresponding
+     * to each block tag with its complete text.
+     */
+    private static List<String> getBlockTags(String[] lines)
+    {
+        LinkedList<String> blocks = new LinkedList<String>();
+        String cur = "";
+        for (String line : lines) {
+            line = line.trim();
+            if (line.startsWith("@")) {
+                if (false == cur.isEmpty()) {
+                    blocks.addLast(cur);
+                }
+                cur = line.substring(1);
+            } else {
+                //If it doesn't start with an at, it's part of the previous tag
+                cur += " " + line;
+            }
+        }
+        blocks.addLast(cur);
+        return blocks;
+    }
+    
+    private static String convertBlockTag(String block)
+    {        
+        int k = 0;
+        while (k < block.length() && !Character.isWhitespace(block.charAt(k)))
+            k++;
+        
+        String r = "<b>" + block.substring(0, k) + "</b> - " + makeCommentColour(block.substring(k));
+        
+        return r;
+    }
+    
+    /**
+     * Strip leading asterisk characters (and any preceding whitespace) from a single
+     * line of text.
+     */
+    private static String stripLeadingStars(String s)
+    {
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '*') {
+                do {
+                    i++;
+                } while (i < s.length() && s.charAt(i) == '*');
+                s = s.substring(i);
+                break;
+            }
+            if (! Character.isWhitespace(s.charAt(i))) {
+                break;
+            }
+        }
+        return s;
+    }
+    
+    /**
+     * Get a GenType corresponding to the (raw) class c
+     */
+    public static JavaType genTypeFromClass(Class<?> c)
+    {
+        if (c.isPrimitive()) {
+            if (c == boolean.class)
+                return JavaPrimitiveType.getBoolean();
+            if (c == char.class)
+                return JavaPrimitiveType.getChar();
+            if (c == byte.class)
+                return JavaPrimitiveType.getByte();
+            if (c == short.class)
+                return JavaPrimitiveType.getShort();
+            if (c == int.class)
+                return JavaPrimitiveType.getInt();
+            if (c == long.class)
+                return JavaPrimitiveType.getLong();
+            if (c == float.class)
+                return JavaPrimitiveType.getFloat();
+            if (c == double.class)
+                return JavaPrimitiveType.getDouble();
+            if (c == void.class)
+                return JavaPrimitiveType.getVoid();
+            Debug.message("getReturnType: Unknown primitive type");
+        }
+        if (c.isArray()) {
+            JavaType componentT = genTypeFromClass(c.getComponentType());
+            return new GenTypeArray(componentT);
+        }
+        return new GenTypeClass(new JavaReflective(c));
     }
 }

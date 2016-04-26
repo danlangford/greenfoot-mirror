@@ -13,12 +13,16 @@
     <!-- 
      This is the only place you need to change the version number.
      After changing the version number the target "update-version-number" should be run -->
-    <property name="bluej.version.major" value="2" />
-    <property name="bluej.version.minor" value="5" />
-    <property name="bluej.version.release" value="3" />
+    <property name="bluej.version.major" value="3" />
+    <property name="bluej.version.minor" value="0" />
+    <property name="bluej.version.release" value="2" />
     <property name="bluej.version.suffix" value="" />
-    <property name="bluej.version" value="${bluej.version.major}.${bluej.version.minor}.${bluej.version.release}${bluej.version.suffix}" />
+	<!-- suffix with no spaces, eg "pre2" -->
+	<property name="bluej.version.nonspace.suffix" value="" />
+    
+	<property name="bluej.version" value="${bluej.version.major}.${bluej.version.minor}.${bluej.version.release}${bluej.version.suffix}" />
     <property name="bluej.version.nodots" value="${bluej.version.major}${bluej.version.minor}${bluej.version.release}${bluej.version.suffix}" />
+	<property name="bluej.version.debian" value="${bluej.version.major}.${bluej.version.minor}.${bluej.version.release}${bluej.version.nonspace.suffix}" />
 
     <!-- user specific properties that are edited to match local build environment-->
     <property file="build.properties"/>
@@ -44,8 +48,7 @@
 
     <!-- Set up classpath (does not include jar files built by us) -->
     <path id="bluej.class.path">
-        <pathelement location="${bluej_home}/lib/MRJ141Stubs.jar"/>
-        <pathelement location="${bluej_home}/lib/antlr.jar"/>
+        <pathelement location="${bluej_home}/lib/AppleJavaExtensions.jar"/>
         <pathelement location="${bluej_home}/lib/junit.jar"/>
         <pathelement location="${bluej_home}/lib/org-netbeans-lib-cvsclient.jar"/>
         <pathelement location="${bluej_home}/lib/svnkit-javahl.jar"/>
@@ -80,17 +83,6 @@ LICENSE.txt file that accompanied this code.${line.separator}
         classname="com.loomcom.ant.tasks.jarbundler.JarBundler" / -->
 
     <!--
-      -  Generate the parser Java code - not a dependency of any other
-      -  target. Must be explicitly specified on ant command line
-     -->
-    <target name="parser">
-        <antlr target="${core.src}/bluej/parser/ast/java.g"
-               outputdirectory="${core.src}/bluej/parser/ast/gen"/>
-        <antlr target="${core.src}/bluej/parser/ast/unittest.tree.g"
-               outputdirectory="${core.src}/bluej/parser/ast/gen"/>
-    </target>
-
-    <!--
       -  Compile the boot strap loader
      -->
     <target name="compile-boot">
@@ -98,7 +90,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <!-- Compile the java code from ${boot.src} into ${boot.build} -->
         <!-- Boot should not need any other jars or classes other than standard JDK -->
         <javac
-                executable="${build_java_home}/bin/javac"
+                executable="${build_java_home}/${java_command_dir_name}/javac"
                 fork="yes"
                 srcdir="${boot.src}"
                 destdir="${boot.build}"
@@ -117,7 +109,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <mkdir dir="${core.build}"/>
         <!-- Compile the java code from ${core.src} into ${core.build} -->
         <javac
-                executable="${build_java_home}/bin/javac"
+                executable="${build_java_home}/${java_command_dir_name}/javac"
                 fork="yes"
                 source="1.5"
                 target="1.5"
@@ -148,7 +140,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <mkdir dir="${test.report}"/>
         <!-- Compile the java code from ${test.src} into ${test.build} -->
         <javac
-                executable="${build_java_home}/bin/javac"
+                executable="${build_java_home}/${java_command_dir_name}/javac"
                 fork="yes"
                 srcdir="${test.src}"
                 source="1.5"
@@ -228,7 +220,10 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <!-- delete the greenfoot jar (if it exists) since it screws up BlueJ -->
         <delete quiet="true" file="${extensions.lib}/greenfoot.jar"/>
         <!-- run the java code built into the jar files -->
-        <java classname="bluej.Boot" fork="yes" jvm="${run_java_home}/bin/java">
+        <java classname="bluej.Boot" fork="yes" jvm="${run_java_home}/${java_command_dir_name}/java">
+            <!-- Include the following line to enable attachment of the Netbeans debugger
+                <jvmarg value="-agentlib:jdwp=transport=dt_socket,address=8888,server=y,suspend=n"/>
+            -->
             <classpath>
                 <pathelement location="${boot.jar}"/>
                 <pathelement location="${run_java_home}/lib/tools.jar"/>
@@ -250,7 +245,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <!-- delete the greenfoot jar (if it exists) since it screws up BlueJ -->
         <delete quiet="true" file="${extensions.lib}/greenfoot.jar"/>
         <!-- run the java code built into the jar files -->
-        <java classname="bluej.Boot" fork="yes" jvm="${run_java_home}/bin/java">
+        <java classname="bluej.Boot" fork="yes" jvm="${run_java_home}/${java_command_dir_name}/java">
             <classpath>
                 <pathelement location="${boot.jar}"/>
                 <pathelement location="${run_java_home}/lib/tools.jar"/>
@@ -290,8 +285,12 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 <exclude name="*/CVS" />
             </jarfileset>
         </jarbundler>
-
     </target>
+	
+	<!-- build *.deb package -->
+	<target name="debian-dist" description="build Debian package">
+        <ant dir="package" target="debian-dist"/>
+	</target>
 
     <target name="test" depends="compile-core, compile-test">
         <junit printsummary="yes" haltonfailure="yes">
@@ -301,6 +300,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 <pathelement location="${core.jar}"/>
                 <pathelement location="${extension.jar}"/>
                 <pathelement location="${run_java_home}/lib/tools.jar"/>
+            	<pathelement location="${editor.jar}"/>
                 <pathelement location="${test.build}"/>
             </classpath>
 
@@ -309,6 +309,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <batchtest fork="yes" todir="${test.report}">
                 <fileset dir="${test.src}">
                     <include name="**/*Test*.java"/>
+                	<exclude name="bluej/debugger/gentype/TestReflective.java"/>
                     <exclude name="**/AllTests.java"/>
                 </fileset>
             </batchtest>

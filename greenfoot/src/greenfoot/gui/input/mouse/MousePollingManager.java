@@ -69,21 +69,38 @@ import bluej.Config;
  * undefined. Maybe we should define it so that button1 always have higher
  * priority than button2 and button2 always higher than button3. But not
  * necessarily documenting this to the user.
- * @author Poul Henriksen
  * 
+ * @author Poul Henriksen
  */
 public class MousePollingManager implements TriggeredMouseListener, TriggeredMouseMotionListener
 {
-
-    /** Whether the user has requested any information about the mouse in this act loop. */
+    /*
+     * Methods in this class are called from two threads: the simulation thread and the
+     * GUI even thread. Some methods are called by one and some by the other; the GUI produces
+     * the data while the simulation consumes it.
+     * 
+     * A small number of fields can be accessed be either thread and so access to them must
+     * be synchronized. Other fields are accessed by only one thread or the other.
+     */
+    
+    /**
+     * Whether the user has requested any information about the mouse in this act loop.
+     * 
+     * <p>Accessed only from the simulation thread.
+     */
     private boolean polledInThisAct;
     
-    /** Whether the user has requested any information about the current mouse data  - ever.*/
+    /**
+     * Whether the user has requested any information about the current mouse data.
+     * Access to this field must be synchronized. 
+     */
     private boolean polledThisData;
     
     /**
      * The current mouse data This will be the mouse info returned for the rest
      * of this act loop.
+     * 
+     * <p>Accessed only from the simulation thread.
      */
     private MouseEventData currentData = new MouseEventData();
 
@@ -92,6 +109,8 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
      * first time the user requested mouse info in this act loop, until the user
      * requests again in the next act-loop, at which point the future will
      * become the current.
+     * 
+     * <p>Access to this field must be synchronized.
      */
     private MouseEventData futureData = new MouseEventData();
     
@@ -100,11 +119,13 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
      * collected. We need this in order to collect data for a potential new
      * dragEnd since we want to report the latest dragEnd in case there are more
      * than one.
+     * 
+     * <p>Access to this field must be synchronized.
      */
     private MouseEventData potentialNewDragData = new MouseEventData();
     
     /**
-     * Locates the actors in the world
+     * Locates the actors in the world (read only field, requires no synchronization).
      */
     private WorldLocator locator;
 
@@ -112,11 +133,23 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
      * Keeps track of where a drag started. This should never be explicitly set
      * to null, because it might result in exceptions when doing undefined
      * things like dragging with two buttons down at the same time.
+     * 
+     * <p>Accessed only from the GUI thread.
      */
     private MouseEventData dragStartData;
 
+    /**
+     * Track whether the mouse is currently being dragged.
+     * 
+     * <p>Accessed only from the GUI thread.
+     */
     private boolean isDragging;
 
+    /**
+     * Whether we have received more mouse data since we last gave data to the simulation.
+     * 
+     * <p>Access to this field must be synchronized.
+     */
     private boolean gotNewEvent;
     
 
@@ -126,9 +159,18 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
      * 
      * @param locator
      *            Used to locate things (actors and coordinates) within the
-     *            World.
+     *            World. May be null, but in that case the locator must be set
+     *            later.
      */
     public MousePollingManager(WorldLocator locator) 
+    {
+        this.locator = locator;
+    }
+    
+    /**
+     * Set the locator to be used by this mouse polling manager.
+     */
+    public void setWorldLocator(WorldLocator locator)
     {
         this.locator = locator;
     }
@@ -145,6 +187,8 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
      * This method should be called every time we receive a mouse event. It is
      * used to keep track of whether any events have been occurring in this
      * frame.
+     * 
+     * <p>This must be called from a synchronized context.
      */
     private void registerEventRecieved()
     {
@@ -164,25 +208,27 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
             return;
         }
         
-        synchronized(futureData) {
-            if(!polledThisData && !gotNewEvent) {
+        polledInThisAct = true;
+        
+        synchronized(this) {
+            if (!polledThisData && !gotNewEvent) {
+                // The current data hasn't yet been polled, and there's no more recent data
                 polledThisData = true;
-                polledInThisAct = true;
                 return;
             }
-            MouseEventData newData = new MouseEventData();
             
+            // The current data was already polled, or we have a new event since;
+            // use futureData as our current data. (If there's been no event, i.e. if
+            // gotNewEvent is false, futureData will contain no events).
+            MouseEventData newData = new MouseEventData();
             currentData = futureData;
             futureData = newData;
-            
             potentialNewDragData = new MouseEventData();
             
             // Indicate that we have processed all current events.
             gotNewEvent = false;
+            polledThisData = true;
         }
-
-        polledInThisAct = true; 
-        polledThisData = true;
     }
 
     // ************************************
@@ -312,7 +358,13 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
 
     public void mouseClicked(MouseEvent e)
     {
-        synchronized (futureData) {
+        // This line must go outside the synchronized block because it involves
+        // claiming a read-lock on the world, which can cause a deadlock because
+        // the simulation thread can synchronize on futureData (in freezeMouseData())
+        // while holding the world write-lock (which would leave the two threads with
+        // one lock each, both trying to claim the other):
+        Actor actor = locator.getTopMostActorAt(e);
+        synchronized (this) {
             MouseEventData mouseData = futureData;
             // In case we already have a dragEnded and we get another
             // dragEnded, we need to start collection data for that.            
@@ -321,7 +373,6 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
             }
             if(! PriorityManager.isHigherPriority(e, mouseData)) return;
             registerEventRecieved();
-            Actor actor = locator.getTopMostActorAt(e);
             int x = locator.getTranslatedX(e);
             int y = locator.getTranslatedY(e);
             int button = getButton(e);
@@ -333,7 +384,7 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
 
     /**
      * Gets the button for the mouse event. This will also translate CTRL-clicks
-     * on mac into mouse button three.
+     * on mac into mouse button three. Doesn't work for drag events.
      */
     private int getButton(MouseEvent e)
     {
@@ -359,7 +410,13 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
 
     public void mousePressed(MouseEvent e)
     {
-        synchronized(futureData) {
+        // This line must go outside the synchronized block because it involves
+        // claiming a read-lock on the world, which can cause a deadlock because
+        // the simulation thread can synchronize on futureData (in freezeMouseData())
+        // while holding the world write-lock (which would leave the two threads with
+        // one lock each, both trying to claim the other):
+        Actor actor = locator.getTopMostActorAt(e);
+        synchronized(this) {
             MouseEventData mouseData = futureData;
             // In case we already have a dragEnded and we get another
             // dragEnded, we need to start collection data for that.
@@ -369,7 +426,6 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
         
             // This might be the beginning of a drag so we store it
             dragStartData = new MouseEventData();
-            Actor actor = locator.getTopMostActorAt(e);
             int x = locator.getTranslatedX(e);
             int y = locator.getTranslatedY(e);
             int button = getButton(e);
@@ -385,7 +441,13 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
 
     public void mouseReleased(MouseEvent e)
     {
-        synchronized(futureData) {
+        // This line must go outside the synchronized block because it involves
+        // claiming a read-lock on the world, which can cause a deadlock because
+        // the simulation thread can synchronize on futureData (in freezeMouseData())
+        // while holding the world write-lock (which would leave the two threads with
+        // one lock each, both trying to claim the other):
+        Actor clickActor = locator.getTopMostActorAt(e);
+        synchronized(this) {
             // This might be the end of a drag
             if(isDragging) {
                 // In case we already have a dragEnded and we get another
@@ -400,7 +462,6 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
                 int y = locator.getTranslatedY(e);
                 int button = getButton(e);
 
-                Actor clickActor = locator.getTopMostActorAt(e);
                 futureData.mouseClicked(x, y, button, 1, clickActor);
                 
                 Actor actor = dragStartData.getActor();
@@ -413,7 +474,7 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
 
     public void mouseDragged(MouseEvent e)
     {
-        synchronized(futureData) {
+        synchronized(this) {
             isDragging = true;
             
             if(! PriorityManager.isHigherPriority(e, futureData)) return;
@@ -422,17 +483,21 @@ public class MousePollingManager implements TriggeredMouseListener, TriggeredMou
             // Find and store the actor that relates to this drag.
             int x = locator.getTranslatedX(e);
             int y = locator.getTranslatedY(e);
-            int button = getButton(e);
-            futureData.mouseDragged(x, y, button, dragStartData.getActor());
+            futureData.mouseDragged(x, y, dragStartData.getButton(), dragStartData.getActor());
         }
     }
 
     public void mouseMoved(MouseEvent e)
     {
-        synchronized(futureData) {
+        // This line must go outside the synchronized block because it involves
+        // claiming a read-lock on the world, which can cause a deadlock because
+        // the simulation thread can synchronize on futureData (in freezeMouseData())
+        // while holding the world write-lock (which would leave the two threads with
+        // one lock each, both trying to claim the other):
+        Actor actor = locator.getTopMostActorAt(e);
+        synchronized(this) {
             if(! PriorityManager.isHigherPriority(e, futureData)) return;
             registerEventRecieved();
-            Actor actor = locator.getTopMostActorAt(e);
             int x = locator.getTranslatedX(e);
             int y = locator.getTranslatedY(e);
             int button = getButton(e);
