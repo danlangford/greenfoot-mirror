@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -49,7 +49,7 @@ public class Boot
     // and then the update-version target should be executed.
     public static final int BLUEJ_VERSION_MAJOR = 3;
     public static final int BLUEJ_VERSION_MINOR = 0;
-    public static final int BLUEJ_VERSION_RELEASE = 7;
+    public static final int BLUEJ_VERSION_RELEASE = 9;
     public static final String BLUEJ_VERSION_SUFFIX = "";
 
     // public static final int BLUEJ_VERSION_NUMBER = BLUEJ_VERSION_MAJOR * 1000 +
@@ -65,8 +65,8 @@ public class Boot
     
     // The version numbers for Greenfoot are changed in the Greenfoot build.xml
     // and then the update-version target should be executed.
-    public static String GREENFOOT_VERSION = "2.2.1";
-    public static String GREENFOOT_API_VERSION = "2.4.0";
+    public static String GREENFOOT_VERSION = "2.3.0";
+    public static String GREENFOOT_API_VERSION = "2.5.0";
     
     // A singleton boot object so the rest of BlueJ can pick up args etc.
     private static Boot instance;
@@ -97,7 +97,8 @@ public class Boot
     private static final String[] greenfootUserJars = {"extensions" + File.separatorChar + "greenfoot.jar", 
         "bluejcore.jar", "bluejeditor.jar", "bluejext.jar",
         "AppleJavaExtensions.jar", "junit-4.8.2.jar", "bluej.jar",
-        "commons-httpclient-3.1.jar", "commons-logging-api-1.1.1.jar",
+        "diffutils-1.2.1.jar", 
+        "commons-httpclient-3.1.jar", "commons-logging-api-1.1.2.jar",
         "commons-codec-1.3.jar", JLAYER_MP3_JAR, "opencsv-2.3.jar"};
 
     // Jars that should be included with exported scenarios
@@ -322,7 +323,7 @@ public class Boot
             mainClass.newInstance();
             
         } catch (Exception exc) {
-            exc.printStackTrace();
+            throw new RuntimeException(exc);
         }
     }
     

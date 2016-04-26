@@ -27,23 +27,31 @@
 #####################################################################
 
 bluej.language=english
-#bluej.language=afrikaans
-#bluej.language=catalan
-#bluej.language=chinese
-#bluej.language=czech
-#bluej.language=danish
-#bluej.language=dutch
-#bluej.language=french
-#bluej.language=german
-#bluej.language=greek
-#bluej.language=italian
-#bluej.language=japanese
-#bluej.language=korean
-#bluej.language=portuguese
-#bluej.language=russian
-#bluej.language=slovak
-#bluej.language=spanish
-#bluej.language=swedish
+
+# A list of available languages, in the form:
+#   internal-name:human-readable-name
+# The internal-name controls the name of the directory that BlueJ
+# will look for translations in.
+
+bluej.language1=english:English
+bluej.language2=afrikaans:Afrikaans
+bluej.language3=catalan:Catalan
+bluej.language4=chinese:Chinese
+bluej.language5=czech:Czech
+bluej.language6=danish:Danish
+bluej.language7=dutch:Dutch
+bluej.language8=french:French
+bluej.language9=german:German
+bluej.language10=greek:Greek
+bluej.language11=italian:Italian
+bluej.language12=japanese:Japanese
+bluej.language13=korean:Korean
+bluej.language14=portugese:Portugese
+bluej.language15=russian:Russian
+bluej.language16=slovak:Slovak
+bluej.language17=spanish:Spanish
+bluej.language18=swedish:Swedish
+
 
 #####################################################################
 ## The JVM language and region. 
@@ -146,6 +154,15 @@ bluej.numberOfRecentProjects=12
 ## User's home directory. This is also defined by Java, and if that's
 ## fine for you, don't specify this property. This property, if
 ## specified, will override Java's user.home property.
+##
+## You can specify multiple values by appending consecutive numbers
+## (starting at 2) to the property name, eg:
+##
+##   bluej.userHome=/home/mik/tmp
+##   bluej.userHome2=/some/other/directory
+##   bluej.userHome3=/yet/another/directory
+##
+## In this case the first location that is writable will be selected. 
 #####################################################################
 
 #bluej.userHome=/home/mik/tmp

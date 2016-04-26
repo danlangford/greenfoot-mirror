@@ -136,5 +136,9 @@ string getBlueJProperty(std::string propertyName)
 			return rval;
 		}
 	}
+#ifdef GREENFOOT
+	return readJavaProperty(bluejPath + TEXT("\\lib\\greenfoot.defs"), propertyName);
+#else
 	return readJavaProperty(bluejPath + TEXT("\\lib\\bluej.defs"), propertyName);
+#endif
 }

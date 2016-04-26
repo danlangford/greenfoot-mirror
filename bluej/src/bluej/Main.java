@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -88,7 +88,7 @@ public class Main
         // processArgs() (just below) is called.
         if (Config.isMacOS())
             prepareMacOSApp();
-
+        
         // process command line arguments, start BlueJ!
         EventQueue.invokeLater(new Runnable() {
             @Override
@@ -115,6 +115,12 @@ public class Main
      */
     private static void processArgs(String[] args)
     {
+        if (Config.isGreenfoot()) {
+            // Avoid having to put the Greenfoot classes on the system classpath:
+            // (only an issue with JDK 7u21, 6u45, and later).
+            System.setProperty("java.rmi.server.useCodebaseOnly", "false");
+        }
+        
         launched = true;
         
         boolean oneOpened = false;
@@ -354,15 +360,13 @@ public class Main
             uidPropName = "bluej.uid";
             baseURL = "http://stats.bluej.org/updateBlueJ.php";
             // baseURL = "http://localhost:8080/BlueJStats/index.php";
-            appVersion = Boot.BLUEJ_VERSION;
+            appVersion = getBlueJVersion();
         }
 
         // Then the common ones.
-        String language = Config.language;
-        String javaVersion = System.getProperty("java.version");
-        String systemID = System.getProperty("os.name") +
-                "/" + System.getProperty("os.arch") +
-                "/" + System.getProperty("os.version");
+        String language = getInterfaceLanguage();
+        String javaVersion = getJavaVersion();
+        String systemID = getOperatingSystem();
         
         // User uid. Use the one already stored in the Property if it exists,
         // otherwise generate one and store it for next time.
@@ -395,16 +399,39 @@ public class Main
         }
     }
 
+    private static String getBlueJVersion()
+    {
+        return Boot.BLUEJ_VERSION;
+    }
+
+    private static String getOperatingSystem()
+    {
+        return System.getProperty("os.name") +
+                "/" + System.getProperty("os.arch") +
+                "/" + System.getProperty("os.version");
+    }
+
+    private static String getJavaVersion()
+    {
+        return System.getProperty("java.version");
+    }
+
+    private static String getInterfaceLanguage()
+    {
+        return Config.language;
+    }
+
     /**
      * Exit BlueJ.
      * <p>
      * The open frame count should be zero by this point as PkgMgrFrame is
      * responsible for cleaning itself up before getting here.
      */
-    public static void exit()
+    private static void exit()
     {
-        if (PkgMgrFrame.frameCount() > 0)
+        if (PkgMgrFrame.frameCount() > 0) {
             Debug.reportError("Frame count was not zero when exiting. Work may not have been saved");
+        }
 
         // save configuration properties
         Config.handleExit();

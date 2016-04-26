@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -50,7 +50,15 @@ public abstract class InvokerRecord
     private ArrayList<String> assertions = new ArrayList<String>();
     private DebuggerObject resultObject;
     
+    private static int nextUniqueIdentifier = 1;
+    private final int uniqueIdentifier;
+    
     // -------------- instance methods -----------------
+    
+    public InvokerRecord()
+    {
+        uniqueIdentifier = nextUniqueIdentifier++;
+    }
     
     /**
      * If this invoker record represents a method or constructor call,
@@ -283,5 +291,18 @@ public abstract class InvokerRecord
      */
     public void incUsageCount()
     {
+    }
+    
+    /**
+     * Gets the original command.  Used by the Data Collection mechanism.
+     */
+    public String getOriginalCommand() { return null; }
+
+    /**
+     * Gets a unique identifier for this invoker.  For data collection purposes.
+     */
+    public int getUniqueIdentifier()
+    {
+        return uniqueIdentifier;
     }
 }

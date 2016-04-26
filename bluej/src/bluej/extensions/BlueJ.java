@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -68,7 +68,7 @@ import javax.swing.*;
  * after its <code>terminate()</code> method has been called will result
  * in an (unchecked) <code>ExtensionUnloadedException</code> being thrown.
  *
- * @version    $Id: BlueJ.java 9624 2012-03-29 17:04:54Z davmac $
+ * @version    $Id: BlueJ.java 10207 2013-01-14 17:36:41Z davmac $
  */
 
 /*
@@ -380,7 +380,7 @@ public final class BlueJ
 
         return Config.getUserConfigDir();
     }
-
+    
 
     /**
      * Returns a property from BlueJ's properties,

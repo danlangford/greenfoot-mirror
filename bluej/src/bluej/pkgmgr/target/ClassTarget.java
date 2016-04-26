@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -977,7 +977,8 @@ public class ClassTarget extends DependentTarget
     public String breakpointToggleEvent(Editor editor, int lineNo, boolean set)
     {
         if (isCompiled() || ! modifiedSinceCompile) {
-            return getPackage().getDebugger().toggleBreakpoint(getQualifiedName(), lineNo, set, null);
+            String possibleError = getPackage().getDebugger().toggleBreakpoint(getQualifiedName(), lineNo, set, null);
+            return possibleError;
         }
         else {
             return Config.getString("pkgmgr.breakpointMsg");
@@ -1391,7 +1392,7 @@ public class ClassTarget extends DependentTarget
 
         File newSourceFile = new File(getPackage().getPath(), newName + ".java");
         File oldSourceFile = getSourceFile();
-
+        
         try {
             FileUtility.copyFile(oldSourceFile, newSourceFile);
             
@@ -2020,5 +2021,4 @@ public class ClassTarget extends DependentTarget
             return null;
         }
     }
-   
 }

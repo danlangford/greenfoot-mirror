@@ -30,23 +30,19 @@ import java.awt.Component;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.lang.ref.Reference;
-import java.lang.ref.ReferenceQueue;
-import java.lang.ref.SoftReference;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
+import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Dictionary;
-import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 
 import au.com.bytecode.opencsv.CSVReader;
 import au.com.bytecode.opencsv.CSVWriter;
@@ -55,6 +51,11 @@ import bluej.runtime.ExecServer;
 import bluej.utility.BlueJFileReader;
 import bluej.utility.Debug;
 import bluej.utility.DialogManager;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 
 /**
  * GreenfootUtilDelegate implementation for the Greenfoot IDE.
@@ -62,21 +63,6 @@ import bluej.utility.DialogManager;
 public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
 {
     private static GreenfootUtilDelegateIDE instance;
-    
-    /** A soft reference to a cached image */
-    private class CachedImageRef extends SoftReference<GreenfootImage>
-    {
-        String imgName;
-        
-        public CachedImageRef(String imgName, GreenfootImage image, ReferenceQueue<GreenfootImage> queue)
-        {
-            super(image, queue);
-            this.imgName = imgName;
-        }
-    }
-    
-    private Map<String,CachedImageRef> imageCache = new HashMap<String,CachedImageRef>();
-    private ReferenceQueue<GreenfootImage> imgCacheRefQueue = new ReferenceQueue<GreenfootImage>();
     
     static {
         instance = new GreenfootUtilDelegateIDE();
@@ -98,10 +84,22 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
     /**
      * Creates the skeleton for a new class
      */
-    @Override
-    public void createSkeleton(String className, String superClassName, File file, String templateFileName)
-            throws IOException
+    public void createSkeleton(String className, String superClassName, File file,
+            String templateFileName, String projCharsetName)
+        throws IOException
     {
+        Charset projCharset;
+        try
+        {
+            projCharset = Charset.forName(projCharsetName);
+        }
+        catch (UnsupportedCharsetException uce) {
+            projCharset = Charset.forName("UTF-8");
+        }
+        catch (IllegalCharsetNameException icne) {
+            projCharset = Charset.forName("UTF-8");
+        }
+        
         Dictionary<String, String> translations = new Hashtable<String, String>();
         translations.put("CLASSNAME", className);
         if(superClassName != null) {
@@ -115,7 +113,7 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
         if(!template.canRead()) {
             template = Config.getDefaultLanguageFile(baseName);
         }
-        BlueJFileReader.translateFile(template, file, translations, Charset.forName("UTF-8"), Charset.defaultCharset());
+        BlueJFileReader.translateFile(template, file, translations, Charset.forName("UTF-8"), projCharset);
     }
     
     @Override
@@ -155,83 +153,6 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
     {        
         File libDir = Config.getGreenfootLibDir();
         return libDir.getAbsolutePath() + "/imagelib/other/greenfoot.png";        
-    }
-
-    @Override
-    public boolean addCachedImage(String fileName, GreenfootImage image) 
-    {
-        synchronized (imageCache) {
-            if (image != null) {
-                CachedImageRef cr = new CachedImageRef(fileName, image, imgCacheRefQueue);
-                imageCache.put(fileName, cr);
-            }
-            else {
-                imageCache.put(fileName, null);
-            }
-        }
-        return true;
-    }
-
-    @Override
-    public GreenfootImage getCachedImage(String fileName)
-    { 
-        synchronized (imageCache) {
-            flushImgCacheRefQueue();
-            CachedImageRef sr = imageCache.get(fileName);
-            if (sr != null) {
-                return sr.get();
-            }
-            return null;
-        }
-    }
-
-    @Override
-    public void removeCachedImage(String fileName)
-    {
-        synchronized (imageCache) {
-            CachedImageRef cr = imageCache.remove(fileName);
-            if (cr != null) {
-                cr.clear();
-            }
-        }
-    }
-
-    @Override
-    public boolean isNullCachedImage(String fileName)
-    {
-        synchronized (imageCache) {
-            return imageCache.containsKey(fileName) && imageCache.get(fileName) == null;
-        }
-    }
-
-    /**
-     * Clear the image cache.
-     */
-    public void clearImageCache()
-    {
-        synchronized (imageCache) {
-            imageCache.clear();
-            imgCacheRefQueue = new ReferenceQueue<GreenfootImage>();
-        }
-    }
-    
-    /**
-     * Flush the image cache reference queue.
-     * <p>
-     * Because the images are cached via soft references, the references may be cleared, but the
-     * key will still map to the (cleared) reference. Calling this method occasionally removes such
-     * dead keys.
-     */
-    private void flushImgCacheRefQueue()
-    {
-        Reference<? extends GreenfootImage> ref = imgCacheRefQueue.poll();
-        while (ref != null) {
-            if (ref instanceof CachedImageRef) {
-                CachedImageRef cr = (CachedImageRef) ref;
-                imageCache.remove(cr.imgName);
-            }
-            ref = imgCacheRefQueue.poll();
-        }
     }
     
     @Override
@@ -335,8 +256,7 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
         List<String[]> all;
         try
         {
-            FileReader fr = new FileReader("storage.csv");
-            CSVReader csv = new CSVReader(fr);
+            CSVReader csv = new CSVReader(new InputStreamReader(new FileInputStream("storage.csv"), "UTF-8"));
             all = csv.readAll();
             csv.close();
         }
@@ -372,7 +292,7 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
         
         try
         {
-            CSVWriter csvOut = new CSVWriter(new FileWriter("storage.csv"));
+            CSVWriter csvOut = new CSVWriter(new OutputStreamWriter(new FileOutputStream("storage.csv"), "UTF-8"));
             csvOut.writeAll(all);
             csvOut.close();
             
@@ -391,8 +311,7 @@ public class GreenfootUtilDelegateIDE implements GreenfootUtilDelegate
         {
             ArrayList<UserInfo> ret = new ArrayList<UserInfo>();
             
-            FileReader fr = new FileReader("storage.csv");
-            CSVReader csv = new CSVReader(fr);
+            CSVReader csv = new CSVReader(new InputStreamReader(new FileInputStream("storage.csv"), "UTF-8"));
             
             List<String[]> all = csv.readAll();
             

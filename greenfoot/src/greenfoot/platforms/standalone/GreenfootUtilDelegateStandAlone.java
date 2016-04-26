@@ -29,7 +29,6 @@ import greenfoot.util.GreenfootStorageException;
 
 import java.awt.Component;
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -39,10 +38,11 @@ import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
+/**
+ * Implementation of GreenfootUtilDelegate for standalone applications.
+ */
 public class GreenfootUtilDelegateStandAlone implements GreenfootUtilDelegate
 {
     private SocketChannel socket;
@@ -70,16 +70,6 @@ public class GreenfootUtilDelegateStandAlone implements GreenfootUtilDelegate
         this.storageUserName = storageUserName;
     }
     
-    /** Holds images for classes. Avoids loading the same image twice. Key is the filename */
-    public static Map<String, GreenfootImage> classImages = new HashMap<String, GreenfootImage>();
-    
-    @Override
-    public void createSkeleton(String className, String superClassName, File file, String templateFileName)
-    throws IOException
-    {
-        // Not needed in stand alone
-    }
-
     @Override
     public URL getResource(String path)
     {
@@ -140,40 +130,6 @@ public class GreenfootUtilDelegateStandAlone implements GreenfootUtilDelegate
     public String getGreenfootLogoPath()
     {    
         return this.getClass().getClassLoader().getResource("greenfoot.png").toString();
-    }
-    
-    @Override
-    public void removeCachedImage(String fileName)
-    {
-        synchronized (classImages) {
-            classImages.remove(fileName);
-        }
-    }
-
-    @Override
-    public boolean addCachedImage(String fileName, GreenfootImage image)
-    {
-        synchronized (classImages) {
-            classImages.put(fileName, image);
-        }
-        return true;
-    }
-    
-    @Override
-    public GreenfootImage getCachedImage(String fileName)
-    {
-        synchronized (classImages) {
-            return classImages.get(fileName);
-        }
-    }
-    
-    @Override
-    public boolean isNullCachedImage(String fileName)
-    {
-        if (classImages.containsKey(fileName) && classImages.get(fileName)==null){
-            return true;
-        }
-        return false;
     }
     
     @Override

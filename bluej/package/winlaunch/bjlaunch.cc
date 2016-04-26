@@ -92,7 +92,17 @@ std::list<LPCWSTR> windowsvmargs;
 // Whether we should always launch java as an external process
 bool externalLaunch = false;
 
+#ifdef GREENFOOT
 
+static const char *VM_ARGS_PROP = "greenfoot.windows.vm.args";
+static const char *VM_PROP = "greenfoot.windows.vm";
+
+#else
+
+static const char *VM_ARGS_PROP = "bluej.windows.vm.args";
+static const char *VM_PROP = "bluej.windows.vm";
+
+#endif
 
 // Get a registry value. The result should be delete[]'d to free it.
 // Returns NULL if there is an error or the result is not a string.
@@ -310,17 +320,23 @@ bool launchVMexternal(string jdkLocation)
 
 
 
-
 // Launch VM and run bluej.Boot class
 //   jdkLocation - location of the JDK (no trailing slash!)
 // Returns - false on failure
 //       Note, if this call succeeds, it might not return at all.
 bool launchVM(string jdkLocation)
 {
-	if (externalLaunch || ! windowsvmargs.empty()) {
-		// If there are VM arguments, do an external launch. It is too difficult
-		// to translate java.exe arguments to javavm.dll options.
+	if (externalLaunch) {
 		return launchVMexternal(jdkLocation);
+	}
+
+	// If there are VM arguments other than -Dxxx=yyy and -Xxxxx, do an external launch. It is too
+	// difficul to translate java.exe arguments to javavm.dll options.
+    for (std::list<LPCTSTR>::iterator i = windowsvmargs.begin(); i != windowsvmargs.end(); ++i ) {
+    	string vmarg = string(*i);
+		if(vmarg.compare(0, 2, TEXT("-D"), 2) != 0 && vmarg.compare(0, 2, TEXT("-X"), 2) != 0) {
+			return launchVMexternal(jdkLocation);
+		}
 	}
 
 	typedef typeof(JNI_CreateJavaVM) *JNI_CreateJavaVM_t;
@@ -389,12 +405,12 @@ bool launchVM(string jdkLocation)
 	
 	vm_args.version = 0x00010002;
     vm_args.options = options;
-    vm_args.nOptions = 1;
+    vm_args.nOptions = 1 + windowsvmargs.size();
 	vm_args.ignoreUnrecognized = JNI_TRUE;
 	
 	JNI_CreateJavaVM_t CreateJavaVM_ptr = (JNI_CreateJavaVM_t) GetProcAddress( hJavalib, "JNI_CreateJavaVM" );
 	if (CreateJavaVM_ptr == NULL) {
-		for (j = 0; j <= windowsvmargs.size(); j++) {
+		for (j = 0; j <= (int)windowsvmargs.size(); j++) {
 			delete [] options[j].optionString;
 		}
 		delete [] options;
@@ -403,7 +419,7 @@ bool launchVM(string jdkLocation)
 			
 	int res = CreateJavaVM_ptr(&javaVM, (void **)&jniEnv, &vm_args);
 
-	for (j = 0; j <= windowsvmargs.size(); j++) {
+	for (j = 0; j <= (int)windowsvmargs.size(); j++) {
 		delete [] options[j].optionString;
 	}
 	delete [] options;
@@ -538,7 +554,7 @@ static bool isStdSpace(TCHAR ch)
 static string trimString(const string &src)
 {
 	std::size_t slen = src.length();
-	int i;
+	std::size_t i;
 	for (i = 0; i < slen; i++) {
 		TCHAR srcChar = src[i];
 		if (! isStdSpace(srcChar)) {
@@ -550,7 +566,7 @@ static string trimString(const string &src)
 		return string();
 	}
 	
-	int j;
+	std::size_t j;
 	for (j = slen - 1; j > i; j--) {
 		TCHAR srcChar = src[i];
 		if (! isStdSpace(srcChar)) {
@@ -622,7 +638,6 @@ int WINAPI WinMain
 						TEXT("\\StringFileInfo\\04091200\\ProductVersion"),
 						(void **) &productVersion, &plen);
 				appVersion = productVersion;
-				
 			}
 			else {
 				hRsrc = NULL;
@@ -651,7 +666,7 @@ int WINAPI WinMain
 
 	// Get bluej.windows.vm.args
 	{
-		string windowsvmargsString = trimString(getBlueJProperty("bluej.windows.vm.args"));
+		string windowsvmargsString = trimString(getBlueJProperty(VM_ARGS_PROP));
 		if (! windowsvmargsString.empty()) {
 			int argCount = 0;
 			// TODO it's technically wrong to use CommandLineToArgvW, as the
@@ -664,7 +679,7 @@ int WINAPI WinMain
 	}
 	
 	// Check for VM in bluej.defs
-	string defsVm = getBlueJProperty("bluej.windows.vm");
+	string defsVm = getBlueJProperty(VM_PROP);
 	if (defsVm.length() != 0) {
 		string reason;
 		if (testJdkPath(defsVm, &reason)) {

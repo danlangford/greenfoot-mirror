@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011,2012  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -25,8 +25,6 @@ import greenfoot.GreenfootImage;
 import greenfoot.UserInfo;
 
 import java.awt.Component;
-import java.io.File;
-import java.io.IOException;
 import java.net.URL;
 import java.util.List;
 
@@ -38,9 +36,6 @@ import java.util.List;
  */
 public interface GreenfootUtilDelegate
 {
-    public void createSkeleton(String className, String superClassName, File file,
-            String templateFileName) throws IOException;
-
     /**
      * Get some resource from the project, specified by a relative path.
      */
@@ -64,35 +59,6 @@ public interface GreenfootUtilDelegate
      */
     public String getGreenfootLogoPath();
 
-    /**
-     * Remove the cached version of an image for a particular class. This should be
-     * called when the image for the class is changed. Thread-safe.
-     */
-    public void removeCachedImage(String fileName);
-
-    /**
-     * Requests that an image with associated name be added into the cache. The image may be null,
-     * in which case the null response will be cached. Thread-safe.
-     * 
-     * @return  whether the image was cached.
-     */
-    public boolean addCachedImage(String fileName, GreenfootImage image);
-
-    /**
-     * Gets the cached image of the requested fileName. Thread-safe.
-     *
-     * @param name   name of the image file
-     * @return The cached image (should not be modified), or null if the image
-     *         is not cached.
-     */
-    public GreenfootImage getCachedImage(String fileName);
-    
-    /**
-     * Returns true if the fileName exists in the map and the image is cached as being null; 
-     * returns false if it exists and is not null or if it does not exist in the map
-     */
-    public boolean isNullCachedImage(String fileName);
-    
     /**
      * Display a message to the user; how the message is displayed is dependent
      * upon the platform context. In the Greenfoot IDE, the message will be displayed

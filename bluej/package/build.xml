@@ -3,6 +3,7 @@
     
     <!-- Names of the the distributables created by the dist-target -->
     <property name="dist.jarinstaller" value="BlueJ-generic-${bluej.version.nodots}.jar"/>
+    <property name="dist.mac.legacy" value="BlueJ-mac-legacy-${bluej.version.nodots}.zip"/>
     <property name="dist.mac" value="BlueJ-mac-${bluej.version.nodots}.zip"/>
     
     <!-- Don't know how to pass this to the Windows builder -->
@@ -104,8 +105,9 @@
         <include name="lib/*/dialogues" />
         <include name="lib/*/*.help" />
 	</patternset>
-    
-    <target name="dist">
+	
+	<!-- Builds the bluej-dist.jar file -->
+	<target name="pre-dist">
         <delete dir="install_tmp" />
         <mkdir dir="install_tmp"/>
 
@@ -146,9 +148,13 @@
              basedir="install_tmp"
              compress="yes"
         />
-        <antcall target="mac-dist" />
-        
+		
         <delete dir="install_tmp" />
+	</target>
+    
+    <target name="dist">
+    	<antcall target="pre-dist" />
+        
         <mkdir dir="install_tmp"/>
 
         <!-- Build the program which calculates the length of the  -->
@@ -213,13 +219,12 @@
         <echo level="info" message="----------------------------------------------------------------------------"/>
         <echo level="info" message="The bluej-dist.jar (for building the windows installer) is in: ${basedir}${file.separator}${dist.jar}"/>
         <echo level="info" message="The generic installer is in: ${basedir}${file.separator}${dist.jarinstaller}"/>
-        <echo level="info" message="The mac installer is in: ${basedir}${file.separator}${dist.mac}"/>
         <echo level="info" message="The source is in: ${basedir}${file.separator}${bluej.source.zip}"/>
         <echo level="warning" message="Remember to remove the dots in the version numbers when moving the files to the server. "/>
     </target>
 
 
-    <target name="mac-dist">
+    <target name="mac-dist" depends="pre-dist">
         <delete dir="mac_tmp" />
         
         <!-- Create the directory which will be the top level directory when unzipped-->
@@ -230,23 +235,16 @@
         <property name="executable_files" value="**/PkgInfo,**/JavaApplicationStub" />
 
         <!-- copy the skeleton mac dir -->
-        <copy todir="${zip_dir}/BlueJ.app">
-            <fileset dir="macfiles/BlueJ.app"/> 
+        <copy todir="${zip_dir}/BlueJ-legacy.app">
+            <fileset dir="macfiles/BlueJ-legacy.app"/> 
         </copy>
         
         <!-- update version number -->
         <replaceregexp byline="true">
             <regexp pattern="VERSION" />
             <substitution expression="${bluej.version}" />
-            <fileset dir="${zip_dir}/BlueJ.app/Contents" includes="Info.plist" />
+            <fileset dir="${zip_dir}/BlueJ-legacy.app/Contents" includes="Info.plist" />
         </replaceregexp>
-        
-        <!-- update version number -->
-        <replaceregexp byline="true">
-            <regexp pattern="VERSION" />
-            <substitution expression="${bluej.version}" />
-            <fileset dir="${zip_dir}/BlueJ.app/Contents" includes="Info.plist" />
-        </replaceregexp>        
         
         <copy todir="${zip_dir}">
             <fileset dir="${bluej_home}">
@@ -257,29 +255,64 @@
         </copy>
         
         <!-- The lib dir should not be in the root dir, so we move the contents to the proper mac-location -->
-        <move todir="${zip_dir}/BlueJ.app/Contents/Resources/Java">
+        <move todir="${zip_dir}/BlueJ-legacy.app/Contents/Resources/Java">
             <fileset dir="${zip_dir}/lib/" />
         </move>
-        <delete dir="${zip_dir}/BlueJ.app/Contents/Resources/Java/lib" />
+        <delete dir="${zip_dir}/BlueJ-legacy.app/Contents/Resources/Java/lib" />
 
         <!-- ZIP it -->
-        <zip destfile="${dist.mac}" duplicate="fail">
+        <zip destfile="${dist.mac.legacy}" duplicate="fail">
             <zipfileset dir="mac_tmp" excludes="${executable_files}" />
             <!-- Make the files executable that need to be executable -->
             <zipfileset dir="mac_tmp" filemode="755" includes="${executable_files}" />
         </zip>
+    	
+        <!-- copy the skeleton mac dir -->
+        <copy todir="${zip_dir}/BlueJ.app">
+            <fileset dir="macfiles/BlueJ.app"/> 
+        </copy>
+    	<copy todir="${zip_dir}/BlueJ.app/Contents/MacOS" file="macfiles/nativelauncher/JavaAppLauncher" />
+    	
+        <!-- update version number -->
+        <replaceregexp byline="true">
+            <regexp pattern="VERSION" />
+            <substitution expression="${bluej.version}" />
+            <fileset dir="${zip_dir}/BlueJ.app/Contents" includes="Info.plist" />
+        </replaceregexp>
+    	
+    	<!-- Move contents from legacy app to new app -->
+        <move file="${zip_dir}/BlueJ-legacy.app/Contents/Resources/Java"
+        	todir="${zip_dir}/BlueJ.app/Contents/Resources" />
+    	
+    	<!-- Copy the JDK to the app -->
+    	<copy  todir="${zip_dir}/BlueJ.app/Contents/PlugIns/jdk">
+    		<fileset dir="${mac_bundled_jdk_path}" />
+    	</copy>
+    	
+    	<!-- Remove the legacy app -->
+    	<delete dir="${zip_dir}/BlueJ-legacy.app" />
 
+        <property name="executable_files2" value="**/PkgInfo,**/JavaAppLauncher,**/Contents/PlugIns/jdk/Contents/**/bin/*" />
+
+        <!-- ZIP it -->
+        <zip destfile="${dist.mac}" duplicate="fail">
+            <zipfileset dir="mac_tmp" excludes="${executable_files2}" />
+            <!-- Make the files executable that need to be executable -->
+            <zipfileset dir="mac_tmp" filemode="755" includes="${executable_files2}" />
+        </zip>
+    	
         <delete dir="mac_tmp" />
+
+        <echo level="info" message="----------------------------------------------------------------------------"/>
+        <echo level="info" message="The mac installer is in: ${basedir}${file.separator}${dist.mac}"/>    	
+        <echo level="info" message="The legacy mac installer is in: ${basedir}${file.separator}${dist.mac.legacy}"/>
+    
     </target>
 	
 	<target name="windows-msi-dist" depends="dist">
 		<delete dir="winsetup/SourceDir" />
 		<delete dir="winsetup" includes="*.wixobj" />
 		<unzip src="${dist.jar}" dest="winsetup/SourceDir" />
-					
-		<exec dir="winsetup" executable="${wix_bin}/candle.exe">
-			<arg line="JDKDlg.wxs"/>
-		</exec>
 			
 		<exec dir="winsetup" executable="${wix_bin}/candle.exe">
 			<arg line="CheckboxExtrasDlg.wxs"/>
@@ -303,7 +336,7 @@
 		</exec>
 			
 		<exec dir="winsetup" executable="${wix_bin}/light.exe">
-			<arg line="-ext WixUIExtension -loc bluej.wxl bluej.wixobj CheckboxExtrasDlg.wixobj JDKDlg.wixobj ui.wixobj bluej-install-files.wixobj -o bluej-${bluej.version}.msi"/>
+			<arg line="-ext WixUIExtension -loc bluej.wxl bluej.wixobj CheckboxExtrasDlg.wixobj ui.wixobj bluej-install-files.wixobj -o bluej-${bluej.version}.msi"/>
 		</exec>
 		<delete dir="winsetup/SourceDir" />
 	</target>
@@ -372,15 +405,21 @@
 			<fileset dir="bluejdeb">
 				<patternset includes="**" />
 			</fileset>
+			<dirset dir="bluejdeb">
+				<patternset includes="**" />
+			</dirset>			
 		</chown>
 		<chgrp group="root">
 			<fileset dir="bluejdeb">
 				<patternset includes="**" />
 			</fileset>
+			<dirset dir="bluejdeb">
+				<patternset includes="**" />
+			</dirset>			
 		</chgrp>
 		
-		<chmod perm="+x" file="bluejdeb/DEBIAN/postinst" />
-		<chmod perm="+x" file="bluejdeb/DEBIAN/postrm" />
+		<chmod perm="755" file="bluejdeb/DEBIAN/postinst" />
+		<chmod perm="755" file="bluejdeb/DEBIAN/postrm" />
 		<exec executable="dpkg-deb" searchpath="true">
 			<arg value="-b" />
 			<arg file="bluejdeb" />
@@ -437,6 +476,7 @@
 	            <include name="doc/THIRDPARTYLICENSE.txt" />
 	            <include name="doc/LICENSE.txt" />
             	<include name="doc/README.TXT" />
+                <include name="doc/BlueJ-architecture-and-design.txt" />
             	<include name="doc/BlueJ-parser.txt" />
             	<include name="doc/threading-issues.txt" />
 	            <include name="examples/**/*" />          

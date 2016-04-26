@@ -3,7 +3,7 @@ It seems that Greenfoot crashed while writing this class
 to disk last time. The source code may be missing or 
 incomplete. There should be a backup of this class 
 in the project folder. If this class seems damaged,
-   1 - quit BlueJ
+   1 - quit Greenfoot
    2 - backup your project folder (just in case)
    3 - look into the project folder for a backup of
        this java file. Rename it to the original
@@ -27,3 +27,17 @@ cannot-save-project
 The scenario could not be saved to the specified
 location. Check that you have write access, or
 choose another location.
+
+cannot-create-project
+The scenario could not be created. Check that
+the containing folder is writable.
+
+project-already-exists
+The specified scenario folder already exists. To create a
+new scenario, choose a location and specify a unique name
+(you must specify the name in the file dialog).
+
+archive-not-greenfoot-project
+The archive file you selected to open does not look like it
+contains a Greenfoot project (try extracting the archive
+contents using another tool).

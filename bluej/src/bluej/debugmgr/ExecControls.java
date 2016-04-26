@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -402,7 +402,7 @@ public class ExecControls extends JFrame
         }
     }
     
-    private SourceLocation [] getFilteredStack(List<SourceLocation> stack)
+    public static SourceLocation [] getFilteredStack(List<SourceLocation> stack)
     {
         int first = -1;
         int i;
@@ -411,7 +411,7 @@ public class ExecControls extends JFrame
             String className = loc.getClassName();
 
             // ensure that the bluej.runtime.ExecServer frames are not shown
-            if (className.startsWith("bluej.runtime.")) {
+            if (className.startsWith("bluej.runtime.") && !className.equals(bluej.runtime.BJInputStream.class.getCanonicalName())) {
                 break;
             }
 

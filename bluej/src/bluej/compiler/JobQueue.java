@@ -28,6 +28,7 @@ import java.util.List;
 
 import bluej.Config;
 import bluej.classmgr.BPClassLoader;
+import bluej.pkgmgr.Project;
 import bluej.utility.Utility;
 
 /**

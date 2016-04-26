@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Properties;
 import java.util.StringTokenizer;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.swing.AbstractButton;
 import javax.swing.Action;
@@ -202,6 +203,8 @@ public class PkgMgrFrame extends JFrame
 
     private ClassTarget testTarget = null;
     private String testTargetMethod;
+    private static AtomicInteger nextTestIdentifier = new AtomicInteger(0); 
+    private int testIdentifier = 0;
 
     private JMenuBar menubar = null;
     private JMenu recentProjectsMenu;
@@ -755,7 +758,7 @@ public class PkgMgrFrame extends JFrame
                 showTestingTools(wantToSeeTestingTools());
             }                
         }
-
+        
         extMgr.packageOpened(pkg);
     }
     
@@ -828,7 +831,7 @@ public class PkgMgrFrame extends JFrame
         }
 
         getPackage().closeAllEditors();
-
+        
         Project proj = getProject();
 
         editor = null;
@@ -1092,6 +1095,14 @@ public class PkgMgrFrame extends JFrame
     {
         getObjectBench().addInteraction(ir);
     }
+    
+    /**
+     * Gets the current test identifier (used to identify tests during the data recording)
+     */
+    public int getTestIdentifier()
+    {
+        return testIdentifier;
+    }
 
 
     // --- below are implementations of particular user actions ---
@@ -1209,6 +1220,7 @@ public class PkgMgrFrame extends JFrame
         if (target.getRole() instanceof UnitTestClassRole) {
             pkg.compileQuiet(target);
         }
+        
         return true;
     }
 
@@ -1232,6 +1244,7 @@ public class PkgMgrFrame extends JFrame
             return false;
 
         if(newnameFile.exists()) {
+            Debug.message("Attempt to create project with existing directory: " + newnameFile.getAbsolutePath());
             DialogManager.showErrorWithText(null, "directory-exists", newnameFile.getPath());
             return false;
         }
@@ -1917,8 +1930,9 @@ public class PkgMgrFrame extends JFrame
      *               for purposes of method calls etc if the actual type is inaccessible
      *               (private to another package or class).
      * @param ir    The invoker record (for recording interaction). May be null.
+     * @return The actual instance name (which might be different from parameter, if there was a name clash)
      */
-    public void putObjectOnBench(String newInstanceName, DebuggerObject object, GenTypeClass iType, InvokerRecord ir)
+    public String putObjectOnBench(String newInstanceName, DebuggerObject object, GenTypeClass iType, InvokerRecord ir)
     {
         if (!object.isNullObject()) {
             ObjectWrapper wrapper = ObjectWrapper.getWrapper(this, getObjectBench(), object, iType, newInstanceName);
@@ -1931,6 +1945,11 @@ public class PkgMgrFrame extends JFrame
             if (ir != null) {
                 ir.setBenchName(newInstanceName, wrapper.getTypeName());
             }
+            return newInstanceName;
+        }
+        else
+        {
+            return null;
         }
     }
 
@@ -2173,7 +2192,7 @@ public class PkgMgrFrame extends JFrame
     public void doCancelTest()
     {
         testRecordingEnded();
-
+        
         // remove objects from object bench (may have been put there
         // when testing was started)
         getProject().removeClassLoader();
@@ -2222,6 +2241,7 @@ public class PkgMgrFrame extends JFrame
     {
         this.testTargetMethod = testName;
         this.testTarget = testClass;
+        this.testIdentifier = nextTestIdentifier.incrementAndGet(); // Allocate next test identifier
     }
 
     /**
@@ -2343,7 +2363,9 @@ public class PkgMgrFrame extends JFrame
     public void restartDebugger()
     {
         if (!isEmptyFrame())
+        {
             getProject().restartVM();
+        }
     }
 
     /**
@@ -2493,7 +2515,6 @@ public class PkgMgrFrame extends JFrame
                 break;
             case BlueJEvent.CREATE_VM_FAILED :
                 DialogManager.showError(this, "error-create-vm");
-                bluej.Main.doQuit();
                 break;
         }
     }

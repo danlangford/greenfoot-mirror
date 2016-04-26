@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -48,6 +48,16 @@ public class JdiTestResult extends DebuggerTestResult
         this.exceptionMsg = null;
         this.traceMsg = null;
     }
+    
+    public String getQualifiedClassName()
+    {
+        return className;
+    }
+    
+    public String getMethodName()
+    {
+        return methodName;
+    }
 
     /**
      * @see bluej.debugger.DebuggerTestResult#getExceptionMessage()
@@ -55,16 +65,6 @@ public class JdiTestResult extends DebuggerTestResult
     public String getExceptionMessage()
     {
         throw new IllegalStateException("getting Exception message from successful test");
-    }
-
-    /**
-     * 
-     * 
-     * @see bluej.debugger.DebuggerTestResult#getName()
-     */
-    public String getName()
-    {
-        return className + "." + methodName;
     }
 
     /**
@@ -150,6 +150,8 @@ public class JdiTestResult extends DebuggerTestResult
                 "junit.swingui.TestRunner",
                 "junit.awtui.TestRunner",
                 "junit.textui.TestRunner",
+                "org.junit.runner",
+                "org.junit.internal",
                 "sun.reflect.",
                 "bluej.",
                 "java.lang.reflect.Method.invoke("

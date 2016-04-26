@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -130,6 +130,7 @@ public final class Config
                                                        // specified on the
                                                        // command line
     private static Properties langProps;        // international labels
+    private static Properties langVarProps;     // language label variables (APPNAME)
 
     private static BlueJPropStringSource propSource; // source for properties
 
@@ -177,6 +178,18 @@ public final class Config
     public static void initialise(File bluejLibDir, Properties tempCommandLineProps,
                                   boolean bootingGreenfoot)
     {
+        initialise(bluejLibDir, tempCommandLineProps, bootingGreenfoot, true);
+    }
+    
+    /**
+     * Initialisation of BlueJ configuration. Must be called at startup.
+     * This method finds and opens the configuration files.<p>
+     * 
+     * See also initializeVMside().
+     */
+    private static void initialise(File bluejLibDir, Properties tempCommandLineProps,
+                                  boolean bootingGreenfoot, boolean createUserhome)
+    {
         if(initialised)
             return;
 
@@ -219,29 +232,21 @@ public final class Config
         commandProps.putAll(tempCommandLineProps);
         commandProps.setProperty("bluej.libdir", bluejLibDir.getAbsolutePath());
         
-        // get user home directory
-        {
-            File userHome;
-            String homeDir = getPropString("bluej.userHome", "$user.home");
-            userHome = new File(homeDir);
+        if (createUserhome) {
 
-            // get user specific bluej property directory (in user home)
-            userPrefDir = new File(userHome, getBlueJPrefDirName());
+            // get user home directory
+            initUserHome();
 
-            if(!userPrefDir.isDirectory()) {
-                userPrefDir.mkdirs();
+            // add user specific definitions (bluej.properties or greenfoot.properties)
+            loadProperties(getApplicationName().toLowerCase(), userProps);
+
+            // set a new name for the log file if we are running in greenfoot mode
+            if(isGreenfoot) {
+                debugLogName = greenfootDebugLogName;
             }
-        }
 
-        // add user specific definitions (bluej.properties or greenfoot.properties)
-        loadProperties(getApplicationName().toLowerCase(), userProps);
-
-        // set a new name for the log file if we are running in greenfoot mode
-        if(isGreenfoot) {
-            debugLogName = greenfootDebugLogName;
+            checkDebug(userPrefDir);
         }
-        
-        checkDebug(userPrefDir);
         
         // find our language (but default to english if none found)
         language = commandProps.getProperty("bluej.language", DEFAULT_LANGUAGE);
@@ -273,8 +278,57 @@ public final class Config
         // Create a property containing the BlueJ version string
         // put it in command_props so it won't be saved to a file
         commandProps.setProperty("bluej.version", Boot.BLUEJ_VERSION);
-    } // initialise
+    }
 
+    /**
+     * Initialise the user home (try and create directories if necessary).
+     * <p>
+     * We try the bluej.userHome property, or default to the system user.home
+     * property if that is not set. If the result is not writable we try
+     * bluej.userHome1, bluej.userHome2, etc.
+     */
+    private static void initUserHome()
+    {
+        File userHome;
+        String homeDir = getPropString("bluej.userHome", "$user.home");
+        userHome = new File(homeDir);
+
+        String prefDirName = getBlueJPrefDirName();
+        
+        // get user specific bluej property directory (in user home)
+        userPrefDir = new File(userHome, prefDirName);
+
+        int nameCounter = 1;
+        do {
+            if (! userPrefDir.isDirectory()) {
+                if (userPrefDir.mkdirs()) {
+                    // successfully created the preferences directory
+                    break;
+                }
+            }
+            else if (userPrefDir.canWrite()) {
+                break;
+            }
+            
+            nameCounter++;
+            String propertyName = "bluej.userHome" + nameCounter;
+            homeDir = getPropString(propertyName, null);
+            if (homeDir == null) {
+                break;
+            }
+            userHome = new File(homeDir);
+            userPrefDir = new File(userHome, prefDirName);
+        }
+        while (true);
+        
+        if (homeDir == null) {
+            // Now we're in trouble... just user user.home, and hope it's writable.
+            homeDir = System.getProperty("user.home");
+            userHome = new File(homeDir);
+            userPrefDir = new File(userHome, prefDirName);
+        }
+    }
+    
     /**
      * Alternative to "initialise", to be used in the debugee-VM by
      * applications which require it (ie. greenfoot).
@@ -315,8 +369,7 @@ public final class Config
                 return Config.propSource.getBlueJPropertyString(key, def);
             }
         };
-        initialise(bluejLibDir, tempCommandLineProps, bootingGreenfoot);
-
+        initialise(bluejLibDir, tempCommandLineProps, bootingGreenfoot, false);
     }
 
     /**
@@ -521,7 +574,7 @@ public final class Config
     }
     
     /**
-     * Tell us whether we are using a Mac screen menubar
+     * Get the name of this application.
      */
     public static String getApplicationName()
     {
@@ -729,6 +782,11 @@ public final class Config
      */
     public static String getString(String strname, String def)
     {
+        if (langVarProps == null) {
+            langVarProps = new Properties();
+            langVarProps.put("APPNAME", getApplicationName());
+        }
+        
         int index;
         String str = langProps.getProperty(strname, def);
         // remove all underscores
@@ -739,6 +797,9 @@ public final class Config
             //remove everything from @
             str = str.substring(0, index);
         }
+        
+        str = PropParser.parsePropString(str, langVarProps);
+        
         return str;
     }
     
@@ -759,7 +820,7 @@ public final class Config
             mnemonic = KeyEvent.VK_UNDEFINED;
         }
         else {
-            mnemonic = getKeyCodeAt(str, index + 1);
+            mnemonic = str.codePointAt(index + 1);
         }
         return mnemonic;
     }
@@ -795,7 +856,7 @@ public final class Config
         }
         keyString = str.substring(index).toUpperCase();
         if(keyString.length() == 1) {
-            return KeyStroke.getKeyStroke(getKeyCodeAt(keyString, 0), modifiers);
+            return KeyStroke.getKeyStroke(keyString.codePointAt(0), modifiers);
         }
         else {
             KeyStroke k1= KeyStroke.getKeyStroke(keyString);
@@ -803,36 +864,6 @@ public final class Config
         }
     }
     
-    /**
-     * Gets the keycode at the given position. On Java 1.5 this will be the code
-     * point which can also handle supplementary characters. On previous java
-     * versions it will return the BMP (Basic Multilingual Plane) character.
-     * 
-     * @return The keycode
-     * @throws IndexOutOfBoundsException if the index argument is negative or
-     *             not less than the length of this string.
-     */
-    private static int getKeyCodeAt(String str, int index)
-    {
-        // Currently the only use for this method is for retrieving mnemonics
-        // and accelerator keys. I have no idea if supplementary characters will
-        // ever be used for mnemonics or accelerators, but at least it should be
-        // supported.
-        // Poul Henriksen 11/04-2006
-        int code;
-        if (isJava15()) {
-            // Supplementary unicode characters are only supported in Java
-            // 1.5
-            code = str.codePointAt(index);
-        }
-        else {
-            // Will get the BMP (Basic Multilingual Plane) character and
-            // hence will not work with supplementary characters
-            code = str.charAt(index);
-        }
-        return code;
-    }
-        
     /**
      * Get a system-dependent string from the BlueJ properties
      * System-dependent strings are properties that can
@@ -1450,7 +1481,6 @@ public final class Config
      * Checks for optional bluej.defs settings for vm language and
      * country. If either are specified, a Locale object is created
      * and it becomes the default locale for BlueJ. 
-     *
      */
     private static void setVMLocale()
     {

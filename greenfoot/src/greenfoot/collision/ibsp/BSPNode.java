@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2012,2013  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -129,6 +129,10 @@ public final class BSPNode
         }
     }
     
+    /**
+     * Returns the area of this node. Careful! Modifying the returned Rect will modify the
+     * node's area!
+     */
     public Rect getArea()
     {
         return area;
@@ -243,5 +247,10 @@ public final class BSPNode
     void blankNode()
     {
         actors.clear();
+    }
+    
+    public void areaChanged()
+    {
+        areaRipple = true;
     }
 }

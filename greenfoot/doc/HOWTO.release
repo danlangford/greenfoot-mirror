@@ -8,8 +8,10 @@ Building Greenfoot:
  2. Test bundled scenarios and make sure they are upgraded to new API version.
  3. Run "ant ready-to-run" in the BlueJ directory.
  4. Run "ant dist" in the Greenfoot directory
- 5. Build the windows installer (see below).
- 6. Copy the builds and source to greenfoot.org.
+ 5. Run "ant mac-dist" in the Greenfoot directory. This must be run on a Mac with a suitable
+    JDK to be bundled. The prior steps including "ant dist" must be run first.
+ 6. Build the windows installer (see below).
+ 7. Copy the builds and source to greenfoot.org.
 
 If necessary:
  7. If the API version has changed, copy Greenfoot-core-X.X.X-jar to the gallery: /home/mygame/mygame/public/sharedjars/
@@ -76,3 +78,4 @@ Web-pages to update on www.greenfoot.org:
  
 Email:
  send email to greenfoot-announce
+ Notify users listed in GREENFOOT_ANNOUNCE.txt

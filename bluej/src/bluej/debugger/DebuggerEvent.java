@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -41,17 +41,22 @@ public class DebuggerEvent extends EventObject
     /** 
      * A thread halted, due to a step event, or because it was programmatically halted
      * via the DebuggerThread interface.
+     * 
+     * We use the _UNKNOWN version when the exact cause is not known, and the more
+     * specific _STEP_OVER or STEP_INTO when we know it is from a step event
      */
-    public final static int THREAD_HALT = 3;
+    public final static int THREAD_HALT_UNKNOWN = 2;
+    public final static int THREAD_HALT_STEP_OVER = 3;
+    public final static int THREAD_HALT_STEP_INTO = 4;
     /**
      * A thread halted due to hitting a breakpoint.
      */
-    public final static int THREAD_BREAKPOINT = 4;
+    public final static int THREAD_BREAKPOINT = 5;
     /**
      * A thread resumed execution (due to this being requested via the DebuggerThread
      * interface).
      */
-    public final static int THREAD_CONTINUE = 5;
+    public final static int THREAD_CONTINUE = 6;
 
     private int id;
     private DebuggerThread thr;
@@ -85,6 +90,11 @@ public class DebuggerEvent extends EventObject
     {
         return id;
     }
+    
+    public boolean isHalt()
+    {
+        return id == THREAD_BREAKPOINT || id == THREAD_HALT_STEP_INTO || id == THREAD_HALT_STEP_OVER || id == THREAD_HALT_UNKNOWN;
+    }
 
     public DebuggerThread getThread()
     {
@@ -109,4 +119,12 @@ public class DebuggerEvent extends EventObject
     {
         return props;
     }
+
+    @Override
+    public String toString()
+    {
+        return super.toString() + "[id=" + id + ",thr=" + thr + "]";
+    }
+    
+    
 }

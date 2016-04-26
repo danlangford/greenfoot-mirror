@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -464,7 +464,6 @@ public class Project implements DebuggerListener, InspectorManager
             proj.initialPackageName = startingPackageName;
         }
         
-        
         ExtensionsManager.getInstance().projectOpening(proj);
 
         return proj;
@@ -550,6 +549,7 @@ public class Project implements DebuggerListener, InspectorManager
                             return true;
                         }
                         catch (IOException ioe) {
+                            // TODO should propagate this exception
                             Debug.message("I/O error while creating project.");
                         }
                     }
@@ -559,6 +559,7 @@ public class Project implements DebuggerListener, InspectorManager
             }
         }
 
+        Debug.message("Unable to create project directory: " + projectPath);
         return false;
     }
 
@@ -702,6 +703,7 @@ public class Project implements DebuggerListener, InspectorManager
      *            The parent frame of this frame
      * @return The Viewer value
      */
+    @Override
     public ObjectInspector getInspectorInstance(DebuggerObject obj,
         String name, Package pkg, InvokerRecord ir, JFrame parent) 
     {
@@ -715,7 +717,7 @@ public class Project implements DebuggerListener, InspectorManager
         else {
             updateInspector(inspector);
         }
-
+        
         return inspector;
     }
     
@@ -771,8 +773,7 @@ public class Project implements DebuggerListener, InspectorManager
      */
     public void removeAllInspectors() 
     {
-        for (Iterator<Inspector> it = inspectors.values().iterator(); it.hasNext();) {
-            Inspector inspector = it.next();
+        for (Inspector inspector : inspectors.values()) {
             inspector.setVisible(false);
             inspector.dispose();
         }
@@ -810,7 +811,7 @@ public class Project implements DebuggerListener, InspectorManager
         else {
             updateInspector(inspector);
         }
-
+        
         return inspector;
     }
 
@@ -1797,10 +1798,24 @@ public class Project implements DebuggerListener, InspectorManager
                         pkg.hitBreakpoint(thr);
                         break;
 
-                    case DebuggerEvent.THREAD_HALT:
+                    case DebuggerEvent.THREAD_HALT_UNKNOWN:
+                    case DebuggerEvent.THREAD_HALT_STEP_INTO:
+                    case DebuggerEvent.THREAD_HALT_STEP_OVER:
                         pkg.hitHalt(thr);
                         break;
                     }
+                }
+                
+                switch (event.getID())
+                {
+                    case DebuggerEvent.THREAD_HALT_UNKNOWN:
+                        break;
+                    case DebuggerEvent.THREAD_HALT_STEP_INTO:
+                        break;
+                    case DebuggerEvent.THREAD_HALT_STEP_OVER:
+                        break;
+                    case DebuggerEvent.THREAD_BREAKPOINT:
+                        break;
                 }
             }
         });
@@ -1908,7 +1923,8 @@ public class Project implements DebuggerListener, InspectorManager
     private void traverseDirsForFiles(Set<File> allFiles, File dir, boolean includePkgFiles,
             boolean includeDirs)
     {
-        File[] files = dir.listFiles(getTeamSettingsController().getFileFilter(includePkgFiles));
+        TeamSettingsController teamSettingsController = getTeamSettingsController();
+        File[] files = dir.listFiles(teamSettingsController == null ? null : teamSettingsController.getFileFilter(includePkgFiles));
         if (files==null){
             return;
         }

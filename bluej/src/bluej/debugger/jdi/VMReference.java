@@ -28,6 +28,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
+import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.net.InetAddress;
 import java.net.URL;
@@ -194,7 +195,7 @@ class VMReference
     public VirtualMachine localhostSocketLaunch(File initDir, URL[] libraries, DebuggerTerminal term,
             VirtualMachineManager mgr)
     {
-        final int CONNECT_TRIES = 5; // try to connect max of 5 times
+        final int CONNECT_TRIES = 2; // try to connect max of 5 times
         final int CONNECT_WAIT = 500; // wait half a sec between each connect
 
         String [] launchParams;
@@ -264,7 +265,7 @@ class VMReference
                     if (timeoutArg != null) {
                         // The timeout appears to be in milliseconds.
                         // The default is apparently no timeout.
-                        timeoutArg.setValue("2000");
+                        timeoutArg.setValue("5000");
                     }
                     
                     // Make sure the local address is localhost, not the
@@ -291,14 +292,14 @@ class VMReference
                                 address = listenAddress + address.substring(colonIndex);
                             }
                         }
-                        Debug.log("Listening for JDWP connection on address: " + address);
+                        Debug.log("" + System.currentTimeMillis() + ": Listening for JDWP connection on address: " + address);
                         paramList.add(transportIndex, "-agentlib:jdwp=transport=" + connector.transport().name()
                                 + ",address=" + address);
                         launchParams = paramList.toArray(new String[paramList.size()]);
                         paramList.remove(transportIndex);
                         
                         try {
-                            remoteVMprocess = launchVM(initDir, launchParams, term);
+                            remoteVMprocess = launchVM(initDir, launchParams);
                         }
                         catch (Throwable t) {
                             connector.stopListening(arguments);
@@ -307,10 +308,19 @@ class VMReference
 
                         try {
                             machine = connector.accept(arguments);
+                            redirectToTerminal(term);
                         }
                         catch (Throwable t) {
                             // failed to connect.
                             closeIO();
+                            try {
+                                // Ask for the exit value, since that allows us to test
+                                // whether the process has already exited.
+                                int exitCode = remoteVMprocess.exitValue();
+                                Debug.log("" + System.currentTimeMillis() + ": remote VM process has prematurely terminated with exit code: " + exitCode);
+                                drainOutput();
+                            }
+                            catch (IllegalThreadStateException itse) {}
                             remoteVMprocess.destroy();
                             remoteVMprocess = null;
                             throw t;
@@ -337,24 +347,55 @@ class VMReference
             
             // Do a small wait between connection attempts
             try {
-                if (i != CONNECT_TRIES - 1)
+                if (i != CONNECT_TRIES - 1) {
                     Thread.sleep(CONNECT_WAIT);
+                }
             }
             catch (InterruptedException ie) { break; }
         }
 
         // failed to connect
-        Debug.message("Failed to connect to debug VM. Reasons follow:");
-        for (int i = 0; i < connectors.size(); i++) {
-            Debug.message(connectors.get(i).transport().name() + " transport:");
-            PrintWriter pw = new PrintWriter(Debug.getDebugStream());
-            failureReasons[i].printStackTrace(pw);
-            pw.flush();
+        Writer dbgStream = Debug.getDebugStream();
+        synchronized (dbgStream) {
+            Debug.message("" + System.currentTimeMillis() + ": Failed to connect to debug VM. Reasons follow:");
+            for (int i = 0; i < connectors.size(); i++) {
+                Debug.message(connectors.get(i).transport().name() + " transport:");
+                PrintWriter pw = new PrintWriter(dbgStream);
+                failureReasons[i].printStackTrace(pw);
+                pw.flush();
+            }
         }
 
         NetworkTest.doTest();
         
         return null;
+    }
+    
+    /**
+     * Read and log anything that the remote VM process output before it died.
+     */
+    private void drainOutput()
+    {
+        InputStreamReader stdout = new InputStreamReader(remoteVMprocess.getInputStream());
+        char charBuf[] = new char[2048];
+        
+        try {
+            int numRead = stdout.read(charBuf);
+            if (numRead != -1) {
+                String output = new String(charBuf, 0, numRead);
+                Debug.message("Output from remote process stdout: " + output);
+            }
+            
+            InputStreamReader stderr = new InputStreamReader(remoteVMprocess.getErrorStream());
+            numRead = stderr.read(charBuf);
+            if (numRead != -1) {
+                String output = new String(charBuf, 0, numRead);
+                Debug.message("Output from remote process stderr: " + output);
+            }
+        }
+        catch (IOException ioe) {
+            Debug.message("IOException while trying to draing stdout/stderr of remote process: " + ioe.getMessage());
+        }
     }
     
     private void setupEventHandling()
@@ -385,7 +426,7 @@ class VMReference
      *                  the debug vm process
      * @param term      the terminal to connect to process I/O
      */
-    private Process launchVM(File initDir, String [] params, DebuggerTerminal term)
+    private Process launchVM(File initDir, String [] params)
         throws IOException
     {    
         Process vmProcess = Runtime.getRuntime().exec(params, null, initDir);
@@ -434,6 +475,17 @@ class VMReference
         }
         catch (InterruptedException ie) {}
         
+        
+        return vmProcess;
+    }
+    
+    /**
+     * Redirect input, output and error streams of the remote process to the terminal.
+     */
+    private void redirectToTerminal(DebuggerTerminal term) throws UnsupportedEncodingException
+    {
+        Process vmProcess = remoteVMprocess;
+        
         // redirect standard streams from process to Terminal
         // error stream System.err
         Reader errorReader = null;
@@ -457,8 +509,6 @@ class VMReference
         errorStreamRedirector = redirectIOStream(errorReader, term.getErrorWriter());
         outputStreamRedirector = redirectIOStream(outReader, term.getWriter());
         inputStreamRedirector = redirectIOStream(term.getReader(), inputWriter);
-        
-        return vmProcess;
     }
 
     /**
@@ -1116,7 +1166,7 @@ class VMReference
     /**
      * A breakpoint has been hit or step completed in a thread.
      */
-    public void breakpointEvent(LocatableEvent event, boolean breakpoint, boolean skipUpdate)
+    public void breakpointEvent(LocatableEvent event, int debuggerEventType, boolean skipUpdate)
     {
         // if the breakpoint is marked as with the SERVER_STARTED property
         // then this is our own breakpoint that is used to detect when a new
@@ -1171,7 +1221,7 @@ class VMReference
             }
 
             // signal the breakpoint/step to the user
-            owner.breakpoint(event.thread(), breakpoint, skipUpdate, makeBreakpointProperties(event.request()));
+            owner.breakpoint(event.thread(), debuggerEventType, skipUpdate, makeBreakpointProperties(event.request()));
         }
     }
 
@@ -1188,9 +1238,9 @@ class VMReference
             };
     }
 
-    public boolean screenBreakpointEvent(LocatableEvent event, boolean breakpoint)
+    public boolean screenBreakpointEvent(LocatableEvent event, int debuggerEventType)
     {
-        return owner.screenBreakpoint(event.thread(), breakpoint, makeBreakpointProperties(event.request()));
+        return owner.screenBreakpoint(event.thread(), debuggerEventType, makeBreakpointProperties(event.request()));
     }
 
     // ==== code for active debugging: setting breakpoints, stepping, etc ===
@@ -1572,6 +1622,7 @@ class VMReference
     {
         synchronized (eventHandler) {
             serverThread.resume();
+            owner.serverThreadResumed(serverThread);
             owner.raiseStateChangeEvent(Debugger.RUNNING);
         }
         // Note, we do the state change after the resume because the state

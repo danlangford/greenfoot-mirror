@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2011,2012  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2011,2012,2013  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -296,8 +296,15 @@ public class KeyboardManager implements TriggeredKeyListener, FocusListener
      */
     private int numLockTranslate(int keycode)
     {
+        if (keycode >= KeyEvent.VK_NUMPAD0 && keycode <= KeyEvent.VK_NUMPAD9) {
+            // At least on linux, we can only get these codes if numlock is on; in that
+            // case we want to map to a digit anyway.
+            return keycode - KeyEvent.VK_NUMPAD0 + KeyEvent.VK_0;
+        }
+
         // Seems on linux (at least) we can't get the numlock state (get an
-        // UnsupportedOperationException).
+        // UnsupportedOperationException). Update: on Java 1.7.0_03 at least,
+        // we can now retrieve numlock state on linux.
         boolean numlock = true;
         if (hasNumLock) {
             try {

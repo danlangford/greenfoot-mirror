@@ -21,12 +21,12 @@ debugger.assert.notNull=not null
 debugger.assert.null=null
 debugger.assert.delta=delta
 
-debugger.inspector.title=BlueJ:  Inspector
-debugger.inspector.object.title=BlueJ:  Object Inspector
-debugger.inspector.class.title=BlueJ:  Class Inspector
-debugger.inspector.enum.title=BlueJ:  Enum Inspector
-debugger.inspector.interface.title=BlueJ:  Interface Inspector
-debugger.inspector.result.title=BlueJ:  Method Result
+debugger.inspector.title=$APPNAME:  Inspector
+debugger.inspector.object.title=$APPNAME:  Object Inspector
+debugger.inspector.class.title=$APPNAME:  Class Inspector
+debugger.inspector.enum.title=$APPNAME:  Enum Inspector
+debugger.inspector.interface.title=$APPNAME:  Interface Inspector
+debugger.inspector.result.title=$APPNAME:  Method Result
 debugger.inspector.result.returned=returned:
 debugger.inspector.object.noFields=No fields
 debugger.inspector.class.noFields=No fields
@@ -102,6 +102,11 @@ prefmgr.misc.showUnchecked=Show compiler warnings when unsafe collections are us
 prefmgr.misc.wtk.dir.label=Wireless Toolkit directory
 prefmgr.misc.wtk.button=Browse
 prefmgr.misc.filechooser.title=Select Wireless Toolkit directory
+prefmgr.collection.title=Research Participation
+prefmgr.collection.change=Change
+prefmgr.collection.identifier.explanation=You only need to fill in the information below if asked to by a researcher
+prefmgr.collection.identifier.experiment=Experiment Identifier
+prefmgr.collection.identifier.participant=Participant Identifier
 
 # Editor Preferences panel
 prefmgr.edit.prefpaneltitle=Editor
@@ -117,6 +122,11 @@ prefmgr.edit.keybindingstitle=Key Bindings
 prefmgr.edit.highlightLighter=Lighter
 prefmgr.edit.highlightDarker=Darker
 
+# Interface preferences panel
+prefmgr.interface.title=Interface
+prefmgr.interface.language.title=Language selection
+prefmgr.interface.language=Language
+prefmgr.interface.language.restart=You will need to restart $APPNAME for the language setting to take effect.
 
 # Extensions Manager Help panel
 extmgr.title=BlueJ:  Installed Extensions
@@ -761,6 +771,26 @@ menu.help.copyright.line1=BlueJ is available under the GNU General Public Licens
 menu.help.copyright.line2=version 2 with Classpath exception.
 menu.help.copyright.line3=For more information please see the files LICENSE.txt 
 menu.help.copyright.line4=and THIRDPARTYLICENSE.txt.
+
+#Collection
+# The content for these is HTML, so don't use <, > or & without escaping:
+
+collect.dialog.title=Research Participation
+
+collect.dialog.header1=The BlueJ team are running a data collection project to help researchers
+collect.dialog.header2=understand how students learn to program.
+collect.dialog.header3=Please help us by participating.
+
+collect.dialog.no=No thanks
+collect.dialog.yes=I agree to take part, and I certify that I am 16 or older
+
+collect.dialog.ethics1=If you agree to take part, you will permit us to collect anonymous data about your use of BlueJ, including the features you use and the code you write. This will be used by the BlueJ group and other academic researchers to help understand how students learn to program and to improve BlueJ itself. No personal information will be transmitted to, or stored by, us and any Java class comments you write will be removed before transmission.
+collect.dialog.ethics.seemore=See more information
+collect.dialog.ethics2=If you change your mind about helping us with this work, you can stop contributing at any time using the checkbox in the Tools/Preferences/Miscellaneous dialog.
+
+collect.status.optedin=You are currently taking part in the data collection research
+collect.status.nextsession=You will begin taking part in the data collection research next time BlueJ is started
+collect.status.optedout=You are currently not participating in the data collection research
 
 # About
 

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -642,5 +642,14 @@ class JdiThread extends DebuggerThread
         } else {
             return false;
         }
+    }
+
+    /**
+     * Called when we are the serverThread, to let us know we've been resumed
+     * (and should update our internal status accordingly)
+     */
+    public void notifyResumed()
+    {
+        isSuspended = false;
     }
 }

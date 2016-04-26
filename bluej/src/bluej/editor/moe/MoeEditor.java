@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -267,6 +267,9 @@ public final class MoeEditor extends JFrame
      * this editor instance; otherwise unused.
      */
     private HashMap<String,Object> propertyMap = new HashMap<String,Object>();
+    
+    // Blackbox data recording:
+    private ArrayList<String> previousDoc = null;
 
 
     /**
@@ -345,6 +348,8 @@ public final class MoeEditor extends JFrame
                 catch (IOException ioe) {}
                 File file = new File(filename);
                 lastModified = file.lastModified();
+                
+                recordLoadContent();
 
                 sourcePane.addMouseListener(this);
                 sourceDocument = (MoeSyntaxDocument) sourcePane.getDocument();
@@ -1236,7 +1241,13 @@ public final class MoeEditor extends JFrame
         }
         actions.userAction();
         doTextInsert.setEvent(e, sourcePane);
+        
+        // This may handle re-indentation; as this mutates the
+        // document, it must be done outside the notification.
+        // Really, this should be done via another mechanism - i.e.
+        // by binding '}' key to a specialised action. TODO.
         SwingUtilities.invokeLater(doTextInsert);
+        
         scheduleReparseRunner();
     }
 
@@ -1253,6 +1264,7 @@ public final class MoeEditor extends JFrame
             setChanged();
         }
         actions.userAction();
+        
         scheduleReparseRunner();
     }
 
@@ -2616,6 +2628,8 @@ public final class MoeEditor extends JFrame
             catch (IOException ioe) {}
             File file = new File(filename);
             lastModified = file.lastModified();
+            
+            recordLoadContent();
 
             sourceDocument = (MoeSyntaxDocument) sourcePane.getDocument();
             sourceDocument.enableParser(false);
@@ -2989,10 +3003,6 @@ public final class MoeEditor extends JFrame
         actions = MoeActions.getActions(sourcePane);
         actions.setUndoEnabled(false);
         actions.setRedoEnabled(false);
-
-        // **** temporary: disable all unimplemented actions ****
-        actions.getActionByName("show-manual").setEnabled(false);
-        // ****
 
         // create menubar and menus
 
@@ -3800,5 +3810,29 @@ public final class MoeEditor extends JFrame
     protected boolean containsSourceCode() 
     {
         return sourceIsCode;
+    }
+    
+    private void recordLoadContent()
+    {
+        previousDoc = new ArrayList<String>();
+        getLines(previousDoc);
+    }
+    
+    private void getLines(ArrayList<String> lines)
+    {
+        Element parent = sourceDocument.getDefaultRootElement();
+        lines.ensureCapacity(parent.getElementCount());
+        for (int i = 0; i < parent.getElementCount(); i++)
+        {
+            String line = "";
+            try {
+                line = sourceDocument.getText(parent.getElement(i).getStartOffset(), parent.getElement(i).getEndOffset() - parent.getElement(i).getStartOffset());
+            }
+            catch (BadLocationException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+            lines.add(line);
+        }
     }
 }

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -1106,7 +1106,7 @@ public final class Package extends Graph
 
         findSpaceForVertex(t);
         t.analyseSource();
-
+        
         return NO_ERROR;
     }
 
@@ -2535,7 +2535,7 @@ public final class Package extends Graph
         }
 
         @Override
-        public void compilerMessage(Diagnostic diagnostic)
+        public boolean compilerMessage(Diagnostic diagnostic)
         {
             int [] errorPosition = new int[4];
             errorPosition[0] = (int) diagnostic.getStartLine();
@@ -2548,6 +2548,7 @@ public final class Package extends Graph
             else {
                 warningMessage(diagnostic.getFileName(), errorPosition, diagnostic.getMessage());
             }
+            return false;
         }
         
         private void errorMessage(String filename, int [] errorPosition, String message)
@@ -2807,14 +2808,14 @@ public final class Package extends Graph
         }
         
         @Override
-        public void compilerMessage(Diagnostic diagnostic)
+        public boolean compilerMessage(Diagnostic diagnostic)
         {
             super.compilerMessage(diagnostic);
             if (diagnostic.getType() == Diagnostic.ERROR) {
-                errorMessage(diagnostic);
+                return errorMessage(diagnostic);
             }
             else {
-                warningMessage(diagnostic.getFileName(), (int) diagnostic.getStartLine(),
+                return warningMessage(diagnostic.getFileName(), (int) diagnostic.getStartLine(),
                         diagnostic.getMessage());
             }
         }
@@ -2824,7 +2825,7 @@ public final class Package extends Graph
          * This is done by opening the class's source, highlighting the line and
          * showing the message in the editor's information area.
          */
-        private void errorMessage(Diagnostic diagnostic)
+        private boolean errorMessage(Diagnostic diagnostic)
         {
             if (! hadError) {
                 hadError = true;
@@ -2832,7 +2833,7 @@ public final class Package extends Graph
 
                 if (diagnostic.getFileName() == null) {
                     showMessageWithText("compiler-error", diagnostic.getMessage());
-                    return;
+                    return true;
                 }
                 
                 String message = diagnostic.getMessage();
@@ -2851,7 +2852,11 @@ public final class Package extends Graph
                     showMessageWithText("error-in-file", diagnostic.getFileName() + ":" +
                             diagnostic.getStartLine() + "\n" + message);
                 }
+                
+                return true;
             }
+            
+            return false;
         }
 
         /**
@@ -2862,10 +2867,12 @@ public final class Package extends Graph
          * into a single dialog.
          * If searchCompile() built a single list, we wouldn't need to do this
          */
-        private void warningMessage(String filename, int lineNo, String message)
+        private boolean warningMessage(String filename, int lineNo, String message)
         {
             // Add this message-fragment to, and display, the warning dialog
             bluej.compiler.CompilerWarningDialog.getDialog().addWarningMessage(message);
+            
+            return true;
         }
     }
 

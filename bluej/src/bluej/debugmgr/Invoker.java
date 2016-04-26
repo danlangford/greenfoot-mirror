@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -52,6 +52,7 @@ import bluej.debugmgr.objectbench.ObjectWrapper;
 import bluej.pkgmgr.Package;
 import bluej.pkgmgr.PkgMgrFrame;
 import bluej.pkgmgr.Project;
+import bluej.runtime.Shell;
 import bluej.testmgr.record.ConstructionInvokerRecord;
 import bluej.testmgr.record.ExpressionInvokerRecord;
 import bluej.testmgr.record.InvokerRecord;
@@ -94,6 +95,7 @@ public class Invoker
         new HashMap<ConstructorView, ConstructorDialog>();
 
     private JFrame pmf;
+    private boolean codepad; //Used to decide whether to do data collection (don't record if for codepad)
     private File pkgPath;
     private String pkgName;
     private String pkgScopeId;
@@ -180,6 +182,7 @@ public class Invoker
         this.localVars = localVars;
 
         constructing = false;
+        codepad = true;
         commandString = command;
     }
     
@@ -201,6 +204,7 @@ public class Invoker
         this.member = member;
         this.watcher = watcher;
         this.shellName = getShellName();
+        codepad = false;
 
         // in the case of a constructor, we need to construct an object name
         if (member instanceof ConstructorView) {
@@ -235,6 +239,7 @@ public class Invoker
         this.member = member;
         this.watcher = watcher;
         this.shellName = getShellName();
+        codepad = false;
 
         // We want a map of all the type parameters that may appear in the
         // method signature to the corresponding instantiation types from the
@@ -252,7 +257,7 @@ public class Invoker
     /**
      * Initialize most of the invoker's necessary fields via a PkgMgrFrame reference.
      */
-    private void initialize(PkgMgrFrame pmf)
+    private void initialize(final PkgMgrFrame pmf)
     {
         this.pmf = pmf;
         final Package pkg = pmf.getPackage();
@@ -356,7 +361,7 @@ public class Invoker
         else if (event == CallDialog.OK) {
             gotError = false;
             dialog.setEnabled(false);
-            objName = dialog.getNewInstanceName();                
+            objName = dialog.getNewInstanceName();
             String[] actualTypeParams = dialog.getTypeParams();
             doInvocation(dialog.getArgs(), dialog.getArgGenTypes(true), actualTypeParams);
         }
@@ -520,7 +525,7 @@ public class Invoker
                     });
                     
                     final DebuggerResult result = debugger.instantiateClass(className);
-                    
+
                     EventQueue.invokeLater(new Runnable() {
                         public void run() {
                             // the execution is completed, get the result if there was one
@@ -1022,15 +1027,17 @@ public class Invoker
      * @see bluej.compiler.CompileObserver#compilerMessage(bluej.compiler.Diagnostic)
      */
     @Override
-    public void compilerMessage(Diagnostic diagnostic)
+    public boolean compilerMessage(Diagnostic diagnostic)
     {
         if (diagnostic.getType() == Diagnostic.ERROR) {
             if (! gotError) {
                 gotError = true;
                 errorMessage(diagnostic.getFileName(), diagnostic.getStartLine(), diagnostic.getMessage());
+                return true;
             }
         }
         // We ignore warnings for shell classes
+        return false;
     }
     
     /**
@@ -1180,6 +1187,34 @@ public class Invoker
                         // For constructor calls, the result is expected to be the created object.
                         resultObj = resultObj.getInstanceField(0).getValueObject(null);
                     }
+                    if (!codepad)
+                    {
+                        String resultType;
+                        //Only record this if it wasn't on behalf of the codepad (codepad records separately):
+                        if (resultObj.getClassName().startsWith(Shell.class.getCanonicalName()))
+                        {
+                            //Wrapped by Shell class, grab from first field.
+                            if (resultObj.getInstanceField(0).getType().isPrimitive())
+                            {
+                                // If it's a field with primitive type, use type of field:
+                                resultType = resultObj.getInstanceField(0).getType().toString();  
+                            }
+                            else
+                            {
+                                // Take type from resulting object:
+                                resultType = resultObj.getInstanceField(0).getValueObject(null).getClassName();
+                            }
+                        }
+                        else
+                        {
+                            resultType = resultObj.getClassName();
+                            if (resultType.equals(""))
+                            {
+                                resultType = "void";
+                            }
+                        }
+                    }
+                    
                     ir.setResultObject(resultObj);
                     watcher.putResult(resultObj, objName, ir);
                     break;
@@ -1190,6 +1225,7 @@ public class Invoker
                     break;
 
                 case Debugger.TERMINATED : // terminated by user
+                    if (!codepad)
                     watcher.putVMTerminated(ir);
                     break;
 

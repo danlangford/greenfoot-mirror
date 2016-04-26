@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -49,6 +49,7 @@ import org.junit.Test;
 
 import bluej.Config;
 import bluej.debugger.DebuggerObject;
+import bluej.debugmgr.objectbench.ObjectWrapper;
 import bluej.editor.Editor;
 import bluej.parser.SourceLocation;
 import bluej.parser.SourceSpan;
@@ -393,7 +394,7 @@ public class UnitTestClassRole extends ClassRole
 
         pmf.getProject().removeClassLoader();
 
-        runTestSetup(pmf, ct);
+        runTestSetup(pmf, ct, false);
         
         pmf.getObjectBench().resetRecordingInteractions();
         pmf.setTestInfo(newTestName, ct);
@@ -439,7 +440,7 @@ public class UnitTestClassRole extends ClassRole
      * @param pmf  The package manager frame to run the setup in
      * @param ct   The classtarget for the test class
      */
-    private void runTestSetup(final PkgMgrFrame pmf, final ClassTarget ct)
+    private void runTestSetup(final PkgMgrFrame pmf, final ClassTarget ct, final boolean recordAsFixtureToBench)
     {
         // Avoid running test setup (which is user code) on the event thread.
         // Run it on a new thread instead.
@@ -575,7 +576,7 @@ public class UnitTestClassRole extends ClassRole
             PkgMgrFrame.showMessageWithText(pmf.getPackage(), "generic-file-save-error", ioe.getLocalizedMessage());
         }
         
-        runTestSetup(pmf, ct);
+        runTestSetup(pmf, ct, true);
         
         pmf.getObjectBench().addInteraction(existing);
     }   
@@ -631,6 +632,14 @@ public class UnitTestClassRole extends ClassRole
             // make it worse by trying to edit the source
             if (fixtureInsertLocation == null) {
                 return;
+            }
+            
+            {
+                List<String> names = new ArrayList<String>();
+                for (ObjectWrapper obj : pmf.getObjectBench().getObjects())
+                {
+                    names.add(obj.getName());
+                }
             }
             
             // find the curly brackets for the setUp() method

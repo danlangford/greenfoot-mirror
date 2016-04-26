@@ -14,8 +14,8 @@
 
     <!-- Greenfoot Version Number -->
     <property name="greenfoot.version.major" value="2"/>
-    <property name="greenfoot.version.minor" value="2"/>
-    <property name="greenfoot.version.micro" value="1"/>
+    <property name="greenfoot.version.minor" value="3"/>
+    <property name="greenfoot.version.micro" value="0"/>
     
     <!-- Change when API has changed in a way that is likely to break some scenarios. 
     A warning will be shown to the user - update the greenfoot-labels file to
@@ -26,7 +26,7 @@
     unlikely to break scenarios (documentation changes, addition of method).
     Changing this number will stripe the user's classes and require a recompile.
     Do not change this number if the changes cannot break older scenarios. -->
-    <property name="greenfoot.apiversion.nonbreaking" value="4"/>
+    <property name="greenfoot.apiversion.nonbreaking" value="5"/>
     
     <!-- Change when API has only changed internally and not in any way visible to the user. 
     It should not be possible for this change to break existing scenarios. 
@@ -60,7 +60,7 @@
         <pathelement location="${bluej.projectdir}/lib/junit-4.8.2.jar"/>
         <pathelement location="${bluej.projectdir}/lib/AppleJavaExtensions.jar"/>
         <pathelement location="${bluej.projectdir}/lib/commons-httpclient-3.1.jar"/>
-        <pathelement location="${bluej.projectdir}/lib/commons-logging-api-1.1.1.jar"/> 
+        <pathelement location="${bluej.projectdir}/lib/commons-logging-api-1.1.2.jar"/> 
         <pathelement location="${jlayer.jar.path}"/>
         <pathelement location="${bluej.projectdir}/lib/opencsv-2.3.jar"/>
     </path>
@@ -72,7 +72,8 @@
     <!-- Location of the files packed by BlueJ dist target -->
     <property name="bluej.installer.jar"  location="${bluej.projectdir}/package/Greenfoot-generic.jar"/>
     <property name="bluej.dist.jar"  location="${bluej.projectdir}/package/greenfoot-dist.jar"/>
-    <property name="bluej.dist.mac"  location="${bluej.projectdir}/package/Greenfoot-mac.zip"/>
+    <property name="greenfoot.dist.mac"  location="${bluej.projectdir}/package/Greenfoot-mac.zip"/>
+    <property name="greenfootlegacy.dist.mac"  location="${bluej.projectdir}/package/Greenfoot-mac-legacy.zip"/>
     
     <!-- Location of the zip with the sources for greenfoot -->
     <property name="greenfoot.source.zip" location="package/Greenfoot-source-${greenfoot.version}.zip"/>
@@ -133,6 +134,8 @@
 	<!-- License files that will be included in the distribution -->
     <fileset id="greenfoot.license.files" dir="doc/">
         <include name="GREENFOOT_LICENSES.txt" />
+    	<include name="LICENSE.txt" />
+    	<include name="THIRDPARTYLICENSE.txt" />
     </fileset>
 
     <!-- If you change the first or last lines of this license you might want
@@ -234,7 +237,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <macrodef name="compile-scenario">
             <attribute name="scenario" />
             <sequential>
-                <javac srcdir="scenarios/@{scenario}" debug="true" target="1.6">
+                <javac srcdir="scenarios/@{scenario}" debug="true" target="1.6" source="1.6">
                     <classpath>
                         <path refid="greenfoot.class.path"/>
                         <path refid="bluej.class.path"/>
@@ -371,6 +374,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <copy file="resources/images/greenfoot-icon-16.png" tofile="imagelib/other/greenfoot.png"/>
         <!-- Greenfoot icon for application on the mac: greenfoot.icns -->
         <copy file="resources/images/greenfoot.icns" todir="${bluej.projectdir}/package/macfiles/Greenfoot.app/Contents/Resources"/>
+        <copy file="resources/images/greenfoot.icns" todir="${bluej.projectdir}/package/macfiles/Greenfoot-legacy.app/Contents/Resources"/>
 
         <!-- Greenfoot icon for application: greenfoot-16.png -->
         <copy file="resources/images/greenfoot-icon-16.png" tofile="images/greenfoot.png"/>
@@ -406,11 +410,9 @@ LICENSE.txt file that accompanied this code.${line.separator}
 
         <move file="${bluej.installer.jar}" tofile="${package}/Greenfoot-generic-${greenfoot.version.nodots}${greenfoot.rcsuffix}.jar"/>
         <move file="${bluej.dist.jar}" tofile="${package}/greenfoot-dist-${greenfoot.version.nodots}${greenfoot.rcsuffix}.jar"/>
-        <move file="${bluej.dist.mac}" tofile="${package}/Greenfoot-mac-${greenfoot.version.nodots}${greenfoot.rcsuffix}.zip"/>
 
         <echo message="The greenfoot dist-jar (used to build windows installer)s is in ${package}/greenfoot-dist-${greenfoot.version.nodots}${greenfoot.rcsuffix}.jar"/>
         <echo message="The greenfoot jar-installer is in ${package}/Greenfoot-generic-${greenfoot.version.nodots}${greenfoot.rcsuffix}.jar"/>
-        <echo message="The greenfoot Mac-installer is in ${package}/Greenfoot-mac-${greenfoot.version.nodots}${greenfoot.rcsuffix}.zip"/>
         <echo message="And don't forget to copy this to the gallery: ${package}/Greenfoot-core-${greenfoot.apiversion.public}.jar"/>
     </target>
 	
@@ -421,6 +423,14 @@ LICENSE.txt file that accompanied this code.${line.separator}
 	
 	<target name="windows-msi-dist" depends="update-images, dist">
 	    <ant dir="${bluej.projectdir}/package" antfile="greenfoot-build.xml" target="windows-msi-dist" />
+	</target>
+	
+	<target name="mac-dist">
+	    <ant dir="${bluej.projectdir}/package" antfile="greenfoot-build.xml" target="mac-dist" />
+        <move file="${greenfoot.dist.mac}" tofile="${package}/Greenfoot-mac-${greenfoot.version.nodots}${greenfoot.rcsuffix}.zip"/>
+        <move file="${greenfootlegacy.dist.mac}" tofile="${package}/Greenfoot-mac-legacy-${greenfoot.version.nodots}${greenfoot.rcsuffix}.zip"/>
+        <echo message="The greenfoot Mac-installer is in ${package}/Greenfoot-mac-${greenfoot.version.nodots}${greenfoot.rcsuffix}.zip"/>
+        <echo message="The greenfoot Mac-installer (legacy) is in ${package}/Greenfoot-mac-legacy-${greenfoot.version.nodots}${greenfoot.rcsuffix}.zip"/>
 	</target>
 
     <target name="clean" description="clean up" >
@@ -583,7 +593,8 @@ LICENSE.txt file that accompanied this code.${line.separator}
             
             classpathref="bluej.class.path" 
             debug="true"
-            sourcepath=""            
+            sourcepath=""
+        	source="1.6"
             target="1.6"
         >
             <src path="${src}"/>
@@ -606,7 +617,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
             <include name="greenfoot/core/Simulation.java"/>
             <include name="greenfoot/core/ObjectDragProxy.java"/>
             <include name="greenfoot/core/ActInterruptedException.java"/>
-
+        	<include name="greenfoot/core/ImageCache.java"/>
 
             <include name="greenfoot/event/SimulationEvent.java"/>
             <include name="greenfoot/event/SimulationListener.java"/>
@@ -652,11 +663,11 @@ LICENSE.txt file that accompanied this code.${line.separator}
 
 
         <!-- Readme label icon -->
-        <copy file="resources/images/readme.png" todir="${standalone.build}"/>
+        <!-- <copy file="resources/images/readme.png" todir="${standalone.build}"/> -->
         <!-- Image used when dragging object over an area where it can not be dropped  -->
         <copy file="resources/images/noParking.png" todir="${standalone.build}"/>
         <!-- Image selection dialog icon -->
-        <copy file="resources/images/openRight.png" todir="${standalone.build}"/>
+        <!-- <copy file="resources/images/openRight.png" todir="${standalone.build}"/> -->
         <!-- Control panel icons-->
         <copy file="resources/images/run.png" todir="${standalone.build}"/>
         <copy file="resources/images/step.png" todir="${standalone.build}"/>
@@ -666,7 +677,12 @@ LICENSE.txt file that accompanied this code.${line.separator}
         <!-- Copy bluej.Config classes to allow use of i18n labels  -->
         <copy todir="${standalone.build}">
             <fileset dir="${bluej.projectdir}/classes/">
-                <include name="bluej/*.class"/>
+                <include name="bluej/Config.class"/>
+                <include name="bluej/Config$*.class"/>
+            	<include name="bluej/BlueJPropStringSource.class"/>
+            	<include name="bluej/BlueJTheme.class"/>
+            	<include name="bluej/PropParser.class"/>
+            	<include name="bluej/PropParser$*.class"/>
             </fileset>
         </copy>
     </target>
@@ -690,11 +706,14 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 <include name="doc/THIRDPARTYLICENSE.txt" />
                 <include name="doc/LICENSE.txt" />  
                 <include name="doc/GREENFOOT_LICENSES.txt" />
-            	<include name="doc/README.TXT" />
+            	<include name="doc/Greenfoot-README.TXT" />
                 <patternset refid="distribution.scenarios"/>
                 <exclude name="scenarios/**/*.class" />    
-                <exclude name="scenarios/**/greenfoot/" />   
+                <exclude name="scenarios/**/greenfoot/" />
                 
+            	<include name="common/*.java" />
+                <include name="common/*.png" />
+                <include name="common/*.gif" />
                 <include name="imagelib/**/*" />           
                 <exclude name="images/**/*" />     
                 <include name="labels/**/*"/>
@@ -704,7 +723,7 @@ LICENSE.txt file that accompanied this code.${line.separator}
                 <include name="package/jl*.jar"/>
                 <include name="projects/**/*" />   
                 <include name="resources/**/*" />    
-                <include name="test/**/*.java" />    
+                <include name="test/**/*.java" />
                     
                 <include name="build.properties" />   
                 <include name="build.xml" />  

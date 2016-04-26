@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011,2012  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -224,11 +224,13 @@ public class GreenfootScenarioViewer extends JApplet
             Class<?> worldClass = Class.forName(worldClassName);
             worldConstructor = worldClass.getConstructor(new Class[]{});
             World world = instantiateNewWorld();
-            worldHandler.setWorld(world);
+            if (! worldHandler.checkWorldSet()) {
+                worldHandler.setWorld(world);
+            }
             // Although setting the world on worldHandler also sets it on canvas,
             // it does so later (via EventQueue.invokeLater()). We need to do it
             // here and now, so that the canvas size will be calculated correctly.
-            canvas.setWorld(world);
+            canvas.setWorld(worldHandler.getWorld());
             
             buildGUI();
         }

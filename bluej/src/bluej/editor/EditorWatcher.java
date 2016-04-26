@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -20,6 +20,7 @@
  LICENSE.txt file that accompanied this code.
  */
 package bluej.editor;
+
 
 /**
  * @author Michael Kolling
@@ -47,8 +48,8 @@ public interface EditorWatcher
 
     /**
      * Called by Editor to set/clear a breakpoint
-     * @param lineNo		the line number of the breakpoint
-     * @param set		whether the breakpoint is set (true) or cleared
+     * @param lineNo the line number of the breakpoint
+     * @param set    whether the breakpoint is set (true) or cleared
      * @return             An error message or null if okay.
      */
     String breakpointToggleEvent(Editor editor, int lineNo, 
@@ -73,5 +74,4 @@ public interface EditorWatcher
      * Gets a property
      */
     String getProperty(String key);
-
-} // end class EditorWatcher
+}

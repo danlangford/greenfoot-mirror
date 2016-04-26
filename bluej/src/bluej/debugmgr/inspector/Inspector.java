@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -45,6 +45,7 @@ import java.awt.event.WindowEvent;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -111,6 +112,11 @@ public abstract class Inspector extends JFrame
     protected InspectorManager inspectorManager;
     protected InvokerRecord ir;
     protected Point initialClick;
+    
+    // Each inspector is uniquely numbered in a session, for the purposes
+    // of data collection:
+    private static AtomicInteger nextUniqueId = new AtomicInteger(1);
+    private final int uniqueId;
 
     //The width of the list of fields
     private static final int MIN_LIST_WIDTH = 150;
@@ -169,6 +175,7 @@ public abstract class Inspector extends JFrame
         this.inspectorManager = inspectorManager;
         this.pkg = pkg;
         this.ir = ir;
+        this.uniqueId = nextUniqueId.incrementAndGet();
 
         // We want to be able to veto a close
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -731,5 +738,10 @@ public abstract class Inspector extends JFrame
    protected void setWindowOpaque(boolean b)
    {
        AWTUtilitiesWrapper.setWindowOpaque(this, b);
+   }
+   
+   public int getUniqueId()
+   {
+       return uniqueId;
    }
 }
