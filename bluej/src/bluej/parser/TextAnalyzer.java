@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -49,6 +49,8 @@ import bluej.debugger.gentype.Reflective;
 import bluej.debugmgr.NamedValue;
 import bluej.debugmgr.ValueCollection;
 import bluej.debugmgr.texteval.DeclaredVar;
+import bluej.parser.entity.ConstantFloatValue;
+import bluej.parser.entity.ConstantIntValue;
 import bluej.parser.entity.EntityResolver;
 import bluej.parser.entity.JavaEntity;
 import bluej.parser.entity.PackageEntity;
@@ -70,7 +72,6 @@ import bluej.utility.JavaUtils;
  */
 public class TextAnalyzer
 {
-    //private ClassLoader classLoader;
     private EntityResolver parentResolver;
     private String packageScope;  // evaluation package
     private ValueCollection objectBench;
@@ -404,99 +405,149 @@ public class TextAnalyzer
 //    }
     
     /**
+     * Test whether the given value fits in the range representable by byte, short or char
+     */
+    private static boolean doesValueFitIntType(long value, JavaType type)
+    {
+        if (type.typeIs(JavaType.JT_BYTE)) {
+            return value <= Byte.MAX_VALUE && value >= Byte.MIN_VALUE;
+        }
+        else if (type.typeIs(JavaType.JT_CHAR)) {
+            return value <= Character.MAX_VALUE && value >= Character.MIN_VALUE;
+        }
+        else if (type.typeIs(JavaType.JT_SHORT)) {
+            return value <= Short.MAX_VALUE && value >= Short.MIN_VALUE;
+        }
+        
+        return false;
+    }
+    
+    /**
      * Java 1.5 version of the trinary "? :" operator.
      * See JLS section 15.25. Note that JLS 3rd ed. differs extensively
      * from JLS 2nd edition. The changes are not backwards compatible.
      */
-    public static JavaType questionOperator15(JavaEntity trueAlt, JavaEntity falseAlt)
+    public static ValueEntity questionOperator15(ValueEntity condition, ValueEntity trueAlt, ValueEntity falseAlt)
     {
         JavaType trueAltType = trueAlt.getType();
         JavaType falseAltType = falseAlt.getType();
+        JavaType conditionType = condition.getType();
+        
+        // The condition must be boolean:
+        if (conditionType == null || ! conditionType.typeIs(JavaPrimitiveType.JT_BOOLEAN)) {
+            return null;
+        }
         
         // if we don't know the type of both alternatives, we don't
         // know the result type:
-        if (trueAltType == null || falseAltType == null)
+        if (trueAltType == null || falseAltType == null) {
             return null;
+        }
         
         // Neither argument can be a void type.
         if (trueAltType.isVoid() || falseAltType.isVoid()) {
             return null;
         }
         
-        if (trueAltType.equals(falseAltType)) {
-            return trueAltType;
-        }
-        
         // if the second & third arguments have the same type, then
         // that is the result type:
-        if (trueAltType.equals(falseAltType))
-            return trueAltType;
+        if (trueAltType.equals(falseAltType)) {
+            if (condition.hasConstantBooleanValue() && ValueEntity.isConstant(trueAlt) && ValueEntity.isConstant(falseAlt)) {
+                return condition.getConstantBooleanValue() ? trueAlt : falseAlt;
+            }
+            return new ValueEntity(trueAltType);
+        }
+
+        // If one of the operands is the null type and the other is a reference type,
+        // the type of the conditional expression is that of the reference type:
+        if (trueAltType.isNull() && !falseAltType.isPrimitive()) {
+            // The result cannot be a compile-time constant as expression contains a null
+            return new ValueEntity(falseAltType);
+        }
+        
+        // Otherwise:
+        String trueAltStr = trueAltType.toString();
+        String falseAltStr = falseAltType.toString();
+        
+        boolean trueIsByte = trueAltStr.equals("byte") || trueAltStr.equals("java.lang.Byte");
+        boolean falseIsShort = falseAltStr.equals("short") || falseAltStr.equals("java.lang.Short");
+        boolean falseIsByte = falseAltStr.equals("byte") || falseAltStr.equals("java.lang.Byte");
+        boolean trueIsShort = trueAltStr.equals("short") || trueAltStr.equals("java.lang.Short");
+        
+        if (trueIsByte && falseIsShort || falseIsByte && trueIsShort) {
+            if (condition.hasConstantBooleanValue() && trueAlt.hasConstantIntValue() && falseAlt.hasConstantIntValue()) {
+                long intVal = condition.getConstantBooleanValue() ? trueAlt.getConstantIntValue()
+                        : falseAlt.getConstantIntValue();
+                return new ConstantIntValue(null, JavaPrimitiveType.getShort(), intVal);
+            }
+            return new ValueEntity(JavaPrimitiveType.getShort());
+        }
+
+        // If one of the types is byte/short/char (possibly boxed) and the other is of type int, and is a constant
+        // whose value fits in the first type, then the result is of the first type (unboxed).
         
         JavaType trueUnboxed = unBox(trueAltType);
+        boolean trueIsSmallInt = trueUnboxed.typeIs(JavaType.JT_BYTE) || trueUnboxed.typeIs(JavaType.JT_SHORT)
+                || trueUnboxed.typeIs(JavaType.JT_CHAR);
+        
+        if (trueIsSmallInt && falseAltType.typeIs(JavaType.JT_INT) && falseAlt.hasConstantIntValue()) {
+            long fval = falseAlt.getConstantIntValue();
+            if (doesValueFitIntType(fval, trueAltType)) {
+                if (trueAlt.hasConstantIntValue() && condition.hasConstantBooleanValue()) {
+                    long val = condition.getConstantBooleanValue() ? trueAlt.getConstantIntValue()
+                            : falseAlt.getConstantIntValue();
+                    return new ConstantIntValue(null, trueAltType, val);
+                }
+                return new ValueEntity(trueUnboxed);
+            }
+        }
+        
         JavaType falseUnboxed = unBox(falseAltType);
+        boolean falseIsSmallInt = falseUnboxed.typeIs(JavaType.JT_BYTE) || falseUnboxed.typeIs(JavaType.JT_SHORT)
+                || falseUnboxed.typeIs(JavaType.JT_CHAR);
+
+        if (falseIsSmallInt && trueAltType.typeIs(JavaType.JT_INT) && trueAlt.hasConstantIntValue()) {
+            long fval = trueAlt.getConstantIntValue();
+            if (doesValueFitIntType(fval, falseAltType)) {
+                if (falseAlt.hasConstantIntValue() && condition.hasConstantBooleanValue()) {
+                    long val = condition.getConstantBooleanValue() ? trueAlt.getConstantIntValue()
+                            : falseAlt.getConstantIntValue();
+                    return new ConstantIntValue(null, falseUnboxed, val);
+                }
+                return new ValueEntity(falseUnboxed);
+            }
+        }
         
-        // if one the arguments is of type boolean and the other
-        // Boolean, the result type is boolean.
-        if (trueUnboxed.typeIs(JavaType.JT_BOOLEAN) && falseUnboxed.typeIs(JavaType.JT_BOOLEAN))
-            return trueUnboxed;
+        // Binary numeric promotion?
         
-        // if one type is null and the other is a reference type, the
-        // return is that reference type.
-        //   Also partially handle the final case from the JLS,
-        // involving boxing conversion & capture conversion (which
-        // is trivial when non-parameterized types such as boxed types
-        // are involved)
-        // 
-        // This precludes either type from being null later on.
-        if (trueAltType.typeIs(JavaType.JT_NULL))
-            return boxType(falseAltType);
-        if (falseAltType.typeIs(JavaType.JT_NULL))
-            return boxType(trueAltType);
-        
-        // if the two alternatives are convertible to numeric types,
-        // there are several cases:
         if (trueUnboxed.isNumeric() && falseUnboxed.isNumeric()) {
-            // If one is byte/Byte and the other is short/Short, the
-            // result type is short.
-            if (trueUnboxed.typeIs(JavaType.JT_BYTE) && falseUnboxed.typeIs(JavaType.JT_SHORT))
-                return falseUnboxed;
-            if (falseUnboxed.typeIs(JavaType.JT_BYTE) && trueUnboxed.typeIs(JavaType.JT_SHORT))
-                return trueUnboxed;
-            
-            // If one type, when unboxed, is byte/short/char, and the
-            // other is an integer constant whose value fits in the
-            // first, the result type is the (unboxed) former type. (The JLS
-            // takes four paragraphs to say this, but the result is the
-            // same).
-            //if (isMinorInteger(trueUnboxed) && falseAltType.typeIs(JavaType.JT_INT) && falseAltEv.knownValue()) {
-            //    int kval = falseAltEv.intValue();
-            //    if (trueUnboxed.couldHold(kval))
-            //        return trueUnboxed;
-            //}
-            //if (isMinorInteger(falseUnboxed) && trueAltType.typeIs(JavaType.JT_INT) && trueAltEv.knownValue()) {
-            //    int kval = trueAltEv.intValue();
-            //    if (falseUnboxed.couldHold(kval))
-            //        return falseUnboxed;
-            //}
-            
-            // Otherwise apply binary numeric promotion
-            return binaryNumericPromotion(trueAltType, falseAltType);
+            JavaType rtype = binaryNumericPromotion(trueUnboxed, falseUnboxed);
+            if (condition.hasConstantBooleanValue() && ValueEntity.isConstant(trueAlt) && ValueEntity.isConstant(falseAlt)) {
+                ValueEntity relevantAlt = condition.getConstantBooleanValue() ? trueAlt : falseAlt;
+                if (rtype.typeIs(JavaType.JT_DOUBLE) || rtype.typeIs(JavaType.JT_FLOAT)) {
+                    double val;
+                    if (relevantAlt.getType().typeIs(JavaType.JT_DOUBLE) || relevantAlt.getType().typeIs(JavaType.JT_FLOAT)) {
+                        val = relevantAlt.getConstantFloatValue();
+                    }
+                    else {
+                        // the relevant alternative is an integer promoted to a float
+                        val = relevantAlt.getConstantIntValue();
+                    }
+                    return new ConstantFloatValue(rtype, val);
+                }
+                long val = condition.getConstantBooleanValue() ? trueAlt.getConstantIntValue()
+                        : falseAlt.getConstantIntValue();
+                return new ConstantIntValue(null, rtype, val);
+            }
+            return new ValueEntity(rtype);
         }
         
-        // Box both alternatives:
-        trueAltType = boxType(trueAltType);
-        falseAltType = boxType(falseAltType);
+        // No - reference types.
         
-        if (trueAltType.asSolid() != null && falseAltType.asSolid() != null) {
-            // apply capture conversion (JLS 5.1.10) to lub() of both
-            // alternatives (JLS 15.12.2.7).
-            GenTypeSolid [] lubArgs = new GenTypeSolid[2];
-            lubArgs[0] = trueAltType.asSolid();
-            lubArgs[1] = falseAltType.asSolid();
-            return captureConversion(GenTypeSolid.lub(lubArgs));
-        }
-        
-        return null;
+        GenTypeSolid trueBoxed = boxType(trueAltType);
+        GenTypeSolid falseBoxed = boxType(falseAltType);
+        GenTypeSolid rtype = GenTypeSolid.lub(new GenTypeSolid[] {trueBoxed, falseBoxed});
+        return new ValueEntity(rtype.getCapture());
     }
     
     /**
@@ -593,9 +644,8 @@ public class TextAnalyzer
     }
     
     /**
-     * Unary numeric promotion, as defined by JLS section 5.6.1
-     *  (http://java.sun.com/docs/books/jls/third_edition/html/conversions.html#5.6.1)
-     * 
+     * Unary numeric promotion, as defined by JLS 3rd ed. section 5.6.1
+     * Return is null if argument type is not convertible to a numeric type.
      */
     public static JavaType unaryNumericPromotion(JavaType a)
     {
@@ -771,22 +821,22 @@ public class TextAnalyzer
      * 
      * @param targetType   The type of object/class to which the method is
      *                     being applied
-     * @param tpars     The explicitly specified type parameters used in the
+     * @param targs     The explicitly specified type arguments used in the
      *                  invocation of a generic method (list of GenTypeClass)
      * @param m       The method to check
      * @param args    The types of the arguments supplied to the method
      * @return   A record with information about the method call
      * @throws RecognitionException
      */
-    private static MethodCallDesc isMethodApplicable(GenTypeClass targetType, List<GenTypeClass> tpars, MethodReflective m, JavaType [] args)
+    private static MethodCallDesc isMethodApplicable(GenTypeClass targetType, List<GenTypeParameter> targs, MethodReflective m, JavaType [] args)
     {
         boolean methodIsVarargs = m.isVarArgs();
         MethodCallDesc rdesc = null;
         
         // First try without varargs expansion. If that fails, try with expansion.
-        rdesc = isMethodApplicable(targetType, tpars, m, args, false);
+        rdesc = isMethodApplicable(targetType, targs, m, args, false);
         if (rdesc == null && methodIsVarargs) {
-            rdesc = isMethodApplicable(targetType, tpars, m, args, true);
+            rdesc = isMethodApplicable(targetType, targs, m, args, true);
         }
         return rdesc;
     }
@@ -801,7 +851,7 @@ public class TextAnalyzer
      * 
      * @param targetType   The type of object/class to which the method is
      *                     being applied
-     * @param tpars     The explicitly specified type parameters used in the
+     * @param targs     The explicitly specified type parameters used in the
      *                  invocation of a generic method (list of GenTypeClass)
      * @param m       The method to check
      * @param args    The types of the arguments supplied to the method
@@ -810,7 +860,7 @@ public class TextAnalyzer
      * @throws RecognitionException
      */
     private static MethodCallDesc isMethodApplicable(GenTypeClass targetType,
-            List<GenTypeClass> tpars, MethodReflective m, JavaType [] args, boolean varargs)
+            List<GenTypeParameter> targs, MethodReflective m, JavaType [] args, boolean varargs)
     {
         boolean rawTarget = targetType.isRaw();
         boolean boxingRequired = false;
@@ -824,11 +874,12 @@ public class TextAnalyzer
             if (mparams.size() > args.length + 1)
                 return null;
 
-            GenTypeSolid lastArgType = mparams.get(mparams.size() - 1).getArray();
+            GenTypeSolid lastArgType = mparams.get(mparams.size() - 1).asSolid();
             JavaType vaType = lastArgType.getArrayComponent();
             List<JavaType> expandedParams = new ArrayList<JavaType>(args.length);
             expandedParams.addAll(mparams);
-            for (int i = mparams.size(); i < args.length; i++) {
+            expandedParams.remove(expandedParams.size() - 1); // remove the vararg array
+            for (int i = mparams.size() - 1; i < args.length; i++) {
                 expandedParams.add(vaType);
             }
             mparams = expandedParams;
@@ -850,19 +901,21 @@ public class TextAnalyzer
         // is zero. Section 15.12.2 of the JLS, "a non generic method may be applicable
         // to an invocation which supplies type arguments" (in which case the type args
         // are ignored).
-        if (! tpars.isEmpty() && ! tparams.isEmpty() && tpars.size() != tparams.size())
+        if (! targs.isEmpty() && ! tparams.isEmpty() && targs.size() != tparams.size())
             return null;
         
         // Set up a map we can use to put actual/inferred type arguments. Initialise it
         // with the target type's arguments.
         Map<String,GenTypeParameter> tparMap;
-        if (rawTarget)
+        if (rawTarget) {
             tparMap = new HashMap<String,GenTypeParameter>();
-        else
+        }
+        else {
             tparMap = targetType.getMap();
+        }
 
         // Perform type inference, if necessary
-        if (! tparams.isEmpty() && tpars.isEmpty()) {
+        if (! tparams.isEmpty() && targs.isEmpty()) {
             // Our initial map has the class type parameters, minus those which are
             // shadowed by the method's type parameters (map to themselves).
             for (Iterator<GenTypeDeclTpar> i = tparams.iterator(); i.hasNext(); ) {
@@ -875,8 +928,9 @@ public class TextAnalyzer
             
             // Time for some type inference
             for (int i = 0; i < mparams.size(); i++) {
-                if (mparams.get(i).isPrimitive())
+                if (mparams.get(i).isPrimitive()) {
                     continue;
+                }
                 
                 GenTypeSolid mparam = (GenTypeSolid) mparams.get(i);
                 mparam = mparam.mapTparsToTypes(tparMap).getCapture().asSolid();
@@ -886,7 +940,7 @@ public class TextAnalyzer
             // what we have now is a map with tpar constraints.
             // Some tpars may not have been constrained: these are inferred to be the
             // intersection of their upper bounds.
-            tpars = new ArrayList<GenTypeClass>();
+            targs = new ArrayList<GenTypeParameter>();
             Iterator<GenTypeDeclTpar> i = tparams.iterator();
             while (i.hasNext()) {
                 GenTypeDeclTpar fTpar = (GenTypeDeclTpar) i.next();
@@ -906,7 +960,7 @@ public class TextAnalyzer
                     }
                 }
                 eqConstraint = (GenTypeSolid) eqConstraint.mapTparsToTypes(tparMap);
-                tpars.add((GenTypeClass) eqConstraint);
+                targs.add((GenTypeClass) eqConstraint);
                 tparMap.put(tparName, eqConstraint);
             }
         }
@@ -914,7 +968,7 @@ public class TextAnalyzer
             // Get a map of type parameter names to types from the target type
             // complete the type parameter map with tpars of the method
             Iterator<GenTypeDeclTpar> formalI = tparams.iterator();
-            Iterator<GenTypeClass> actualI = tpars.iterator();
+            Iterator<GenTypeParameter> actualI = targs.iterator();
             while (formalI.hasNext()) {
                 GenTypeDeclTpar formalTpar = (GenTypeDeclTpar) formalI.next();
                 GenTypeSolid argTpar = (GenTypeSolid) actualI.next();
@@ -1261,7 +1315,7 @@ public class TextAnalyzer
      * @throws RecognitionException
      */
     public static ArrayList<MethodCallDesc> getSuitableMethods(String methodName,
-            GenTypeSolid targetType, JavaType [] argumentTypes, List<GenTypeClass> typeArgs,
+            GenTypeSolid targetType, JavaType [] argumentTypes, List<GenTypeParameter> typeArgs,
             Reflective accessType)
     {
         ArrayList<MethodCallDesc> suitableMethods = new ArrayList<MethodCallDesc>();
@@ -1375,77 +1429,79 @@ public class TextAnalyzer
         GenTypeClass c = b.asClass();
         if (c != null) {
             String cName = c.classloaderName();
-            if (cName.equals("java.lang.Integer"))
+            if (cName.equals("java.lang.Integer")) {
                 return JavaPrimitiveType.getInt();
-            else if (cName.equals("java.lang.Long"))
+            }
+            else if (cName.equals("java.lang.Long")) {
                 return JavaPrimitiveType.getLong();
-            else if (cName.equals("java.lang.Short"))
+            }
+            else if (cName.equals("java.lang.Short")) {
                 return JavaPrimitiveType.getShort();
-            else if (cName.equals("java.lang.Byte"))
+            }
+            else if (cName.equals("java.lang.Byte")) {
                 return JavaPrimitiveType.getByte();
-            else if (cName.equals("java.lang.Character"))
+            }
+            else if (cName.equals("java.lang.Character")) {
                 return JavaPrimitiveType.getChar();
-            else if (cName.equals("java.lang.Float"))
+            }
+            else if (cName.equals("java.lang.Float")) {
                 return JavaPrimitiveType.getFloat();
-            else if (cName.equals("java.lang.Double"))
+            }
+            else if (cName.equals("java.lang.Double")) {
                 return JavaPrimitiveType.getDouble();
-            else if (cName.equals("java.lang.Boolean"))
+            }
+            else if (cName.equals("java.lang.Boolean")) {
                 return JavaPrimitiveType.getBoolean();
-            else
+            }
+            else {
                 return b;
+            }
         }
-        else
+        else {
             return b;
+        }
     }
     
     /**
      * Box a type, if it is a primitive type such as "int".<p>
      * 
-     * Other types are returned unchanged.<p>
-     * 
-     * To determine whether boxing occurred, compare the result with the
-     * object which was passed in. (The same object will be returned if no
-     * boxing took place).
+     * Other types are returned unchanged, however void/null types return null.<p>
      * 
      * @param b  The type to box
      * @return  The boxed type
      */
-    private static JavaType boxType(JavaType u)
+    private static GenTypeSolid boxType(JavaType u)
     {
-        if (u instanceof JavaPrimitiveType) {
-            if (u.typeIs(JavaType.JT_INT))
+        if (u.isPrimitive()) {
+            if (u.typeIs(JavaType.JT_INT)) {
                 return new GenTypeClass(new JavaReflective(Integer.class));
-            else if (u.typeIs(JavaType.JT_LONG))
+            }
+            else if (u.typeIs(JavaType.JT_LONG)) {
                 return new GenTypeClass(new JavaReflective(Long.class));
-            else if (u.typeIs(JavaType.JT_SHORT))
+            }
+            else if (u.typeIs(JavaType.JT_SHORT)) {
                 return new GenTypeClass(new JavaReflective(Short.class));
-            else if (u.typeIs(JavaType.JT_BYTE))
+            }
+            else if (u.typeIs(JavaType.JT_BYTE)) {
                 return new GenTypeClass(new JavaReflective(Byte.class));
-            else if (u.typeIs(JavaType.JT_CHAR))
+            }
+            else if (u.typeIs(JavaType.JT_CHAR)) {
                 return new GenTypeClass(new JavaReflective(Character.class));
-            else if (u.typeIs(JavaType.JT_FLOAT))
+            }
+            else if (u.typeIs(JavaType.JT_FLOAT)) {
                 return new GenTypeClass(new JavaReflective(Float.class));
-            else if (u.typeIs(JavaType.JT_DOUBLE))
+            }
+            else if (u.typeIs(JavaType.JT_DOUBLE)) {
                 return new GenTypeClass(new JavaReflective(Double.class));
-            else if (u.typeIs(JavaType.JT_BOOLEAN))
+            }
+            else if (u.typeIs(JavaType.JT_BOOLEAN)) {
                 return new GenTypeClass(new JavaReflective(Boolean.class));
-            else
-                return u;
+            }
         }
-        else
-            return u;
+        
+        return u.asSolid();
     }
-    
-    static public boolean isBoxedBoolean(JavaType t)
-    {
-        GenTypeClass ct = t.asClass();
-        if (ct != null) {
-            return ct.classloaderName().equals("java.lang.Boolean");
-        }
-        else
-            return false;
-    }
-    
+        
     /**
      * Conditionally box a type. The type is only boxed if the boolean flag
      * passed in the second parameter is true.<p>
@@ -1516,10 +1572,12 @@ public class TextAnalyzer
          */
         public int compareSpecificity(MethodCallDesc other)
         {
-            if (other.vararg && ! vararg)
+            if (other.vararg && ! vararg) {
                 return 1; // we are more specific
-            if (! other.vararg && vararg)
+            }
+            if (! other.vararg && vararg) {
                 return -1; // we are less specific
+            }
             
             // I am reasonably sure this gives the same result as the algorithm
             // described in the JLS section 15.12.2.5, and it has the advantage
@@ -1537,8 +1595,9 @@ public class TextAnalyzer
                     if (! otherArg.isAssignableFrom(myArg))
                         upCount++;
                 }
-                else if (otherArg.isAssignableFrom(myArg))
+                else if (otherArg.isAssignableFrom(myArg)) {
                     downCount++;
+                }
             }
             
             if (upCount > 0 && downCount == 0) {
@@ -1549,129 +1608,6 @@ public class TextAnalyzer
             }
             
             return 0;
-        }
-    }
-    
-    /**
-     * A value (possibly unknown) with assosciated type
-     */
-    static class ExprValue
-    {
-        // default implementation has no known value
-        public JavaType type;
-        
-        public ExprValue(JavaType type)
-        {
-            this.type = type;
-        }
-        
-        public JavaType getType()
-        {
-            return type;
-        }
-        
-        public boolean knownValue()
-        {
-            return false;
-        }
-        
-        public int intValue()
-        {
-            throw new UnsupportedOperationException();
-        }
-        
-        public long longValue()
-        {
-            throw new UnsupportedOperationException();
-        }
-        
-        public float floatValue()
-        {
-            throw new UnsupportedOperationException();
-        }
-        
-        public double doubleValue()
-        {
-            throw new UnsupportedOperationException();
-        }
-        
-        public boolean booleanValue()
-        {
-            throw new UnsupportedOperationException();
-        }
-    }
-    
-    static class BooleanValue extends ExprValue
-    {
-        boolean val;
-
-        // constructor is private: use getBooleanValue instead
-        private BooleanValue(boolean val)
-        {
-            super(JavaPrimitiveType.getBoolean());
-            this.val = val;
-        }
-        
-        // cache the two values
-        public static BooleanValue trueVal = null;
-        public static BooleanValue falseVal = null;
-        
-        /**
-         * Get an instance of BooleanValue, representing either true or false.
-         */
-        public static BooleanValue getBooleanValue(boolean val)
-        {
-            if (val == true) {
-                if (trueVal == null)
-                    trueVal = new BooleanValue(true);
-                return trueVal;
-            }
-            else {
-                if (falseVal == null)
-                    falseVal = new BooleanValue(false);
-                return falseVal;
-            }
-        }
-        
-        public boolean booleanValue()
-        {
-            return val;
-        }
-    }
-    
-    class NumValue extends ExprValue
-    {
-        private Number val;
-        
-        NumValue(JavaType type, Number val)
-        {
-            super(type);
-            this.val = val;
-        }
-        
-        public boolean knownValue()
-        {
-            return true;
-        }
-        
-        public int intValue()
-        {
-            return val.intValue();
-        }
-        
-        public long longValue()
-        {
-            return val.longValue();
-        }
-        
-        public float floatValue()
-        {
-            return val.floatValue();
-        }
-        
-        public double doubleValue()
-        {
-            return val.doubleValue();
         }
     }
 }

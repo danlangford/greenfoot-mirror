@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,9 +22,8 @@
 package greenfoot.actions;
 
 import greenfoot.core.ClassStateManager;
-import greenfoot.core.GClass;
 import greenfoot.core.ClassStateManager.CompiledStateListener;
-import greenfoot.platforms.ide.WorldHandlerDelegateIDE;
+import greenfoot.core.GClass;
 import greenfoot.record.GreenfootRecorder;
 
 import java.awt.EventQueue;
@@ -36,25 +35,35 @@ import javax.swing.AbstractAction;
 import bluej.Config;
 import bluej.utility.Debug;
 
+/**
+ * Action to "save the world" - i.e. write out code which restores the world and the
+ * actors in it.
+ */
 public class SaveWorldAction extends AbstractAction implements CompiledStateListener
 {
-    private WorldHandlerDelegateIDE ide;
+    private GreenfootRecorder recorder;
     private boolean recordingValid;
+    private GClass lastWorldGClass;
 
-    public SaveWorldAction(WorldHandlerDelegateIDE ide, ClassStateManager classStateManager)
+    /**
+     * Construct a new action to save the world state.
+     */
+    public SaveWorldAction(GreenfootRecorder recorder, ClassStateManager classStateManager)
     {
         super(Config.getString("save.world"));
         setEnabled(false);
-        this.ide = ide;
-        if (classStateManager != null)
+        this.recorder = recorder;
+        if (classStateManager != null) {
             classStateManager.addCompiledStateListener(this);
+        }
     }
 
+    @Override
     public void actionPerformed(ActionEvent arg0)
     {
         final String methodName = GreenfootRecorder.METHOD_NAME;
         
-        List<String> code = ide.getInitWorldCode();
+        List<String> code = recorder.getCode();
                 
         final String oneIndent = "    ";
         final String twoIndent = oneIndent + oneIndent;
@@ -71,7 +80,7 @@ public class SaveWorldAction extends AbstractAction implements CompiledStateList
         }
                
         try {
-            GClass lastWorld = ide.getLastWorldGClass();
+            GClass lastWorld = getLastWorldGClass();
             lastWorld.insertMethodCallInConstructor(methodName, false);
             lastWorld.insertAppendMethod(comment.toString(), "private", methodName, method.toString(), true, false);
             lastWorld.showMessage(Config.getString("record.saved.message"));
@@ -81,7 +90,7 @@ public class SaveWorldAction extends AbstractAction implements CompiledStateList
             // and saves the world before re-compiling this will then go wrong
             // (by inserting code depending on objects no longer there) but that
             // seems less likely:
-            ide.clearRecorderCode();
+            recorder.clearCode(false);
             
             lastWorld.compile(false, true);
         }
@@ -90,45 +99,65 @@ public class SaveWorldAction extends AbstractAction implements CompiledStateList
         }
     }
 
-    public boolean isEnabled()
+    /**
+     * Check whether the action should currently be enabled.
+     */
+    private synchronized boolean shouldBeEnabled()
     {
-        GClass lastWorld = ide.getLastWorldGClass();
-        return recordingValid && super.isEnabled() && lastWorld != null && lastWorld.isCompiled();
+        GClass lastWorld = getLastWorldGClass();
+        return recordingValid && lastWorld != null && lastWorld.isCompiled();
     }
 
-    public void setRecordingValid(boolean valid)
+    /**
+     * Set the recording state as valid or not. If invalid, the action becomes disabled.
+     * This can be called from any thread.
+     */
+    public synchronized void setRecordingValid(boolean valid)
     {
-        boolean oldEnabled = isEnabled();
+        boolean oldValid = recordingValid;
         recordingValid = valid;
-        if (oldEnabled != isEnabled()) {
+        if (oldValid != recordingValid) {
             //This action will actually change the status of the menu
-            updateEnabledStatus(oldEnabled);
+            EventQueue.invokeLater(new Runnable() {
+                @Override
+                public void run()
+                {
+                    updateEnabledStatus();
+                }
+            });
         }        
     }
     
-    private void updateEnabledStatus(final boolean oldEnabled)
+    private void updateEnabledStatus()
+    {
+        setEnabled(shouldBeEnabled());
+    }
+
+    @Override
+    public void compiledStateChanged(final GClass gclass, boolean compiled)
     {
         EventQueue.invokeLater(new Runnable() {
-            public void run ()
+            public void run()
             {
-                firePropertyChange("enabled", Boolean.valueOf(oldEnabled), Boolean.valueOf(isEnabled()));
+                GClass lastClass = getLastWorldGClass();
+                if (lastClass != null && gclass.getQualifiedName().equals(lastClass.getQualifiedName())) {            
+                    updateEnabledStatus();
+                }
             }
         });
     }
-
-    public void compiledStateChanged(final GClass gclass, boolean compiled)
+    
+    private synchronized GClass getLastWorldGClass()
     {
-        // We must use a thread here to avoid an inter-VM deadlock;
-        // we are called by RPackageImpl remotely while it holds the lock,
-        // but getLastWorldGClass() calls back to the other VM and needs that lock:        
-        new Thread(new Runnable() {
-            public void run()
-            {
-                GClass lastClass = ide.getLastWorldGClass();
-                if (lastClass != null && gclass.getQualifiedName().equals(lastClass.getQualifiedName())) {            
-                    updateEnabledStatus(!isEnabled());
-                }
-            }
-        }).start();
-    } 
+        return lastWorldGClass;
+    }
+    
+    /**
+     * Set the most recently interactively instantiated world class.
+     * This is currently called from any & every thread.
+     */
+    public synchronized void setLastWorldGClass(GClass lastWorld)
+    {
+        lastWorldGClass = lastWorld;
+    }
 }

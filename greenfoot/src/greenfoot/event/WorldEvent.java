@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,7 +30,7 @@ import greenfoot.World;
  */
 public class WorldEvent
 {
-    private World world;
+    private final World world;
 
     /**
      * Construct a world event for the given world.
@@ -41,7 +41,10 @@ public class WorldEvent
         this.world = world;
     }
     
-    public World getWorld() 
+    /**
+     * Get the world associated with this event.
+     */
+    public World getWorld()
     {
         return world;
     }

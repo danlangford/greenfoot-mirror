@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -46,15 +46,22 @@ import java.awt.print.PageFormat;
 import java.awt.print.PrinterJob;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.io.BufferedWriter;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.io.Writer;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Properties;
 
 import javax.swing.AbstractAction;
@@ -88,9 +95,7 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.Caret;
 import javax.swing.text.EditorKit;
 import javax.swing.text.Element;
-import javax.swing.text.Highlighter;
 import javax.swing.text.SimpleAttributeSet;
-import javax.swing.text.Highlighter.HighlightPainter;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.HTMLFrameHyperlinkEvent;
@@ -99,6 +104,7 @@ import bluej.BlueJEvent;
 import bluej.BlueJEventListener;
 import bluej.BlueJTheme;
 import bluej.Config;
+import bluej.compiler.Diagnostic;
 import bluej.editor.EditorWatcher;
 import bluej.parser.AssistContent;
 import bluej.parser.CodeSuggestions;
@@ -131,7 +137,7 @@ import bluej.utility.Utility;
  */
 
 public final class MoeEditor extends JFrame
-implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentListener, MouseListener
+    implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentListener, MouseListener
 {
     // -------- CONSTANTS --------
 
@@ -177,7 +183,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     
     private static final Color highlightBorderColor = new Color(212, 172,45);
     
-    protected static HighlightPainter highlightPainter =
+    protected static AdvancedHighlightPainter searchHighlightPainter =
         new MoeBorderHighlighterPainter(highlightBorderColor, Config.getHighlightColour(),
                 Config.getHighlightColour2(), Config.getSelectionColour2(),
                 Config.getSelectionColour());;
@@ -194,7 +200,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     private MoeActions actions;
     public MoeUndoManager undoManager;
 
-    JEditorPane currentTextPane;            // text component currently dislayed
+    private JEditorPane currentTextPane;    // text component currently displayed
     private JEditorPane sourcePane;         // the component holding the source text
 
     private JEditorPane htmlPane;           // the component holding the javadoc html
@@ -206,13 +212,14 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     private JComboBox interfaceToggle;
     private GoToLineDialog goToLineDialog;
 
-    // new find functionality
+    // find functionality
     private FindPanel finder;
     private ReplacePanel replacer;
 
     private JScrollPane scrollPane;
     private NaviView naviView;              // Navigation view (mini-source view)
-    private EditorDividerPanel dividerPanel;  // Divider Panel to indicate separation between the editor and navigation view
+    private EditorDividerPanel dividerPanel;  // Divider Panel to indicate separation between the
+                                            // editor and navigation view
     private JComponent toolbar;             // The toolbar
     private JPopupMenu popup;               // Popup menu options
 
@@ -220,6 +227,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     private long lastModified;              // time of last modification of file
     private String windowTitle;             // title of editor window
     private String docFilename;             // path to javadoc html file
+    private Charset characterSet;           // character set of the file
 
     private boolean sourceIsCode;           // true if current buffer is code
     private boolean viewingHTML;
@@ -244,12 +252,17 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
      */
     private static ArrayList<String> readMeActions;
 
-    private CodeCompletionDisplay codeCompletionDlg;
-    
     /** Used to obtain javadoc for arbitrary methods */
     private JavadocResolver javadocResolver;
     private ReparseRunner reparseRunner;
 
+    /** Search highlight tags for both text panes */
+    private List<Object> sourceSearchHighlightTags = new ArrayList<Object>();
+    private List<Object> htmlSearchHighlightTags = new ArrayList<Object>();
+    
+    /** Manages display of compiler and parse errors */
+    private MoeErrorManager errorManager = new MoeErrorManager(this);
+    
     /**
      * Property map, allows BlueJ extensions to associate property values with
      * this editor instance; otherwise unused.
@@ -281,14 +294,16 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
 
     // --------------------------------------------------------------------
 
-    /**
+    /*
      * Load the file "filename" and show the editor window.
      */
-    public boolean showFile(String filename, boolean compiled,       // inherited from Editor, redefined
+    @Override
+    public boolean showFile(String filename, Charset charset, boolean compiled,
             String docFilename, Rectangle bounds)
     {
         this.filename = filename;
         this.docFilename = docFilename;
+        this.characterSet = charset;
 
         if (bounds != null) {
             if (bounds.x > (Config.screenBounds.width - 80))
@@ -296,7 +311,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
             
             if (bounds.y > (Config.screenBounds.height - 80))
                 bounds.y = Config.screenBounds.height - 80;
-        	
+            
             if (bounds.width > 0 && bounds.height > 0) {
                 setBounds(bounds);
             }
@@ -306,7 +321,6 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         }
 
         boolean loaded = false;
-        boolean readError = false;
 
         if (filename != null) {
             try {
@@ -321,9 +335,15 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
                     DialogManager.showMessage(this, "editor-crashed");
                 }
 
-                FileReader reader = new FileReader(filename);
+                // FileReader reader = new FileReader(filename);
+                FileInputStream inputStream = new FileInputStream(filename);
+                Reader reader = new InputStreamReader(inputStream, charset);
                 sourcePane.read(reader, null);
-                reader.close();
+                try {
+                    reader.close();
+                    inputStream.close();
+                }
+                catch (IOException ioe) {}
                 File file = new File(filename);
                 lastModified = file.lastModified();
 
@@ -343,7 +363,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
                 clear();
             }
             catch (IOException ex) {
-                readError = true;
+                Debug.reportError("Couldn't open file", ex);
             }
         }
         else {
@@ -356,17 +376,12 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
             }
         }
 
-        if (!loaded)             // should exist, but didn't
+        if (!loaded) {
+            // should exist, but didn't
             return false;
+        }
 
-        if (loaded)
-            info.message(Config.getString("editor.info.version") + " " + versionString);
-        else if (readError)
-            info.warning(Config.getString("editor.info.readingProblem"), 
-                    Config.getString("editor.info.regularFile"));
-        else
-            info.message(Config.getString("editor.info.version" + versionString), 
-                    Config.getString("editor.info.newFile"));
+        info.message(Config.getString("editor.info.version") + " " + versionString);
 
         setWindowTitle();
         sourcePane.setFont(PrefMgr.getStandardEditorFont());
@@ -376,18 +391,20 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         return true;
     }
 
-    /**
+    /*
      * Reload the editor content from the associated file, discarding unsaved
      * edits.
      */
+    @Override
     public void reloadFile()       // inherited from Editor, redefined
     {
         doReload();
     }
 
-    /**
+    /*
      * Wipe out contents of the editor.
      */
+    @Override
     public void clear()       // inherited from Editor, redefined
     {
         ignoreChanges = true;
@@ -442,18 +459,24 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         sourcePane.setFont(PrefMgr.getStandardEditorFont());
         checkBracketStatus();
         currentTextPane.repaint();
+        
+        Info.resetFont();
+        info.refresh();
+        StatusLabel.resetFont();
+        saveState.refresh();
     }
 
-    /**
+    /*
      * Save the buffer to disk under current filename, if there any changes.
      * This method may be called often.
      */
-    public void save()       // inherited from Editor, redefined
-    throws IOException
+    @Override
+    public void save()
+        throws IOException
     {
         IOException failureException = null;
         if (saveState.isChanged()) {
-            BufferedWriter writer = null;
+            Writer writer = null;
             try {
                 // The crash file is used during writing and will remain in
                 // case of a crash during the write operation. The backup
@@ -464,12 +487,12 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
                 // make a backup to the crash file
                 FileUtility.copyFile(filename, crashFilename);
 
-                writer = new BufferedWriter(new FileWriter(filename));
+                OutputStream ostream = new BufferedOutputStream(new FileOutputStream(filename));
+                writer = new OutputStreamWriter(ostream, characterSet);
                 sourcePane.write(writer);
-                writer.close();
+                writer.close(); writer = null;
                 setSaved();
-                File file = new File(filename);
-                lastModified = file.lastModified();
+                lastModified = new File(filename).lastModified();
 
                 if (PrefMgr.getFlag(PrefMgr.MAKE_BACKUP)) {
                     // if all went well, rename the crash file as a normal
@@ -549,9 +572,8 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         // highlight the line
 
         sourcePane.setCaretPosition(pos);
-        sourcePane.moveCaretPosition(line.getEndOffset() - 1);
+        sourcePane.moveCaretPosition(line.getEndOffset() - 1);  // w/o line break
         moeCaret.setPersistentHighlight();
-        // w/o line break
 
         // display the message
 
@@ -566,10 +588,84 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
             info.setHelp(help);
         }
     }
+    
+    @Override
+    public void displayDiagnostic(Diagnostic diagnostic)
+    {
+        switchToSourceView();
+        
+        Element line = getSourceLine((int) diagnostic.getStartLine());
+        int pos = line.getStartOffset();
+        
+        // Limit diagnostic display to a single line.
+        int startPos = getPosFromColumn(line, (int) diagnostic.getStartColumn());
+        int endPos;
+        if (diagnostic.getStartLine() != diagnostic.getEndLine()) {
+            endPos = line.getEndOffset() - 1;
+        }
+        else {
+            endPos = getPosFromColumn(line, (int) diagnostic.getEndColumn());
+        }
+        
+        // highlight the error and the line on which it occurs
+
+        errorManager.removeErrorHighlight();
+        errorManager.addErrorHighlight(startPos, endPos);
+        
+        sourcePane.setCaretPosition(pos);
+        sourcePane.moveCaretPosition(line.getEndOffset() - 1); // w/o line break
+        moeCaret.setPersistentHighlight();
+
+        // display the message
+
+        info.message(diagnostic.getMessage());
+        info.setHelp("javac"); // TODO the compiler name, or the additional help text,
+                               // should really be a property of the diagnostic object.
+    }
+    
+    /**
+     * Get a position in a line from a column number, where the column number assumes
+     * tab stops are every 8 spaces.
+     */
+    private int getPosFromColumn(Element line, int column)
+    {
+        int spos = line.getStartOffset();
+        int epos = line.getEndOffset();
+        int testPos = Math.min(epos - spos - 1, column - 1);
+        if (testPos == 0) {
+            return 0;
+        }
+        
+        try {
+            int cpos = 0; // what the actual column is so far
+            int tpos = 0; // where we are in the string
+            String lineText = sourceDocument.getText(spos, testPos);
+            
+            while (true) {
+                int tabPos = lineText.indexOf(tpos, '\t');
+                if (tabPos == -1) {
+                    // No more tabs... whatever is left of the line text
+                    // also adds to the position count directly.
+                    cpos += lineText.length() - tpos;
+                    return spos + cpos;
+                }
+
+                cpos += tabPos - tpos; // track the actual "column"
+                cpos += 8; // hit tab
+                cpos -= cpos % 8;  // back to tab stop
+
+                tpos = tabPos + 1; // skip over the tab char
+            }
+        }
+        catch (BadLocationException ble) {
+            // Shouldn't happen.
+        }
+        return spos;
+    }
 
     /**
-     * Set the selection of the editor to be a len characters on the line
-     * lineNumber, starting with column columnNumber
+     * Set the selection of the editor (in the source pane) to be {@code len} characters on
+     * line {@code lineNumber}, starting with column {@code columnNumber}.
      * 
      * @param lineNumber  the line to select characters on
      * @param columnNumber  the column to start selection at (1st column is 1 - not 0)
@@ -632,7 +728,6 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     {
         this.filename = filename;
         this.docFilename = docFilename;
-        // error ## - need to add full path
         windowTitle = title;
         setWindowTitle();
     }
@@ -647,6 +742,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         setCompileStatus(compiled);
         if (compiled) {
             info.message(Config.getString("editor.info.compiled"));
+            errorManager.removeErrorHighlight();
         }
     }
 
@@ -1125,7 +1221,9 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
      */
     public void insertUpdate(DocumentEvent e)
     {
+        // errorManager.insertUpdate(e);
         removeSearchHighlights();
+        errorManager.removeErrorHighlight();
         if (!saveState.isChanged()) {
             saveState.setState(StatusLabel.CHANGED);
             setChanged();
@@ -1141,7 +1239,9 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
      */
     public void removeUpdate(DocumentEvent e)
     {
+        // errorManager.removeUpdate(e);
         removeSearchHighlights();
+        errorManager.removeErrorHighlight();
         if (!saveState.isChanged()) {
             saveState.setState(StatusLabel.CHANGED);
             setChanged();
@@ -1236,9 +1336,9 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
      */
     public void print(PrinterJob printerJob)
     {
-    	if (printDialog == null) {
+        if (printDialog == null) {
             printDialog = new PrintDialog(this);
-    	}
+        }
 
         if (printDialog.display()) {
             PrintHandler pt = new PrintHandler(printerJob, getPageFormat(printerJob), printDialog.printLineNumbers(), printDialog.printHighlighting());
@@ -1261,18 +1361,18 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
      */
     public void print()
     {
-    	if (printDialog == null)
+        if (printDialog == null)
             printDialog = new PrintDialog(this);
 
         if (printDialog.display()) {
-	        // create a printjob
-	        PrinterJob job = PrinterJob.getPrinterJob();
-	        if (job.printDialog()) {
-	            PrintHandler pt = new PrintHandler(job, getPageFormat(job), printDialog.printLineNumbers(), printDialog.printHighlighting());
-	            Thread printJobThread = new Thread(pt);
-	            printJobThread.setPriority((Thread.currentThread().getPriority() - 1));
-	            printJobThread.start();
-	        }
+            // create a printjob
+            PrinterJob job = PrinterJob.getPrinterJob();
+            if (job.printDialog()) {
+                PrintHandler pt = new PrintHandler(job, getPageFormat(job), printDialog.printLineNumbers(), printDialog.printHighlighting());
+                Thread printJobThread = new Thread(pt);
+                printJobThread.setPriority((Thread.currentThread().getPriority() - 1));
+                printJobThread.start();
+            }
         }
     }
 
@@ -1298,8 +1398,8 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     {
         setVisible(false);
         if (watcher != null) {
-        	//setting the naviview visible property when an editor is closed
-        	watcher.setProperty(EditorWatcher.NAVIVIEW_EXPANDED_PROPERTY, String.valueOf(dividerPanel.isExpanded()));
+            //setting the naviview visible property when an editor is closed
+            watcher.setProperty(EditorWatcher.NAVIVIEW_EXPANDED_PROPERTY, String.valueOf(dividerPanel.isExpanded()));
             watcher.closeEvent(this);
         }
     }
@@ -1308,7 +1408,8 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     
     /**
      * Check whether TABs need expanding in this editor. If they do, return
-     * true. At the same time, set this flag to true.
+     * true, and mark tabs as no longer needing expanding (i.e. subsequent
+     * calls will return false).
      */
     public boolean checkExpandTabs()
     {
@@ -1351,9 +1452,11 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
             }
             replacer.setVisible(visible);
             finder.requestFindfieldFocus();
+            finder.setFindReplaceIcon(true);
         }
         else {
             replacer.setVisible(false);
+            finder.setFindReplaceIcon(false);
         }
     }
 
@@ -1422,7 +1525,6 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
             boolean ignoreCase, boolean wrap)
     {
         if (s.length() == 0) {
-            //info.warning(Config.getString("editor.info.emptySearchString"));
             info.message(" ");
             return false;
         }
@@ -1610,20 +1712,15 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
                 while (lineText != null && lineText.length() > 0) {
                     foundPos = findSubstring(lineText, s, ignoreCase, false, foundPos);
                     if (foundPos != -1) {
+                        addSearchHighlight(start + foundPos, start + foundPos + s.length());
+                        highlightCount++;
                         if (select) {
-                            //purposely using both select and the highlight because the select sets the                         
-                            //caret correctly and the highlighter ensures the colouring is done correctly             
                             currentTextPane.select(start + foundPos, start + foundPos + s.length());
-                            currentTextPane.getHighlighter().addHighlight(start + foundPos, start + foundPos + s.length(), highlightPainter);
                             setSelectionVisible();  
-                            //reset the start position to the first caret of the selected item
+                            //reset the start position to the first selection start
                             //in order to ensure that none are missed
-                            highlightCount++;
                             startPosition=start+foundPos;
                             select=false;
-                        } else {
-                            currentTextPane.getHighlighter().addHighlight(start + foundPos, start + foundPos + s.length(), highlightPainter);                           
-                            highlightCount++;
                         }
                         foundPos=foundPos+s.length();
                     } else {
@@ -1656,7 +1753,27 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
             Debug.reportError("Error in editor find operation", ex);
         }
         return highlightCount;
-    }  
+    }
+    
+    /**
+     * Add a search highlight to the currently displayed pane.
+     */
+    private void addSearchHighlight(int startPos, int endPos)
+    {
+        try {
+            MoeHighlighter highlighter = (MoeHighlighter) currentTextPane.getHighlighter();
+            Object tag = highlighter.addHighlight(startPos, endPos, searchHighlightPainter);
+            if (currentTextPane == sourcePane) {
+                sourceSearchHighlightTags.add(tag);
+            }
+            else {
+                htmlSearchHighlightTags.add(tag);
+            }
+        }
+        catch (BadLocationException ble) {
+            Debug.reportError("Error adding search highlight", ble);
+        }
+    }
 
     /**
      * Transfers caret to user specified line number location.
@@ -1920,7 +2037,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
             finder.setSearchStart(0);
         }    
         else{
-            finder.setSearchStart(getCaretPosition());
+            finder.setSearchStart(getCurrentTextPane().getCaretPosition());
         }
         //reset the search string to null
         finder.setSearchString(null);
@@ -2231,6 +2348,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     public void createHTMLPane()
     {
         htmlPane = new JEditorPane();
+        htmlPane.setHighlighter(new MoeHighlighter());
         htmlPane.setEditorKit(new HTMLEditorKit());
         htmlPane.setEditable(false);
         htmlPane.addHyperlinkListener(this);
@@ -2450,17 +2568,23 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     }
 
     // --------------------------------------------------------------------
+    
     /**
      * Revert the buffer contents to the last saved version. Do not ask any
      * question - just do it. Must have a file name.
      */
     public void doReload()
     {
-        FileReader reader = null;
+        Reader reader = null;
         try {
-            reader = new FileReader(filename);
+            FileInputStream inputStream = new FileInputStream(filename);
+            reader = new InputStreamReader(inputStream, characterSet);
             sourcePane.read(reader, null);
-            reader.close();
+            try {
+                reader.close();
+                inputStream.close();
+            }
+            catch (IOException ioe) {}
             File file = new File(filename);
             lastModified = file.lastModified();
 
@@ -2511,10 +2635,12 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         // tidies up leftover highlight if matching is switched off
         // while highlighting a valid bracket or refreshes bracket in open
         // editor
-        if (matchBrackets)
+        if (matchBrackets) {
             doBracketMatch();
-        else
+        }
+        else {
             moeCaret.removeBracket();
+        }
     }
 
     /**
@@ -2600,16 +2726,23 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         }
     }
 
-    // --------------------------------------------------------------------
     /**
-     * Clear the message in the info area.
+     * Notification (from the caret) that the caret position has moved.
      */
-    void caretMoved()
+    public void caretMoved()
     {
-        //the caret has moved and therefore need to determine
-        //whether it is logical to have the buttons enabled/disabled
+        int caretPos = sourcePane.getCaretPosition();
+        String errCode = errorManager.getErrorAtPosition(caretPos);
+        if (errCode != null) {
+            info.message(ParserMessageHandler.getMessageForCode(errCode));
+        }
+        else {
+            clearMessage();
+        }
+        
+        // the selection may have changed and therefore need to determine
+        // whether it is logical to have the buttons enabled/disabled
         enableReplaceButtons();
-        clearMessage();
         if (matchBrackets) {
             doBracketMatch();
         }
@@ -2760,7 +2893,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         // create the text document
 
         if (projectResolver != null) {
-            sourceDocument = new MoeSyntaxDocument(projectResolver);
+            sourceDocument = new MoeSyntaxDocument(projectResolver, errorManager);
         }
         else {
             sourceDocument = new MoeSyntaxDocument();  // README file
@@ -2772,7 +2905,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
 
         EditorKit kit;
         if (projectResolver != null) {
-            kit = new MoeSyntaxEditorKit(false, projectResolver);
+            kit = new MoeSyntaxEditorKit(projectResolver, errorManager);
         }
         else {
             kit = new ReadmeEditorKit();
@@ -2844,7 +2977,6 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
 
         addWindowListener(new WindowAdapter() {
             public void windowClosing(WindowEvent e) {
-                closeContentAssist();
                 close();
             }
             public void windowActivated(WindowEvent e) {
@@ -3292,7 +3424,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
      */
     public void initFindPanel()
     {
-        finder.displayFindPanel(getCurrentTextPane().getSelectedText());
+        finder.displayFindPanel(currentTextPane.getSelectedText());
         //functionality for the replace button to be enabled/disabled according to view
         if (isShowingInterface())
         {
@@ -3349,29 +3481,15 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
      */
     public void removeSearchHighlights()
     {
-    	Highlighter hilite;
-    	if (sourcePane!=null){
-    	    hilite = sourcePane.getHighlighter();
-    	    removeSearchHighlights(hilite);
-    	}
-        if (htmlPane!=null){
-            hilite=htmlPane.getHighlighter();
-            removeSearchHighlights(hilite);
-        }  
-    }
-    
-    /**
-     * Removes the highlights on a specific pane (specified by the highlighter passed through)
-     * @param hilite the highlighter of the textpane
-     */
-    private void removeSearchHighlights(Highlighter hilite)
-    {
-    	Highlighter.Highlight[] hilites = hilite.getHighlights();
-        for (int i = 0; i < hilites.length; i++) {
-            if (hilites[i].getPainter() instanceof MoeBorderHighlighterPainter) {
-                hilite.removeHighlight(hilites[i]);
-            }
+        for (Object tag : sourceSearchHighlightTags) {
+            sourcePane.getHighlighter().removeHighlight(tag);
         }
+        sourceSearchHighlightTags.clear();
+        
+        for (Object tag : htmlSearchHighlightTags) {
+            htmlPane.getHighlighter().removeHighlight(tag);
+        }
+        htmlSearchHighlightTags.clear();
     }
     
     /**
@@ -3400,14 +3518,13 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     protected void createContentAssist()
     {
         //need to recreate the dialog each time it is pressed as the values may be different 
-        closeContentAssist();
         CodeSuggestions suggests = sourceDocument.getParser().getExpressionType(sourcePane.getCaretPosition(),
                 sourceDocument);
         if (suggests != null) {
             LocatableToken suggestToken = suggests.getSuggestionToken();
             AssistContent[] values = ParseUtils.getPossibleCompletions(suggests, "", javadocResolver);
             if (values != null && values.length > 0) {
-                codeCompletionDlg = new CodeCompletionDisplay(this, 
+                CodeCompletionDisplay codeCompletionDlg = new CodeCompletionDisplay(this, 
                         suggests.getSuggestionType().toString(false), 
                         values, suggestToken);
                 int cpos = sourcePane.getCaretPosition();
@@ -3428,37 +3545,30 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     }
 
     /**
-     * Close the content assist (code completion) popup window.
-     */
-    private void closeContentAssist()
-    {
-        if (codeCompletionDlg != null) {
-            codeCompletionDlg.setVisible(false);
-            codeCompletionDlg.dispose();
-        }
-    }
-
-    /**
      * Does some clever formatting to ensure that the replacement matches
      * the original on the formatting eg upper/lower case
      */
     private String smartFormat(String original, String replacement)
     {
-        if(original == null || replacement == null)
+        if(original == null || replacement == null) {
             return replacement;
+        }
 
         // only do smart stuff if search and replace strings were entered in lowercase.
         // check here. if not lowercase, just return.
 
-        if( !isLowerCase(replacement) || !isLowerCase(original))
+        if( !isLowerCase(replacement) || !isLowerCase(original)) {
             return replacement;
-        if(isUpperCase(original))
+        }
+        if(isUpperCase(original)) {
             return replacement.toUpperCase();
-        if(isTitleCase(original))
+        }
+        if(isTitleCase(original)) {
             return Character.toTitleCase(replacement.charAt(0)) + 
-            replacement.substring(1);
-        else
-            return replacement;
+                replacement.substring(1);
+        }
+        
+        return replacement;
     }
 
     /**
@@ -3480,8 +3590,9 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     public boolean isUpperCase(String s)
     {
         for(int i=0; i<s.length(); i++) {
-            if(! Character.isUpperCase(s.charAt(i)))
+            if(! Character.isUpperCase(s.charAt(i))) {
                 return false;
+            }
         }
         return true;
     }
@@ -3495,7 +3606,7 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
             return false;
         }
         return Character.isUpperCase(s.charAt(0)) &&
-        Character.isLowerCase(s.charAt(1));
+                Character.isLowerCase(s.charAt(1));
     }
 
     /**
@@ -3538,14 +3649,15 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
         removeSearchHighlights();
         sourcePane.setCaretPosition(caretPos);
 
+
         if(count > 0) {
-            writeMessage(Config.getString("editor.replaceAll.replaced") +
-                    count + Config.getString("editor.replaceAll.intancesOf") + 
+            writeMessage(Config.getString("editor.replaceAll.replaced").trim() + " " +
+                    count + " " + Config.getString("editor.replaceAll.intancesOf").trim() + " " +
                     searchString);
         }
         else {
-            writeMessage(Config.getString("editor.replaceAll.string") + 
-                    searchString + Config.getString("editor.replaceAll.notFoundNothingReplaced"));
+            writeMessage(Config.getString("editor.replaceAll.string").trim() + " " +
+                    searchString + " " + Config.getString("editor.replaceAll.notFoundNothingReplaced"));
         }
     }
 
@@ -3555,8 +3667,8 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
      */
     protected void setSelectionVisible()
     {
-        currentTextPane.getCaret().setSelectionVisible(true);
         Caret caret = currentTextPane.getCaret();
+        caret.setSelectionVisible(true);
         if (caret instanceof MoeCaret) {
             MoeCaret mcaret = (MoeCaret) caret;
             mcaret.setPersistentHighlight();
@@ -3572,8 +3684,8 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     }
 
     /**
-     * enableReplaceButtons calls the function in the replace panel to either 
-     * enable or disable the once and all buttons
+     * Enables/disables the once and all buttons on the replace panel
+     * @param enable  True to enable; false to disable
      */
     protected void enableReplaceButtons(boolean enable)
     {
@@ -3581,21 +3693,11 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     }
     
     /**
-     * Sends the request to enable buttons the replace panel and there it is
-     * determined whether it is logical to enable or disable then buttons
+     * Enables/disables the once and all buttons on the replace panel
      */
     protected void enableReplaceButtons()
     {
         replacer.enableButtons();
-    }
-
-    /**
-     * setReplaceIcon
-     * @param open is the replace open/closed
-     */
-    protected void setReplaceIcon(boolean open)
-    {
-        finder.setFindReplaceIcon(open);
     }
 
     /**
@@ -3652,25 +3754,9 @@ implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentL
     }
     
     /**
-     * Returns the caret position in the currentTextPane
-     * @return the caret position in the currentTextPane
-     */
-    public int getCaretPosition()
-    {
-    	return currentTextPane.getCaretPosition();
-    }
-    
-    /**
-     * Sets the caret position in the currentTextPane
-     * @param position the position to set the caret to in the currentTextPane
-     */
-    public void setCaretPosition(int position)
-    {
-    	currentTextPane.setCaretPosition(position);
-    }
-
-    /**
-     * Returns whether the source is code or not
+     * Returns whether the editor text represents source code, or something else
+     * (such as the README.txt file).
+     * 
      * @return true if source code; 
      *         false if not
      */

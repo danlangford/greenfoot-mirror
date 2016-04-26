@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -34,18 +34,18 @@ import bluej.Config;
  * Action to export a project to a standalone program.
  * 
  * @author Poul Henriksen, Michael Kolling
- * @version $Id: ExportProjectAction.java 6216 2009-03-30 13:41:07Z polle $
  */
 public class ExportProjectAction extends AbstractAction 
 {
-    
     private ExportDialog exportDialog;
     private GreenfootFrame gfFrame;
+    private boolean share; // The action is from the share button, so show Gallery export
     
-    public ExportProjectAction(GreenfootFrame gfFrame)
+    public ExportProjectAction(GreenfootFrame gfFrame, boolean share)
     {
         super(Config.getString("export.project"));
         this.gfFrame = gfFrame;
+        this.share = share;
         setEnabled(false);
     }
 
@@ -53,6 +53,9 @@ public class ExportProjectAction extends AbstractAction
     {       
         if(exportDialog == null) {
             exportDialog = new ExportDialog(gfFrame);
+        }
+        if (share) {
+            exportDialog.selectGalleryPane();
         }
         exportDialog.display();
     }

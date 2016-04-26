@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -20,6 +20,9 @@
  LICENSE.txt file that accompanied this code.
  */
 package greenfoot.export.mygame;
+
+import greenfoot.event.PublishEvent;
+import greenfoot.event.PublishListener;
 
 import java.io.File;
 import java.io.IOException;
@@ -62,10 +65,14 @@ import bluej.Config;
  * 
  * @author Davin McCall
  */
-public abstract class MyGameClient
+public class MyGameClient
 {
-    public MyGameClient()
+    private PublishListener listener;
+    
+    public MyGameClient(PublishListener listener)
     {
+        this.listener = listener;
+        
         // Disable logging, prevents guff going to System.err
         LogFactory.getFactory().setAttribute("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.NoOpLog");
     }
@@ -92,12 +99,24 @@ public abstract class MyGameClient
         
         int response = httpClient.executeMethod(postMethod);
         
-        if (response == 407) {
+        if (response == 407 && listener != null) {
             // proxy auth required
+            String[] authDetails = listener.needProxyAuth();
+            if (authDetails != null) {
+                String proxyHost = httpClient.getHostConfiguration().getProxyHost();
+                int proxyPort = httpClient.getHostConfiguration().getProxyPort();
+                AuthScope authScope = new AuthScope(proxyHost, proxyPort);
+                Credentials proxyCreds =
+                    new UsernamePasswordCredentials(authDetails[0], authDetails[1]);
+                httpClient.getState().setProxyCredentials(authScope, proxyCreds);
+
+                // Now retry:
+                response = httpClient.executeMethod(postMethod);
+            }
         }
         
         if (response > 400) {
-            error("Unrecognized response from the server: " + response); // TODO i18n
+            error(Config.getString("export.publish.errorResponse") + " - " + response);
             return this;
         }
         
@@ -128,11 +147,11 @@ public abstract class MyGameClient
         //base number of parts is 6
         int counter=6;
         Part [] parts = new Part[ counter + size + tagsList.size() + (hasSource ? 1 : 0)];
-        parts[0] = new StringPart("scenario[title]", gameName);
-        parts[1] = new StringPart("scenario[main_class]", "greenfoot.export.GreenfootScenarioViewer");
-        parts[2] = new StringPart("scenario[width]", "" + width);
-        parts[3] = new StringPart("scenario[height]", "" + height);
-        parts[4] = new StringPart("scenario[url]", gameUrl);
+        parts[0] = new StringPart("scenario[title]", gameName, "UTF-8");
+        parts[1] = new StringPart("scenario[main_class]", "greenfoot.export.GreenfootScenarioViewer", "UTF-8");
+        parts[2] = new StringPart("scenario[width]", "" + width, "UTF-8");
+        parts[3] = new StringPart("scenario[height]", "" + height, "UTF-8");
+        parts[4] = new StringPart("scenario[url]", gameUrl, "UTF-8");
         parts[5] = new ProgressTrackingPart("scenario[uploaded_data]", new File(jarFileName), this);
         Iterator <String> mapIterator=partsMap.keySet().iterator();
         String key="";
@@ -140,7 +159,7 @@ public abstract class MyGameClient
         while (mapIterator.hasNext()){
             key = mapIterator.next().toString();
             obj = partsMap.get(key).toString();
-            parts[counter]= new StringPart(key, obj);
+            parts[counter]= new StringPart(key, obj, "UTF-8");
             counter=counter+1;
         }
         
@@ -165,7 +184,7 @@ public abstract class MyGameClient
         
         response = httpClient.executeMethod(postMethod);
         if (response > 400) {
-            error("Unrecognized response from the server: " + response); // TODO i18n
+            error(Config.getString("export.publish.errorResponse") + " - " + response);
             return this;
         }
         
@@ -174,7 +193,7 @@ public abstract class MyGameClient
         }
         
         // Done.
-        status("Upload complete.");
+        listener.uploadComplete(new PublishEvent(PublishEvent.STATUS));
         
         return this;
     }
@@ -194,13 +213,13 @@ public abstract class MyGameClient
     {
         Header statusHeader = postMethod.getResponseHeader("X-mygame-status");
         if (statusHeader == null) {
-            error("Unrecognized response from the server."); // TODO i18n
+            error(Config.getString("export.publish.errorResponse"));
             return false;
         }
         String responseString = statusHeader.getValue();
         int spaceIndex = responseString.indexOf(" ");
         if (spaceIndex == -1) {
-            error("Unrecognized response from the server."); // TODO i18n
+            error(Config.getString("export.publish.errorResponse"));
             return false;
         }
         try {
@@ -210,10 +229,10 @@ public abstract class MyGameClient
                 // Everything is good!
                 return true;
             case 1 :
-                error("Invalid username or password"); // TODO i18n
+                error(Config.getString("export.publish.errorPassword"));
                 return false;
             case 2 :
-                error("The scenario is too large"); // TODO i18n
+                error(Config.getString("export.publish.errorTooLarge"));
                 return false;
             default :
                 // Unknown error - print it!
@@ -222,7 +241,7 @@ public abstract class MyGameClient
             }
         }
         catch (NumberFormatException nfe) {
-            error("Unrecognized response from the server."); // TODO i18n
+            error(Config.getString("export.publish.errorResponse"));
             return false;
         }
     }
@@ -246,7 +265,6 @@ public abstract class MyGameClient
             catch (NumberFormatException nfe) {}
 
             hostConfig.setProxy(proxyHost, proxyPort);
-            // TODO prompt for user/password
             String proxyUser = Config.getPropString("proxy.user", null);
             String proxyPass = Config.getPropString("proxy.password", null);
             if (proxyUser != null) {
@@ -416,13 +434,30 @@ public abstract class MyGameClient
         return Collections.<String>emptyList();
     }
     
-    public abstract void error(String s);
-    
-    public abstract void status(String s);
+    /**
+     * An error occurred.
+     */
+    private void error(String s)
+    {
+        listener.errorRecieved(new PublishEvent(s, PublishEvent.ERROR));
+    }
     
     /**
      * The specified number of bytes have just been sent.
      */
-    public abstract void progress(int bytes);
-     
+    public void progress(int bytes)
+    {
+        listener.progressMade(new PublishEvent(bytes, PublishEvent.PROGRESS));
+    }
+    
+    /**
+     * Prompt the user for proxy authentication details (username and password).
+     * 
+     * @return A 2-element array with the username as the first element and the password as the second,
+     *         or null if the user elected to cancel the upload.
+     */
+    public String[] promptProxyAuth()
+    {
+        return listener.needProxyAuth();
+    }
 }

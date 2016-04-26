@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -79,9 +79,9 @@ public class ImportedEntity extends JavaEntity
     }
 
     @Override
-    public JavaEntity resolveAsValue()
+    public ValueEntity resolveAsValue()
     {
-        return resolveAsType();
+        return null;
     }
     
     @Override

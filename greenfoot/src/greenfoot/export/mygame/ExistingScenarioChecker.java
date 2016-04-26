@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,12 +21,8 @@
  */
 package greenfoot.export.mygame;
 
-import greenfoot.export.WebPublisher;
-
 import java.io.IOException;
 import java.net.UnknownHostException;
-
-import javax.swing.SwingUtilities;
 
 import bluej.utility.SwingWorker;
 
@@ -72,29 +68,16 @@ public abstract class ExistingScenarioChecker
     /**
      * Will start a thread that checks whether a scenario with the given name
      * exists for the given user. When a result is ready the method
-     * scenarioExistenceChecked will be called. If it is already checking for
-     * the existence of another scenario name, that check will be aborted and
-     * this check will start. If it is already checking for a scenario with that
-     * name it will just return and continue that checking.
-     * 
-     * @param scenarioName
-     * @param forceRecheck 
+     * scenarioExistenceChecked will be called. The result for the given host / user / scenario
+     * combination may be cached.
      */
     public void startScenarioExistenceCheck(final String hostName, final String userName,
-            final String scenarioName, boolean forceRecheck)
+            final String scenarioName)
     {
         synchronized (this) {
             boolean sameScenario = hostName.equals(this.hostName) && userName.equals(this.userName)
                     && scenarioName.equals(this.scenarioName);
-            if (sameScenario && !forceRecheck) {
-                // Scenario already checked, but make sure finished is invoked
-                // to update status (continue button)
-                SwingUtilities.invokeLater(new Runnable() {
-                    public void run()
-                    {
-                        worker.finished();
-                    }
-                });
+            if (sameScenario) {
                 return;
             }
             if (checking) {
@@ -139,23 +122,6 @@ public abstract class ExistingScenarioChecker
     }
 
     /**
-     * Blocks until the result is ready. TODO: This can block forever if the
-     * server never responds?
-     * 
-     * @return An Exception if an error occurred, or null if the scenario does
-     *         not exist, or a ScenarioInfo object if the scenario exists.
-     */
-    public Object getResult()
-    {
-        synchronized (this) {
-            if (worker == null) {
-                throw new IllegalStateException("Check not started yet. No result to get.");
-            }
-        }
-        return worker.get();
-    }
-
-    /**
      * Method that will be called when the check has finished.
      * 
      * This will execute on the swing event thread.
@@ -179,7 +145,7 @@ public abstract class ExistingScenarioChecker
      */
     private Object checkExistence(final String hostName, final String userName, final String scenarioName)
     {
-        WebPublisher client = new WebPublisher();
+        MyGameClient client = new MyGameClient(null);
         ScenarioInfo info = new ScenarioInfo();
         Exception exception = null;
         try {
@@ -204,8 +170,6 @@ public abstract class ExistingScenarioChecker
     /**
      * Called when the worker has finished and the result is ready to be
      * processed.
-     * 
-     * @param value
      */
     private synchronized void workerFinished(Object value)
     {

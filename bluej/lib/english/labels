@@ -7,8 +7,6 @@ main.invalidPackage=Package not found
 
 compileException=Exception during compilation
 compiler.thread.title=BlueJ compiler thread
-compiler.invalidcompiler=bluej.compiler.type is not set to a valid compiler type
-compiler.nocompiler=Compiler could not be executed
 compiler.warningDialog.title=Compiler Warnings
 compiler.warningDialog.label=Warnings from last compilation 
 compiler.warningDialog.noWarnings=No warnings
@@ -266,27 +264,24 @@ editor.addjavadoc.parameter=A parameter
 editor.addjavadoc.returnValue=The return value
 
 # Messages shown as a result of a search with replace all
-editor.replaceAll.replaced=Replaced 
-editor.replaceAll.intancesOf=\ instances of 
-editor.replaceAll.string=String 
-editor.replaceAll.notFoundNothingReplaced=\ not found. Nothing replaced.
+editor.replaceAll.replaced=Replaced
+editor.replaceAll.intancesOf=instances of
+editor.replaceAll.string=String
+editor.replaceAll.notFoundNothingReplaced=not found. Nothing replaced.
 
 # Messages shown as a result of a search with highlight all
-editor.highlight.found=Found 
-editor.highlight.notFound=\ not found.
+editor.highlight.found=Found
+editor.highlight.notFound=not found.
 
 # Message shown in code completion pane when nothing is found
 editor.completion.noMatch=No matching completions
 
 # Messages shown when determining what function is bound to a given key
-editor.keypressed.keyIsNotBound=\ is not bound to a function.
-editor.keypressed.callsTheFunction=\ calls the function "
+editor.keypressed.keyIsNotBound=is not bound to a function.
+editor.keypressed.callsTheFunction=calls the function "
 
 #Messages, warnings, etc that is displayed by Info.java
 editor.info.version = Moe version
-editor.info.readingProblem = There was a problem reading this file.
-editor.info.regularFile = (Is it really a regular file? Do you have read access?)
-editor.info.newFile = New file
 editor.info.errorSaving = Error in saving file!
 editor.info.compiled = Class compiled - no syntax errors
 editor.info.noChanges = No changes need to be saved
@@ -532,6 +527,7 @@ testdisplay.title = BlueJ:  Test Results
 testdisplay.counter.runs=Runs:
 testdisplay.counter.errors=Errors:
 testdisplay.counter.failures=Failures:
+testdisplay.counter.totalTime=Total Time:
 testdisplay.showsource=Show Source
 
 # status messages

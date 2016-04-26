@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -78,7 +78,8 @@ public abstract class CallableView extends MemberView
     
     /**
      * Get an array of GenType objects representing the parameter types of the
-     * callable.
+     * callable. For a varargs callable, the last parameter type will be an
+     * array (and {@link #isVarArgs()} will return true).
      * 
      * @param raw  whether to return raw versions of the parameter types
      * @return  the parameter types
@@ -86,9 +87,9 @@ public abstract class CallableView extends MemberView
     public abstract JavaType[] getParamTypes(boolean raw);
 
     /**
-     * Get the type paraemters for this callable as an array of GenTypeDeclTpar
+     * Get the type parameters for this callable as an array of GenTypeDeclTpar
      */
-    public abstract GenTypeDeclTpar[] getTypeParams();
+    public abstract GenTypeDeclTpar[] getTypeParams() throws ClassNotFoundException;
     
     /**
      * Gets an array of strings with the names of the parameters
@@ -107,6 +108,9 @@ public abstract class CallableView extends MemberView
      */
     public abstract String[] getParamTypeStrings();
     
+    /**
+     * Print the method to a formatting print writer.
+     */
     public void print(FormattedPrintWriter out)
     {
         print(out, 0);

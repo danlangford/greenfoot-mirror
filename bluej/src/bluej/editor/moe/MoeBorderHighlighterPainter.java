@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -25,6 +25,7 @@ import java.awt.Color;
 import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Paint;
 import java.awt.Rectangle;
 import java.awt.Shape;
 
@@ -32,7 +33,6 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.JTextComponent;
 import javax.swing.text.Position;
 import javax.swing.text.View;
-import javax.swing.text.DefaultHighlighter.DefaultHighlightPainter;
 
 /**
  * Highlighter for the border and fill of the found search instances.<p>
@@ -42,7 +42,7 @@ import javax.swing.text.DefaultHighlighter.DefaultHighlightPainter;
  * 
  * @author Marion Zalk
  */
-public class MoeBorderHighlighterPainter extends DefaultHighlightPainter
+public class MoeBorderHighlighterPainter implements AdvancedHighlightPainter
 {
     Color borderColor=Color.BLACK;
     Color innerColor1;
@@ -53,7 +53,7 @@ public class MoeBorderHighlighterPainter extends DefaultHighlightPainter
     public MoeBorderHighlighterPainter(Color bColor, Color fillColor1, Color fillColor2,
             Color selectionColor1, Color selectionColor2)
     {
-        super(fillColor1);
+        //super(fillColor1);
         borderColor=bColor;
         innerColor1=fillColor1;
         innerColor2=fillColor2;
@@ -72,6 +72,7 @@ public class MoeBorderHighlighterPainter extends DefaultHighlightPainter
     {
         if (g instanceof Graphics2D) {
             Graphics2D g2d = (Graphics2D)g;
+            Paint origPaint = g2d.getPaint();
 
             // Paint a gradient from top to bottom:
             GradientPaint gp = new GradientPaint(
@@ -79,28 +80,30 @@ public class MoeBorderHighlighterPainter extends DefaultHighlightPainter
                 r.x+(r.width/2), r.y+r.height, color2);
 
             g2d.setPaint(gp);
-            g2d.fillRect(r.x-1, r.y, r.width+1, r.height);
+            //g2d.fillRect(r.x-1, r.y, r.width+1, r.height);
+            g2d.fillRoundRect(r.x - 2, r.y, r.width + 2, r.height, 6, 6);
+            g2d.setPaint(origPaint);
         }
     }
     
     /**
      * Overrides the default method in order to draw the border 
      */
-    public Shape paintLayer(Graphics g, int offs0, int offs1, Shape bounds,
+    public void paint(Graphics g, int offs0, int offs1, Shape bounds,
             JTextComponent c, View view)
     {        
         // Should only render part of View.
         try {
             // --- determine locations ---
-            Shape shape = view.modelToView(offs0, Position.Bias.Forward,
-                    offs1,Position.Bias.Backward,
-                    bounds);
-            Rectangle r = shape.getBounds(); 
-
+            offs0 = Math.max(offs0, view.getStartOffset());
+            offs1 = Math.min(offs1, view.getEndOffset());
+            
+            Shape s = view.modelToView(offs0, Position.Bias.Forward, offs1, Position.Bias.Backward, bounds);
+            Rectangle r = s.getBounds();
+            
             paintGradient(g, r, innerColor1, innerColor2);
 
             g.setColor(borderColor);
-            g.drawRoundRect(r.x-2,r.y, r.width+2, r.height-1, 6, 6);
             
             int selStart = c.getSelectionStart();
             int selEnd = c.getSelectionEnd();
@@ -129,14 +132,30 @@ public class MoeBorderHighlighterPainter extends DefaultHighlightPainter
                 paintGradient(g, r, selectionColor1, selectionColor2);
                 g.setClip(origClip);
             }
+
+            g.drawRoundRect(r.x-2,r.y, r.width+2, r.height-1, 6, 6);
             
             r.x -= 2;
             r.width += 3;
-            return r;
         } catch (BadLocationException e) {
-            // can't render
+            // throw new RuntimeException(e);
+            return;
         }
-        return null;
     }
 
+    @Override
+    public void issueRepaint(int p0, int p1, Shape viewBounds,
+            JTextComponent editor, View rootView)
+    {
+        try {
+            Shape s = rootView.modelToView(p0, Position.Bias.Forward, p1, Position.Bias.Backward, viewBounds);
+            Rectangle r = s.getBounds();
+            r.x -= 2;
+            r.width += 4;
+            editor.repaint(r);
+        }
+        catch (BadLocationException ble) {
+            throw new RuntimeException(ble);
+        }
+    }
 }

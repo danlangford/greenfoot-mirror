@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2000-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 2000-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,19 +21,15 @@
  */
 package bluej.debugger.jdi;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.gentype.GenTypeArray;
 import bluej.debugger.gentype.GenTypeArrayClass;
 import bluej.debugger.gentype.GenTypeClass;
 import bluej.debugger.gentype.JavaType;
 import bluej.debugger.gentype.Reflective;
-import bluej.utility.JavaNames;
 
 import com.sun.jdi.ArrayReference;
+import com.sun.jdi.ArrayType;
 import com.sun.jdi.ObjectReference;
 import com.sun.jdi.Value;
 
@@ -51,6 +47,7 @@ public class JdiArray extends JdiObject
     {
         this.obj = obj;
         obj.disableCollection();
+        calcComponentType();
     }
 
     /**
@@ -79,12 +76,16 @@ public class JdiArray extends JdiObject
             
             // If the arrays are of different depths, no inference is possible
             // (this is possible because all arrays extend Object)
-            if(ctypestr.charAt(0) == '[')
+            if(ctypestr.charAt(0) == '[') {
+                calcComponentType();
                 return;
+            }
 
             // The array may be of a primitive type.
-            if(genericType.isPrimitive())
+            if(genericType.isPrimitive()) {
+                calcComponentType();
                 return;
+            }
 
             // It's not really possible for an array to have a component type
             // that is a wildcard, but this type is inferred in some cases so
@@ -102,12 +103,24 @@ public class JdiArray extends JdiObject
                 component = ((GenTypeClass) genericType).mapToDerived(compReflective);
 
                 while (level > 1) {
-                    component = new GenTypeArray(component);
+                    component = component.getArray();
                     level--;
                 }
                 componentType = component;
             }
-        }            
+        }
+        
+        if (componentType == null) {
+            calcComponentType();
+        }
+    }
+    
+    private void calcComponentType()
+    {
+        ArrayType ar = (ArrayType) obj.referenceType();
+        String componentSig = ar.componentSignature();
+        JdiReflective.StringIterator i = new JdiReflective.StringIterator(componentSig);
+        componentType = JdiReflective.typeFromSignature(i, null, ar);
     }
 
     /**
@@ -115,41 +128,22 @@ public class JdiArray extends JdiObject
      * 
      * @return String representing the Class name.
      */
+    @Override
     public String getClassName()
     {
         return obj.referenceType().name();
     }
-    
-    public String getGenClassName()
-    {
-        if(componentType == null) {
-            return getClassName();
-        }
-        return componentType.toString() + "[]";
-    }
-    
-    public String getStrippedGenClassName()
-    {
-        if(componentType == null) {
-            return JavaNames.stripPrefix(getClassName());
-        }
-        return componentType.toString(true) + "[]";
-    }
 
     /**
-     *  Get the GenType object representing the type of this array.
+     * Get the GenType object representing the type of this array.
      * 
      * @return   GenType representing the type of the array.
      */
+    @Override
     public GenTypeClass getGenType()
     {
-        if(componentType != null) {
-            Reflective r = new JdiArrayReflective(componentType, obj.referenceType());
-            return new GenTypeArrayClass(r, componentType);
-        }
-        else {
-            return super.getGenType();
-        }
+        Reflective r = new JdiArrayReflective(componentType, obj.referenceType());
+        return new GenTypeArrayClass(r, componentType);
     }
     
     /**
@@ -157,220 +151,41 @@ public class JdiArray extends JdiObject
      *
      * @return    The Array value
      */
+    @Override
     public boolean isArray()
     {
         return true;
     }
 
-    public boolean isNullObject()
-    {
-        return obj == null;
-    }
-
-    /**
-     *  Return the number of static fields.
-     *
-     *@return    The StaticFieldCount value
-     */
-    public int getStaticFieldCount()
-    {
-        return 0;
-    }
-
-    /*
-     * @see bluej.debugger.jdi.JdiObject#getInstanceFieldCount()
-     */
-    public int getInstanceFieldCount()
+    @Override
+    public int getElementCount()
     {
         return ((ArrayReference) obj).length();
     }
-
+    
     @Override
-    public List<String> getInstanceFields(boolean includeModifiers,
-            Map<String, List<String>> restrictedClasses)
+    public JavaType getElementType()
     {
-        ArrayReference array = (ArrayReference) obj;
-        int len = array.length();
-        List<String> r = new ArrayList<String>(len);
-        for (int i = 0; i < len; i++) {
-            String field = getInstanceFieldName(i) + " = "
-                    + JdiUtils.getJdiUtils().getValueString(array.getValue(i));
-            r.add(field);
-        }
-        return r;
+        return componentType;
     }
     
     @Override
-    public String getInstanceField(int slot, boolean includeModifiers)
+    public String getElementValueString(int index)
     {
-        ArrayReference array = (ArrayReference) obj;
-        String field = getInstanceFieldName(slot) + " = "
-            + JdiUtils.getJdiUtils().getValueString(array.getValue(slot));
-        return field;
-    }
-    
-    
-    
-    /**
-     *  Return the name of the static field at 'slot'.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       The StaticFieldName value
-     */
-    public String getStaticFieldName(int slot)
-    {
-        throw new UnsupportedOperationException("getStaticFieldName");
+        Value val = ((ArrayReference) obj).getValue(index);
+        return JdiUtils.getJdiUtils().getValueString(val);
     }
 
-    /**
-     * Return the name of the object field at 'slot'.
+    /*
+     * Return the object in object field 'slot'.
      *
-     *@param  slot  The slot number to be checked
-     *@return       The InstanceFieldName value
-     */
-    public String getInstanceFieldName(int slot)
-    {
-        return "[" + String.valueOf(slot) + "]";
-    }
-    
-    /**
-     * Return the type of the object field at 'slot'.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       The type of the field
+     * @param  slot  The slot number to be returned
+     * @return       The InstanceFieldObject value
      */
     @Override
-    public String getInstanceFieldType(int slot)
-    {            
-        String arrayType = null;
-        if(componentType == null) {
-            arrayType = getClassName();
-        }
-        else {
-            arrayType = componentType.toString(false);
-        }
-
-        return JavaNames.getArrayElementType(arrayType);
-    }
-
-    /**
-     *  Return the object in static field 'slot'.
-     *
-     *@param  slot  The slot number to be returned
-     *@return       the object at slot or null if slot does not exist
-     */
-    public DebuggerObject getStaticFieldObject(int slot)
+    public DebuggerObject getElementObject(int index)
     {
-        throw new UnsupportedOperationException("getStaticFieldObject");
-    }
-
-    /**
-     *  Return the object in object field 'slot'.
-     *
-     *@param  slot  The slot number to be returned
-     *@return       The InstanceFieldObject value
-     */
-    public DebuggerObject getInstanceFieldObject(int slot)
-    {
-        Value val = ((ArrayReference) obj).getValue(slot);
-        if(componentType != null)
-            return JdiObject.getDebuggerObject((ObjectReference) val, componentType);
-        else
-            return JdiObject.getDebuggerObject((ObjectReference) val);
-    }
-
-
-    /**
-     *  Return an array of strings with the description of each static field
-     *  in the format "<modifier> <type> <name> = <value>".
-     *
-     *@param  includeModifiers  Description of Parameter
-     *@return                   The StaticFields value
-     */
-    public List<String> getStaticFields(boolean includeModifiers)
-    {
-        throw new UnsupportedOperationException("getStaticFields");
-        //        return new ArrayList(0);
-    }
-
-    /**
-     *  Return an array of strings with the description of each field in the
-     *  format "<modifier> <type> <name> = <value>".
-     *
-     *@param  includeModifiers  Description of Parameter
-     *@return                   The InstanceFields value
-     */
-    public List<String> getInstanceFields(boolean includeModifiers, List<String> ignoreFieldsFrom)
-    {
-        List<Value> values;
-
-        if (((ArrayReference) obj).length() > 0) {
-            values = ((ArrayReference) obj).getValues();
-        } else {
-            values = new ArrayList<Value>();
-        }
-        List<String> fields = new ArrayList<String>(values.size());
-
-        for (int i = 0; i < values.size(); i++) {
-            Value val = (Value) values.get(i);
-            String valString = JdiUtils.getJdiUtils().getValueString(val);
-            fields.add("[" + i + "]" + " = " + valString);
-        }
-        return fields;
-    }
-
-    /**
-     *  Return true if the static field 'slot' is public.
-     *
-     *@param  slot  Description of Parameter
-     *@return       Description of the Returned Value
-     *@arg          slot The slot number to be checked
-     */
-    public boolean staticFieldIsPublic(int slot)
-    {
-        throw new UnsupportedOperationException("getStaticFieldObject");
-    }
-
-    /**
-     *  Return true if the object field 'slot' is public.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public boolean instanceFieldIsPublic(int slot)
-    {
-        return true;
-    }
-
-
-    /**
-     *  Return true if the static field 'slot' is an object (and not
-     *  a simple type).
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public boolean staticFieldIsObject(int slot)
-    {
-        throw new UnsupportedOperationException("getStaticFieldObject");
-    }
-
-    /**
-     * Return true if the object field 'slot' is an object (and not
-     * a simple type).
-     *
-     * @param   slot    The slot number to be checked
-     * @return          true if the object in slot is an object
-     */
-    public boolean instanceFieldIsObject(int slot)
-    {
-        Value val = ((ArrayReference) obj).getValue(slot);
-
-        if (val == null) {
-            return false;
-        }
-        else {
-            return (val instanceof ObjectReference);
-        }
+        Value val = ((ArrayReference) obj).getValue(index);
+        return JdiObject.getDebuggerObject((ObjectReference) val, componentType);
     }
 }

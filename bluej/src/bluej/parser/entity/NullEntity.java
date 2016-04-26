@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -32,8 +32,13 @@ import bluej.debugger.gentype.Reflective;
  * 
  * @author Davin McCall
  */
-public class NullEntity extends JavaEntity
+public class NullEntity extends ValueEntity
 {
+    public NullEntity()
+    {
+        super(JavaPrimitiveType.getNull());
+    }
+    
     @Override
     public String getName()
     {
@@ -65,10 +70,8 @@ public class NullEntity extends JavaEntity
     }
 
     @Override
-    public JavaEntity resolveAsValue()
+    public ValueEntity resolveAsValue()
     {
         return this;
     }
-    
-    
 }

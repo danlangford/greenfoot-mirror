@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,12 +21,17 @@
  */
 package bluej.editor.moe;
 
+import java.awt.Color;
+import java.awt.Point;
+import java.awt.event.FocusEvent;
+import java.awt.event.MouseEvent;
+
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultCaret;
+import javax.swing.text.LayeredHighlighter;
+import javax.swing.text.Position;
+
 import bluej.utility.Debug;
-
-import java.awt.*;
-import java.awt.event.*;
-
-import javax.swing.text.*;
 
 
 /**
@@ -66,20 +71,12 @@ public class MoeCaret extends DefaultCaret
      */
     protected void positionCaret(MouseEvent e) 
     {
-        editor.caretMoved();
         Point pt = new Point(e.getX(), e.getY());
         Position.Bias[] biasRet = new Position.Bias[1];
         int pos = getComponent().getUI().viewToModel(getComponent(), pt, biasRet);
 
         if (e.getX() > MoeSyntaxView.TAG_WIDTH) {
-            // This would be the correct thing to do, but PlainView hasn't implemented
-            // correct bias calculation and *always* returns Position.Bias.Forward.
-            //if (biasRet[0] == Position.Bias.Forward) {
-            //    pos++;
-            //}
-            if (pos >= 0) {
-                setDot(pos); 
-            }
+            super.positionCaret(e);
         }
         else {
             editor.toggleBreakpoint(pos);
@@ -119,13 +116,12 @@ public class MoeCaret extends DefaultCaret
         super.moveDot(pos);
     }
 
-    /**
-     * Fire a state changed event.
-     */
+    @Override
     protected void fireStateChanged()
     {
-        editor.caretMoved();
+        // Note this is called when the caret is moved.
         super.fireStateChanged();
+        editor.caretMoved();
     }
     
     /**
@@ -184,7 +180,4 @@ public class MoeCaret extends DefaultCaret
             super.setSelectionVisible(vis);
         }
     }
-    
 }
-
-

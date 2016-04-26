@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -31,17 +31,17 @@ import greenfoot.sound.SoundFactory;
  * Most files of the following formats are supported: AIFF, AU, WAV, MP3 and MIDI.
  * 
  * @author Poul Henriksen
- * @version 2.1
+ * @version 2.2
  */
 public class GreenfootSound
 {
+
     private Sound sound;
-    
     /**
      * The name of the file where the sound is loaded from.
      */
     private String filename;
-    
+
     /**
      * Creates a new sound from the given file. 
      * 
@@ -51,9 +51,9 @@ public class GreenfootSound
     public GreenfootSound(String filename)
     {
         this.filename = filename;
-        sound = SoundFactory.getInstance().createSound(filename);        
+        sound = SoundFactory.getInstance().createSound(filename);
     }
-    
+
     /**
      * Start playing this sound. If it is playing already, it will do
      * nothing. If the sound is currently looping, it will finish the current
@@ -64,7 +64,7 @@ public class GreenfootSound
     {
         sound.play();
     }
-	
+
     /**
      * Play this sound repeatedly in a loop. If called on an already looping
      * sound, it will do nothing. If the sound is already playing once, it will
@@ -75,7 +75,7 @@ public class GreenfootSound
     {
         sound.loop();
     }
-	
+
     /**
      * Stop playing this sound if it is currently playing. If the sound is
      * played again later, it will start playing from the beginning. If the
@@ -109,7 +109,24 @@ public class GreenfootSound
     {
         return sound.isPlaying();
     }
- 
+
+    /**
+     * Get the current volume of the sound, between 0 (off) and 100 (loudest.)
+     */
+    public int getVolume()
+    {
+        return sound.getVolume();
+    }
+
+    /**
+     * Set the current volume of the sound between 0 (off) and 100 (loudest.)
+     * @param level the level to set the sound volume to.
+     */
+    public void setVolume(int level)
+    {
+        sound.setVolume(level);
+    }
+
     /**
      * Returns a string representation of this sound containing the name of the
      * file and whether it is currently playing or not.
@@ -117,9 +134,10 @@ public class GreenfootSound
     public String toString()
     {
         String s = super.toString() + " file: " + filename + " ";
-        if(sound != null) {
+        if (sound != null) {
             s += ". Is playing: " + isPlaying();
-        } else {
+        }
+        else {
             s += ". Not found.";
         }
         return s;

@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -34,12 +34,14 @@ import greenfoot.core.GProject;
 import greenfoot.core.WorldHandler;
 import greenfoot.event.PublishEvent;
 import greenfoot.event.PublishListener;
+import greenfoot.export.mygame.MyGameClient;
 import greenfoot.export.mygame.ScenarioInfo;
 import greenfoot.gui.WorldCanvas;
 import greenfoot.gui.export.ExportAppPane;
 import greenfoot.gui.export.ExportDialog;
 import greenfoot.gui.export.ExportPublishPane;
 import greenfoot.gui.export.ExportWebPagePane;
+import greenfoot.gui.export.ProxyAuthDialog;
 import greenfoot.util.GreenfootUtil;
 
 import java.awt.Dimension;
@@ -47,6 +49,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.net.UnknownHostException;
 import java.util.Set;
 
@@ -57,11 +60,19 @@ import bluej.Boot;
 import bluej.Config;
 import bluej.pkgmgr.Project;
 
-public class Exporter 
-        implements PublishListener
+public class Exporter implements PublishListener
 {
-    private static final String GREENFOOT_CORE_JAR = "Greenfoot-core-" + Boot.GREENFOOT_API_VERSION + ".jar";
+    private static final String GREENFOOT_CORE_JAR = getGreenfootCoreJar();
     private static final String GALLERY_SHARED_JARS = "http://www.greenfootgallery.org/sharedjars/";
+    
+    private static String getGreenfootCoreJar()
+    {
+        // The core jar filename doesn't need to include the API internal version increment.
+        String coreJar = "Greenfoot-core-";
+        int lastDot = Boot.GREENFOOT_API_VERSION.lastIndexOf('.');
+        coreJar += Boot.GREENFOOT_API_VERSION.substring(0, lastDot) + ".jar";
+        return coreJar;
+    }
     
     private static Exporter instance;
     
@@ -76,14 +87,13 @@ public class Exporter
     private File tmpJarFile;
     private File tmpImgFile;
     private File tmpZipFile;
-    private WebPublisher webPublisher;
+    private MyGameClient webPublisher;
     private ExportDialog dlg;
     
     /**
      * Creates a new instance of Exporter.
      */
-    public Exporter() {
-    }
+    public Exporter() { }
     
    /**
      * Publish this scenario to the web server.
@@ -197,8 +207,7 @@ public class Exporter
         }
         
         if(webPublisher == null) {
-            webPublisher = new WebPublisher();
-            webPublisher.addPublishListener(this);
+            webPublisher = new MyGameClient(this);
         }
         
         dlg.setProgress(true, Config.getString("export.progress.publishing"));
@@ -400,7 +409,7 @@ public class Exporter
     /**
      * Publish succeeded.
      */    
-    public void statusRecieved(PublishEvent event)
+    public void uploadComplete(PublishEvent event)
     {
         deleteTmpFiles();
         SwingUtilities.invokeLater(new Runnable() {
@@ -451,5 +460,39 @@ public class Exporter
                 dlg.progressMade(event.getBytes());
             }
         });
+    }
+    
+    @Override
+    public String[] needProxyAuth()
+    {
+        final String[] details = new String[2];
+
+        try {
+            SwingUtilities.invokeAndWait(new Runnable() {
+                @Override
+                public void run()
+                {
+                    ProxyAuthDialog dialog = new ProxyAuthDialog(dlg);
+                    dialog.setVisible(true);
+                    
+                    if (dialog.getResult() == ProxyAuthDialog.OK) {
+                        details[0] = dialog.getUsername();
+                        details[1] = dialog.getPassword();
+                    }
+                }
+            });
+        }
+        catch (InvocationTargetException ite) {
+            throw new RuntimeException(ite.getCause());
+        }
+        catch (InterruptedException ie) {
+            return null;
+        }
+        
+        if (details[0] == null) {
+            return null;
+        }
+        
+        return details;
     }
 }

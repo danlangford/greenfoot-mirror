@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,8 +22,8 @@
 package greenfoot.gui.export;
 
 import greenfoot.core.GProject;
-import greenfoot.export.WebPublisher;
 import greenfoot.export.mygame.ExistingScenarioChecker;
+import greenfoot.export.mygame.MyGameClient;
 import greenfoot.export.mygame.ScenarioInfo;
 import greenfoot.util.GreenfootUtil;
 
@@ -45,7 +45,6 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.InputVerifier;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -113,15 +112,18 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
     private String publishedUserName;
 
     private ExistingScenarioChecker scenarioChecker;
-    private JButton continueButton;
     private Font font;
-    private boolean isUpdate=false;
+    private boolean isUpdate = false;
+    /** Whether the scenario info display is showing "update" mode */
+    private boolean displayUpdate = false;
+    private ExportDialog exportDialog;
 
     /** Creates a new instance of ExportPublishPane */
-    public ExportPublishPane(GProject project)
+    public ExportPublishPane(GProject project, ExportDialog exportDialog)
     {
         super();
         this.project = project;
+        this.exportDialog = exportDialog;
         makePane();
     }
 
@@ -136,9 +138,7 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
     }
 
     /**
-     * Must be called from Swing Event Thread.
-     * 
-     * @param snapShot
+     * Set the screenshot image.
      */
     public void setImage(BufferedImage snapShot)
     {
@@ -146,6 +146,9 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
         imagePanel.repaint();
     }
 
+    /**
+     * Get the scenario title, specified in the title field.
+     */
     public String getTitle()
     {
         if (titleField!=null)
@@ -284,13 +287,11 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
     private void setTitle(String title)
     {
         titleField.setText(title);
-        checkForExistingScenario();
     }
 
     private void setUserName(String name)
     {
         userNameField.setText(name);
-        checkForExistingScenario();
     }
 
     /**
@@ -320,7 +321,7 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
             text.setForeground(headingColor);
             infoPanel.add(text, BorderLayout.NORTH);
 
-            createScenarioDisplay(false);
+            createScenarioDisplay();
             infoPanel.add(leftPanel, BorderLayout.CENTER);            
             infoPanel.add(getTagDisplay(), BorderLayout.EAST);
         }
@@ -329,7 +330,6 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
         add(Box.createVerticalStrut(16));       
         add(getLoginPanel());
         add(Box.createVerticalStrut(10));
-
     }
     
     /**
@@ -342,8 +342,8 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
 
         loginPanel.setBackground(background);
         loginPanel.setAlignmentX(LEFT_ALIGNMENT);
-        Border border = BorderFactory.createCompoundBorder(BorderFactory.createLoweredBevelBorder(), BorderFactory
-                .createEmptyBorder(12, 12, 12, 12));
+        Border border = BorderFactory.createCompoundBorder(BorderFactory.createLoweredBevelBorder(),
+                BorderFactory.createEmptyBorder(12, 12, 12, 12));
         loginPanel.setBorder(border);
 
         JLabel text = new JLabel(Config.getString("export.publish.login"));
@@ -484,9 +484,20 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
             setTags(info.getTags());
             setLocked(info.isLocked());
             setHasSource(info.getHasSource());
+            setUpdate(true);
         }
     }
 
+    private void updateScenarioDisplay()
+    {
+        if (isUpdate != displayUpdate) {
+            removeLeftPanel();
+            createScenarioDisplay();
+            addLeftPanel();
+            displayUpdate = isUpdate;
+            revalidate();
+        }
+    }
 
     /**
      * Updates the given scenarioInfo with the current values typed into the
@@ -504,13 +515,7 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
         scenarioInfo.setUpdateDescription(getUpdateDescription());
     }
 
-
     private void checkForExistingScenario()
-    {
-        checkForExistingScenario(false);
-    }
-    
-    private void checkForExistingScenario(boolean forceRecheck)
     {
         String userName = getUserName();
         String title = getTitle();
@@ -525,44 +530,27 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
 
         if (scenarioChecker == null) {
             scenarioChecker = new ExistingScenarioChecker() {
-                private String updateText = " " + Config.getString("export.dialog.continue.update");
 
                 @Override
                 public void scenarioExistenceCheckFailed(Exception reason)
                 {
-                    // If an error occurs, we just reset the text on the export
-                    // button.
-                    continueButton.setText(getStrippedText());
+                    // Don't do anything. Failure could be due to proxy requiring authentication,
+                    // or network disconnection.
                 }
 
                 @Override
                 public void scenarioExistenceChecked(ScenarioInfo info)
                 {
-                    String currentText = getStrippedText();
                     if (info != null) {
-                        removeLeftPanel();
-                        createScenarioDisplay(true);
-                        addLeftPanel();
-                        revalidate();
-                        continueButton.setText(currentText + updateText);
+                        setUpdate(true);
                     }
                     else {
-                        continueButton.setText(currentText);
+                        setUpdate(false);
                     }
-                }
-
-                private String getStrippedText()
-                {
-                    String currentText = continueButton.getText();
-                    int i = currentText.indexOf(updateText);
-                    if (i != -1) {
-                        currentText = currentText.substring(0, i);
-                    }
-                    return currentText;
                 }
             };
         }
-        scenarioChecker.startScenarioExistenceCheck(serverURL, userName, title, forceRecheck);
+        scenarioChecker.startScenarioExistenceCheck(serverURL, userName, title);
     }
 
     /**
@@ -572,15 +560,14 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
      * <p>And we load previously used values if they are stored.
      */
     @Override
-    public void activated(JButton continueButton)
+    public void activated()
     {
-        this.continueButton = continueButton;
-        checkForExistingScenario();
         if (firstActivation) {
             firstActivation = false;
             
             setUserName(Config.getPropString("publish.username", ""));
             loadStoredScenarioInfo();
+            checkForExistingScenario();
             
             commonTagsLoader = new SwingWorker() {
                 @SuppressWarnings("unchecked")
@@ -594,7 +581,7 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
                 @Override
                 public Object construct()
                 {
-                    WebPublisher client = new WebPublisher();
+                    MyGameClient client = new MyGameClient(null);
                     List<String> tags = null;
                     try {
                         String hostAddress = serverURL;
@@ -625,6 +612,16 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
             };
             commonTagsLoader.start();
         }
+        
+        String updateText;
+        if (isUpdate) {
+            updateText = Config.getString("export.dialog.update") ;
+        }
+        else {
+            updateText = Config.getString("export.dialog.share");
+        }
+         
+        exportDialog.setExportButtonText(updateText);
     }
 
     @Override
@@ -633,26 +630,6 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
         publishedScenarioInfo = new ScenarioInfo();
         updateInfoFromFields(publishedScenarioInfo);
         publishedUserName = userNameField.getText();
-        // TODO: Check if scenario exists, and confirm that user wants to
-        // continue?
-        /*
-         * checkForExistingScenario(); Object existResult =
-         * scenarioChecker.getResult(); if (existResult == null) { // It is a
-         * new scenario - just continue } if (existResult instanceof
-         * ScenarioInfo) { // The scenario exists - confirm ScenarioInfo info =
-         * (ScenarioInfo) existResult; JButton updateButton = new
-         * JButton("Update"); JButton cancelButton = new JButton("Cancel");
-         * 
-         * JButton[] buttons = new JButton[]{cancelButton, updateButton};
-         * MessageDialog d = new MessageDialog( (Dialog)
-         * SwingUtilities.getWindowAncestor(this), "The scenario " +
-         * info.getTitle() + " exists. If you continue exporting the existing
-         * scenario will be updated with this version. Continue exporting?",
-         * "Confirm Update", 50, buttons); JButton result = d.displayModal(); if
-         * (result != updateButton) { System.out.println("return false"); return
-         * false; }
-         *  }
-         */
         return true;
     }
 
@@ -662,7 +639,7 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
         if (success) {
             publishedScenarioInfo.store(project.getProjectProperties());
             Config.putPropString("publish.username", publishedUserName);
-            checkForExistingScenario(true);
+            setUpdate(true);
         }
     }
     
@@ -685,7 +662,7 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
      * a text area where the update details can be sent through; if false these fields
      * are not available; traditionally will be true when a scenario has been exported before
      */
-    private void createScenarioDisplay(boolean update)
+    private void createScenarioDisplay()
     {
         leftPanel = new Box(BoxLayout.Y_AXIS);
         JLabel text;
@@ -695,7 +672,7 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
         titleAndDescPanel = new JPanel(titleAndDescLayout);
         titleAndDescPanel.setBackground(background);
 
-        if (imagePanel==null){
+        if (imagePanel == null) {
             imagePanel = new ImageEditPanel(IMAGE_WIDTH, IMAGE_HEIGHT);
             imagePanel.setBackground(background);
         }
@@ -714,31 +691,28 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
         titleAndDescPanel.add(textPanel);
         titleAndDescPanel.add(imagePanel);
         
-        if (update){
+        if (isUpdate) {
             text = new JLabel(Config.getString("export.snapshot.label"), SwingConstants.TRAILING);
             text.setFont(font);
             titleAndDescPanel.add(text);
             
-            keepScenarioScreenshot=new JCheckBox();
-            //always default it to true and therefore the image panel should be disabled
+            keepScenarioScreenshot = new JCheckBox();
             keepScenarioScreenshot.setSelected(true);
+            // "keep screenshot" defaults to true, therefore the image panel should be disabled
             imagePanel.enableImageEditPanel(false);
             keepScenarioScreenshot.setName(Config.getString("export.publish.keepScenario"));
             keepScenarioScreenshot.setOpaque(false);
             keepScenarioScreenshot.addChangeListener(this);
             titleAndDescPanel.add(keepScenarioScreenshot);  
-            setUpdate(true);
-            
         }   
 
         text = new JLabel(Config.getString("export.publish.title"), SwingConstants.TRAILING);
         text.setFont(font);
         titleAndDescPanel.add(text);
         
-        String title=project.getName();
-        if (getTitle()!=null) 
-        {
-           title=getTitle();
+        String title = project.getName();
+        if (getTitle() != null) {
+           title = getTitle();
         }
         titleField = new JTextField(title);
         titleField.setInputVerifier(new InputVerifier() {
@@ -758,9 +732,9 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
         });
         titleAndDescPanel.add(titleField);
         
-        //if there is an update there is a changes description area
-        //if not there is a short description and long description area
-        if (update){
+        // If there is an update a "changes" description area is shown.
+        // If not there a short description and long description area are shown.
+        if (isUpdate) {
             JLabel updateLabel = new JLabel(Config.getString("export.publish.update"), SwingConstants.TRAILING);
             updateLabel.setVerticalAlignment(SwingConstants.TOP);
             updateLabel.setFont(font);
@@ -909,12 +883,22 @@ public class ExportPublishPane extends ExportPane implements ChangeListener
     }
 
     /**
-     * If the update flag is true it indicates an update export; 
-     * false indicates that it is a first export
+     * Specify whether this scenario will be updated, or is a new export.
      */
     private void setUpdate(boolean isUpdate)
     {
-        this.isUpdate = isUpdate;
+        if (this.isUpdate != isUpdate) {
+            this.isUpdate = isUpdate;
+            if (isUpdate) {
+                String updateText = Config.getString("export.dialog.update");
+                exportDialog.setExportButtonText(updateText);
+            }
+            else {
+                String exportText = Config.getString("export.dialog.share");
+                exportDialog.setExportButtonText(exportText);
+            }
+            updateScenarioDisplay();
+        }
     }
 
 }

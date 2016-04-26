@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -31,9 +31,7 @@ import bluej.Config;
  * Class to handle debugging messages.
  * 
  * @author Michael Kolling
- * @version $Id: Debug.java 8358 2010-09-16 13:28:53Z nccb $
  */
-
 public class Debug
 {
     private static final String eol = System.getProperty("line.separator");
@@ -97,8 +95,9 @@ public class Debug
      */
     public static void log(String msg)
     {
-        if (! Config.getPropString("bluej.debug").equals("true"))
+        if (! Config.getPropString("bluej.debug").equals("true")) {
             message(msg);
+        }
     }
 
     /**
@@ -130,6 +129,26 @@ public class Debug
         pwriter.flush();
     }
     
+    /**
+     * Log an unexpected exception. Generally this should be used only if the
+     * exception is probably harmless; otherwise, a message should also be
+     * provided, stating what was being attempted when the exception occurred -
+     * see {@link #reportError(String,Throwable)}.
+     * 
+     * @param error  The exception which occurred.
+     */
+    public static void reportError(Throwable error)
+    {
+        message("An unexpected exception occurred:");
+        PrintWriter pwriter = new PrintWriter(debugStream);
+        error.printStackTrace(pwriter);
+        pwriter.flush();
+    }
+    
+    /**
+     * Log a stack trace with the given message.
+     * @param msg  The message to precede the stack trace.
+     */
     public static void printCallStack(String msg)
     {
         message(msg + "; call stack:");

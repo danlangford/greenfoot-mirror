@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,7 +21,13 @@
  */
 package bluej.parser.nodes;
 
+import bluej.debugger.gentype.Reflective;
 import bluej.parser.EditorParser;
+import bluej.parser.entity.JavaEntity;
+import bluej.parser.entity.PackageOrClass;
+import bluej.parser.entity.ParsedReflective;
+import bluej.parser.entity.TypeEntity;
+import bluej.parser.entity.ValueEntity;
 import bluej.parser.lexer.JavaTokenTypes;
 import bluej.parser.lexer.LocatableToken;
 import bluej.parser.nodes.NodeTree.NodeAndPosition;
@@ -44,7 +50,8 @@ public class MethodBodyNode extends IncrementalParsingNode
     @Override
     protected boolean isDelimitingNode(NodeAndPosition<ParsedNode> nap)
     {
-        return nap.getNode().isContainer();
+        ParsedNode pn = nap.getNode();
+        return pn.isContainer() || pn.getNodeType() == ParsedNode.NODETYPE_FIELD;
     }
     
     @Override
@@ -97,5 +104,44 @@ public class MethodBodyNode extends IncrementalParsingNode
     public boolean growsForward()
     {
         return true;
+    }
+    
+    @Override
+    public JavaEntity getValueEntity(String name, Reflective querySource, int fromPosition)
+    {
+        FieldNode var = variables.get(name);
+        if (var != null && var.getOffsetFromParent() <= fromPosition) {
+            JavaEntity fieldType = var.getFieldType().resolveAsType();
+            if (fieldType != null) {
+                return new ValueEntity(fieldType.getType());
+            }
+        }
+        
+        JavaEntity rval = null;
+        if (parentNode != null) {
+            rval = parentNode.getValueEntity(name, querySource, getOffsetFromParent());
+        }
+        
+        if (rval == null) {
+            rval = resolvePackageOrClass(name, querySource, fromPosition);
+        }
+        
+        return rval;
+    }
+    
+    @Override
+    public PackageOrClass resolvePackageOrClass(String name,
+            Reflective querySource, int fromPosition)
+    {
+        ParsedNode cnode = classNodes.get(name);
+        if (cnode != null && cnode.getOffsetFromParent() <= fromPosition) {
+            return new TypeEntity(new ParsedReflective((ParsedTypeNode) cnode));
+        }
+        
+        PackageOrClass rval = null;
+        if (parentNode != null) {
+            rval = parentNode.resolvePackageOrClass(name, querySource);
+        }
+        return rval;
     }
 }

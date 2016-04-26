@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -39,9 +39,12 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import javax.swing.AbstractAction;
 import javax.swing.AbstractButton;
@@ -77,11 +80,13 @@ import bluej.BlueJTheme;
 import bluej.Config;
 import bluej.debugger.Debugger;
 import bluej.debugger.DebuggerClass;
+import bluej.debugger.DebuggerField;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.DebuggerThread;
 import bluej.debugger.DebuggerThreadTreeModel;
-import bluej.debugger.SourceLocation;
 import bluej.debugger.DebuggerThreadTreeModel.SyncMechanism;
+import bluej.debugger.SourceLocation;
+import bluej.debugmgr.inspector.Inspector;
 import bluej.pkgmgr.Project;
 import bluej.utility.GradientFillPanel;
 import bluej.utility.JavaNames;
@@ -94,8 +99,6 @@ import bluej.utility.JavaNames;
 public class ExecControls extends JFrame
     implements ListSelectionListener, TreeSelectionListener, TreeModelListener
 {
-   // private static final String windowTitle =
-        
     private static final String stackTitle =
         Config.getString("debugger.execControls.stackTitle");
     private static final String staticTitle =
@@ -127,35 +130,30 @@ public class ExecControls extends JFrame
     // === instance ===
 
     // the display for the list of active threads
-    //private JList threadList;
-    //private List threads;
     private JTree threadTree; 
     private DebuggerThreadTreeModel threadModel;
-	
     
     private JComponent mainPanel;
     private JList stackList, staticList, instanceList, localList;
-    private JButton stopButton, stepButton, stepIntoButton, continueButton,
-        terminateButton;
-    //private JButton closeButton;
+    private JButton stopButton, stepButton, stepIntoButton, continueButton, terminateButton;
     private CardLayout cardLayout;
     private JPanel flipPanel;
     private JCheckBoxMenuItem systemThreadItem;
-	
+
     // the Project that owns this debugger
     private Project project;
 
     // the debug machine this control is looking at
-    private Debugger debugger = null;				
-
+    private Debugger debugger = null;
+    
     // the thread currently selected
     private DebuggerThread selectedThread;
-	
-    private DebuggerClass currentClass;	    // the current class for the
+
+    private DebuggerClass currentClass;     // the current class for the
                                             //  selected stack frame
-    private DebuggerObject currentObject;	// the "this" object for the
+    private DebuggerObject currentObject;   // the "this" object for the
                                             //  selected stack frame
-    private int currentFrame = 0;		    // currently selected frame
+    private int currentFrame = 0;           // currently selected frame
     
     // A flag to keep track of whether a stack frame selection was performed
     // explicitly via the gui or as a result of a debugger event
@@ -163,7 +161,7 @@ public class ExecControls extends JFrame
     
     //Fields from these classes (key from map) are only shown if they are in the corresponding whitelist
     //of fields (corresponding value from map)
-    private Map<String, List<String>> restrictedClasses; 
+    private Map<String, Set<String>> restrictedClasses; 
     
 
     /**
@@ -194,7 +192,12 @@ public class ExecControls extends JFrame
         setVisible(show);
     }
     
-    public void setRestrictedClasses(Map<String, List<String>> restrictedClasses)
+    /**
+     * Sets the restricted classes - classes for which only some fields should be displayed.
+     * 
+     * @param restrictedClasses a map of class name to a set of white-listed fields.
+     */
+    public void setRestrictedClasses(Map<String, Set<String>> restrictedClasses)
     {
         this.restrictedClasses = restrictedClasses;
     }
@@ -278,7 +281,7 @@ public class ExecControls extends JFrame
             if (selectedThread.equals(threadModel.getNodeAsDebuggerThread(nodes[i]))) {
                 setSelectedThread(selectedThread);
             }
-        }	
+        }
     }
 
     public void treeNodesInserted(TreeModelEvent e) { }
@@ -301,7 +304,7 @@ public class ExecControls extends JFrame
             viewStaticField(staticList.getSelectedIndex());
         }
         else if(src == instanceList && instanceList.getSelectedIndex() >= 0) {
-            viewInstanceField(instanceList.getSelectedIndex());
+            viewInstanceField((DebuggerField) instanceList.getSelectedValue());
         }
         else if(src == localList && localList.getSelectedIndex() >= 0) {
             viewLocalVar(localList.getSelectedIndex());
@@ -362,7 +365,7 @@ public class ExecControls extends JFrame
 
             cardLayout.show(flipPanel, "blank");
         }
-        else {	
+        else {
             boolean isSuspended = selectedThread.isSuspended();
 
             stopButton.setEnabled(!isSuspended);
@@ -483,12 +486,37 @@ public class ExecControls extends JFrame
         currentObject = selectedThread.getCurrentObject(frameNo);
         if(currentClass != null) {
             staticList.setFixedCellWidth(-1);
-            staticList.setListData(currentClass.getStaticFields(false, restrictedClasses).toArray());
+            List<DebuggerField> fields = currentClass.getStaticFields();
+            List<String> listData = new ArrayList<String>(fields.size());
+            for (DebuggerField field : fields) {
+                String declaringClass = field.getDeclaringClassName();
+                Set<String> whiteList = restrictedClasses.get(declaringClass);
+                if (whiteList == null || whiteList.contains(field.getName())) {
+                    listData.add(Inspector.fieldToString(field) + " = " + field.getValueString());
+                }
+            }
+            staticList.setListData(listData.toArray(new String[listData.size()]));
         }
-        if(currentObject != null) {
-            instanceList.setFixedCellWidth(-1);
-            instanceList.setListData(currentObject.getInstanceFields(false, restrictedClasses).toArray());
+        
+        instanceList.setFixedCellWidth(-1);
+        if(currentObject != null && !currentObject.isNullObject()) {
+            List<DebuggerField> fields = currentObject.getFields();
+            List<DebuggerField> listData = new ArrayList<DebuggerField>(fields.size());
+            for (DebuggerField field : fields) {
+                if (! Modifier.isStatic(field.getModifiers())) {
+                    String declaringClass = field.getDeclaringClassName();
+                    Set<String> whiteList = restrictedClasses.get(declaringClass);
+                    if (whiteList == null || whiteList.contains(field.getName())) {
+                        listData.add(field);
+                    }
+                }
+            }
+            instanceList.setListData(listData.toArray(new DebuggerField[listData.size()]));
         }
+        else {
+            instanceList.setListData(new String[0]);
+        }
+        
         if(selectedThread != null) {
             localList.setFixedCellWidth(-1);
             localList.setListData(selectedThread.getLocalVariables(frameNo).toArray());
@@ -500,18 +528,19 @@ public class ExecControls extends JFrame
      */
     private void viewStaticField(int index)
     {
-        if(currentClass.staticFieldIsObject(index)) {
-            project.getInspectorInstance(currentClass.getStaticFieldObject(index), null, null, null, this);
+        DebuggerField field = currentClass.getStaticField(index);
+        if(field.isReferenceType() && ! field.isNull()) {
+            project.getInspectorInstance(field.getValueObject(null), null, null, null, this);
         }
     }
 
     /**
      * Display an object inspector for an object in an instance field.
      */
-    private void viewInstanceField(int index)
+    private void viewInstanceField(DebuggerField field)
     {
-        if(currentObject.instanceFieldIsObject(index)) {
-            project.getInspectorInstance(currentObject.getInstanceFieldObject(index), null, null, null, this);
+        if(field.isReferenceType() && ! field.isNull()) {
+            project.getInspectorInstance(field.getValueObject(null), null, null, null, this);
         }
     }
 
@@ -535,7 +564,7 @@ public class ExecControls extends JFrame
         if (icon != null) {
             setIconImage(icon);
         }
-    	
+    
         setJMenuBar(makeMenuBar());
 
         JPanel contentPane = new GradientFillPanel(new BorderLayout(6,6));
@@ -597,6 +626,7 @@ public class ExecControls extends JFrame
                 instanceList.setVisibleRowCount(4);
                 instanceList.setFixedCellWidth(150);
                 instanceList.addMouseListener(mouseListener);
+                instanceList.setCellRenderer(new FieldCellRenderer());
             }
             instanceScrollPane.setViewportView(instanceList);
             JLabel lbl = new JLabel(instanceTitle);
@@ -667,8 +697,9 @@ public class ExecControls extends JFrame
                     if (node != null) {
                         DebuggerThread dt = threadModel.getNodeAsDebuggerThread(node);        
 
-                        if (dt != null)
-                            setSelectedThread(dt);				 	
+                        if (dt != null) {
+                            setSelectedThread(dt);
+                        }
                     }
                 }
             }
@@ -696,7 +727,7 @@ public class ExecControls extends JFrame
             threadTree.addTreeSelectionListener(this);             
             threadTree.addMouseListener(treeMouseListener);
         }
-										        
+
         JScrollPane threadScrollPane = new JScrollPane(threadTree);
         lbl = new JLabel(threadTitle);
         lbl.setOpaque(true);
@@ -734,7 +765,7 @@ public class ExecControls extends JFrame
                 Window win = (Window)event.getSource();
                 win.setVisible(false);
             }
-            	
+            
         });
 
         // save position when window is moved

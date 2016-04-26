@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -32,7 +32,6 @@ import bluej.debugger.gentype.MethodReflective;
 import bluej.debugger.gentype.Reflective;
 import bluej.parser.entity.EntityResolver;
 import bluej.parser.entity.JavaEntity;
-import bluej.parser.lexer.JavaTokenTypes;
 import bluej.parser.lexer.LocatableToken;
 
 /**
@@ -90,13 +89,16 @@ public class CompletionParser extends TextParser
     }
     
     @Override
-    protected void error(String msg)
+    protected void error(String msg, int beginLine, int beginCol, int endLine, int endCol)
     {
         return;
     }
     
     public Map<String,Set<MethodReflective>> getMethodSuggestions()
     {
+        if (methodSuggestions == null) {
+            suggestFor(getSuggestionType());
+        }
         return methodSuggestions;
     }
     
@@ -153,15 +155,6 @@ public class CompletionParser extends TextParser
     {
         suggestionToken = token;
         suggestionEntity = popValueStack();
-    }
-    
-    @Override
-    protected void endExpression(LocatableToken token)
-    {
-        super.endExpression(token);
-        if (token.getType() == JavaTokenTypes.EOF) {
-            suggestFor(getSuggestionType());
-        }
     }
     
     private void suggestFor(GenTypeSolid type)

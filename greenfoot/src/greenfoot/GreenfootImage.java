@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009, 2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -33,6 +33,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.MediaTracker;
+import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
@@ -50,7 +51,7 @@ import java.net.URL;
  * and/or drawn by using various drawing methods.
  * 
  * @author Poul Henriksen
- * @version 2.1
+ * @version 2.2
  */
 public class GreenfootImage
 {
@@ -139,7 +140,8 @@ public class GreenfootImage
         if (! image.copyOnWrite) {
             setImage(GraphicsUtilities.createCompatibleTranslucentImage(image.getWidth(), image.getHeight()));
             Graphics2D g = getGraphics();
-            image.drawImage(g, 0, 0, null, false);
+            g.setComposite(AlphaComposite.Src);
+            g.drawImage(image.getAwtImage(), 0, 0, null);
             g.dispose();
         }
         else {
@@ -164,7 +166,7 @@ public class GreenfootImage
      */
     public GreenfootImage(String string, int size, Color foreground, Color background)
     {
-        String[] lines = string.split(System.getProperty("line.separator"));
+        String[] lines = string.replaceAll("\r", "").split("\n");
         image = GraphicsUtilities.createCompatibleTranslucentImage(1, 1);
         Graphics2D g = (Graphics2D)image.getGraphics();
         Font font = g.getFont().deriveFont((float)size);
@@ -385,7 +387,18 @@ public class GreenfootImage
      */
     public void scale(int width, int height)
     {
-        setImage(image.getScaledInstance(width, height, Image.SCALE_DEFAULT));
+        if (width == image.getWidth() && height == image.getHeight())
+            return;
+        
+        // getScaledInstance is too slow, see: http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6196792
+        // This is adapted from: http://java.sun.com/products/java-media/2D/reference/faqs/index.html#Q_How_do_I_create_a_resized_copy
+        BufferedImage scaled = GraphicsUtilities.createCompatibleTranslucentImage(width, height);
+        Graphics2D g = scaled.createGraphics();
+        g.setComposite(AlphaComposite.Src);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        g.drawImage(image, 0, 0, width, height, null);
+        g.dispose();
+        setImage(scaled);
     }
 
     /**

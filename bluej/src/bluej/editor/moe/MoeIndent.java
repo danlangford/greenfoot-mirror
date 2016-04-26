@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 2010,2011  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,10 +30,11 @@ import java.util.regex.Pattern;
 
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Element;
+import javax.swing.text.Position;
 
 import bluej.Config;
-import bluej.parser.nodes.ParsedNode;
 import bluej.parser.nodes.NodeTree.NodeAndPosition;
+import bluej.parser.nodes.ParsedNode;
 import bluej.utility.Debug;
 
 /**
@@ -82,7 +83,8 @@ public class MoeIndent
      * Perform an auto-layout - calculate the correct indent for each source line between the given
      * start and end positions, and apply it. Return information about the applied indentation.
      */
-    public static AutoIndentInformation calculateIndentsAndApply(MoeSyntaxDocument doc, int startPos, int endPos, int prevCaretPos)
+    public static AutoIndentInformation calculateIndentsAndApply(MoeSyntaxDocument doc,
+            int startPos, int endPos, int prevCaretPos)
     {
         int caretPos = prevCaretPos;
         Element rootElement = doc.getDefaultRootElement();
@@ -95,35 +97,72 @@ public class MoeIndent
         boolean perfect = true;
         NodeAndPosition<ParsedNode> root = new NodeAndPosition<ParsedNode>(doc.getParser(), 0, doc.getParser().getSize());
 
+        // Track the start and end positions, as they may change due to updates
+        Position startp, endp;
+        try {
+            startp = doc.createPosition(startPos);
+            endp = doc.createPosition(endPos);
+        }
+        catch (BadLocationException ble) {
+            throw new RuntimeException(ble);
+        }
+        
         // examine if there are missing spaces between methods and add them.
         // NB. proper indentation of these changes later in this method.
-        checkMethodSpacing(root, rootElement, methodUpdates);
+        checkMethodSpacing(root, rootElement, methodUpdates, startPos, endPos);
         for (DocumentAction methodUpdate : methodUpdates) {
             caretPos = methodUpdate.apply(doc, caretPos);
         }
-
+        methodUpdates = null;
+        
+        // Remove excessive blank lines:
+        for (int i = 0; i < rootElement.getElementCount(); i++) {
+            Element el = rootElement.getElement(i);
+            // If the element overlaps at all with our area of interest:
+            if (el.getEndOffset() > startp.getOffset() && el.getStartOffset() < endp.getOffset()) {
+                boolean thisLineBlank = isWhiteSpaceOnly(getElementContents(doc, el));
+                if (thisLineBlank) {
+                    try {
+                        if (caretPos >= el.getStartOffset() && caretPos < el.getEndOffset()) {
+                            caretPos = el.getStartOffset();
+                        }
+                        if (lastLineWasBlank) {
+                            // Consecutive blank lines; remove this one:
+                            if (el.getEndOffset() <= doc.getLength()) {
+                                doc.remove(el.getStartOffset(), el.getEndOffset() - el.getStartOffset());
+                                perfect = false;
+                            }
+                        } else {
+                            // Single blank line (thus far), remove all spaces from
+                            // it (and don't interrupt perfect status):
+                            int rmlen = el.getEndOffset() - el.getStartOffset() - 1;
+                            if (rmlen > 0) {
+                                doc.remove(el.getStartOffset(), rmlen);
+                            }
+                        }
+                    }
+                    catch (BadLocationException ble) {
+                        throw new RuntimeException(ble);
+                    }
+                }
+                lastLineWasBlank = thisLineBlank;
+            }
+        }
+        
+        // Line removals may have affected parse node structure. Fix it:
+        doc.flushReparseQueue();
+        
+        // Check indentation of each line, build a list of updates required:
         for (int i = 0; i < rootElement.getElementCount(); i++) {
             Element el = rootElement.getElement(i);
             
             // If the element overlaps at all with our area of interest:
-            if (el.getEndOffset() > startPos && el.getStartOffset() < endPos) {
+            if (el.getEndOffset() > startp.getOffset() && el.getStartOffset() < endp.getOffset()) {
 
                 boolean thisLineBlank = isWhiteSpaceOnly(getElementContents(doc, el));
                 DocumentAction update = null;
     
-                if (thisLineBlank) {
-                    if (lastLineWasBlank) {
-                        // Consecutive blank lines; remove this one:
-                        if (el.getEndOffset() <= doc.getLength()) {
-                            update = new DocumentRemoveLineAction(el);
-                            perfect = false;
-                        }
-                    } else {
-                        // Single blank line (thus far), remove all spaces from
-                        // it (and don't interrupt perfect status):
-                        update = new DocumentIndentAction(el, "");
-                    }
-                } else {
+                if (!thisLineBlank) {
                     String indent = calculateIndent(el, root, ii, doc);
                     update = new DocumentIndentAction(el, indent);
                     perfect = perfect && getElementContents(doc, el).startsWith(indent)
@@ -137,7 +176,7 @@ public class MoeIndent
             }
         }
 
-        // Now apply them all:
+        // Now apply the required updates:
         for (DocumentAction update : updates) {
             caretPos = update.apply(doc, caretPos);
         }
@@ -193,8 +232,11 @@ public class MoeIndent
      * @param root      Node to look inside of.
      * @param map       Map of the document used to get the lines of the method.
      * @param updates   List to update with new actions where needed.
+     * @param startPos  Start of document region to scan
+     * @param endPos    End of document region to scan
      */
-    private static void checkMethodSpacing(NodeAndPosition<ParsedNode> root, Element map, List<DocumentAction> updates)
+    private static void checkMethodSpacing(NodeAndPosition<ParsedNode> root, Element map,
+            List<DocumentAction> updates, int startPos, int endPos)
     {
         NodeAndPosition<ParsedNode> current = null;
         NodeAndPosition<ParsedNode> next = null;
@@ -203,19 +245,30 @@ public class MoeIndent
             if (current != null && 
                     current.getNode().getNodeType() == ParsedNode.NODETYPE_METHODDEF &&
                     current.getNode().getNodeType() == next.getNode().getNodeType()) {
-                int currentLine = map.getElementIndex(current.getEnd());
+                int currentLine = map.getElementIndex(current.getEnd() - 1);
                 int nextLine = map.getElementIndex(next.getPosition());
-                if ((currentLine + 1) == nextLine) {
-                    updates.add(0, new DocumentAddLineAction(next.getPosition()));
-                } else if ((currentLine == nextLine)) {
-                    updates.add(0, new DocumentAddLineAction(next.getPosition(), true));
+                
+                if (next.getPosition() >= startPos && next.getPosition() <= endPos) {
+                    if ((currentLine + 1) == nextLine) {
+                        updates.add(0, new DocumentAddLineAction(next.getPosition()));
+                    } else if ((currentLine == nextLine)) {
+                        updates.add(0, new DocumentAddLineAction(next.getPosition(), true));
+                    }
                 }
-                    
+                else if (current.getEnd() >= startPos && current.getEnd() <= endPos) {
+                    if ((currentLine + 1) == nextLine) {
+                        updates.add(0, new DocumentAddLineAction(current.getEnd()));
+                    } else if ((currentLine == nextLine)) {
+                        updates.add(0, new DocumentAddLineAction(current.getEnd(), true));
+                    }
+                }
             }
             current = next;
-            checkMethodSpacing(current, map, updates);
+            if (current.getPosition() > endPos) {
+                return;
+            }
+            checkMethodSpacing(current, map, updates, startPos, endPos);
         }
-        
     }
     
     // ---------------------------------------
@@ -325,43 +378,6 @@ public class MoeIndent
     }
 
     /**
-     * A document action for removing a line.
-     */
-    private static class DocumentRemoveLineAction implements DocumentAction
-    {
-        private Element lineToRemove;
-
-        public DocumentRemoveLineAction(Element lineToRemove)
-        {
-            this.lineToRemove = lineToRemove;
-        }
-
-        public int apply(MoeSyntaxDocument doc, int caretPos)
-        {
-            try {
-                int start = lineToRemove.getStartOffset();
-                int end = lineToRemove.getEndOffset();
-                int lineLength = lineToRemove.getEndOffset() - lineToRemove.getStartOffset();
-                doc.remove(lineToRemove.getStartOffset(), lineLength);
-                
-                if (caretPos < start) {
-                    return caretPos; // before us, not moved
-                } else if (caretPos >= end) {
-                    return caretPos - lineLength; // after us, move by the line length
-                } else {
-                    return start; // in us, move to start of line
-                }
-            }
-            catch (BadLocationException e) {
-                Debug.reportError("Problem while trying to remove line from document: "
-                        + lineToRemove.getStartOffset() + "->" + lineToRemove.getEndOffset()
-                        + " in document of size " + doc.getLength(), e);
-                return caretPos;
-            }
-        }
-    }
-
-    /**
      * A class representing an update to the indentation on a line of the document.  This is different
      * to a LineAction because it intrinsically knows which line it needs to update
      */
@@ -441,7 +457,7 @@ public class MoeIndent
 
     /**
      * Find the position of the first non-indentation character in a string.
-     * Indentation characters are <whitespace>, //, *, /*, /**.
+     * Indentation characters are [whitespace], //, *, /*, /**.
      */
     public static int findFirstNonIndentChar(String line, boolean whitespaceOnly)
     {

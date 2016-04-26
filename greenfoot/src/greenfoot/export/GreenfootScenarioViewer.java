@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,7 +22,6 @@
 package greenfoot.export;
 
 import greenfoot.World;
-import greenfoot.WorldVisitor;
 import greenfoot.core.ProjectProperties;
 import greenfoot.core.Simulation;
 import greenfoot.core.WorldHandler;
@@ -55,6 +54,7 @@ import javax.swing.JRootPane;
 import javax.swing.RootPaneContainer;
 
 import bluej.Config;
+import javax.swing.JScrollPane;
 
 /**
  * This class can view and run a Greenfoot scenario. It is not possible to
@@ -76,11 +76,17 @@ public class GreenfootScenarioViewer extends JApplet
 
     private Constructor<?> worldConstructor;
 
+    /**
+     * The default constructor, used when the scenario runs as an applet.
+     */
     public GreenfootScenarioViewer()
     {
 
     }
 
+    /**
+     * Constructor for when the scenario runs as an application.
+     */
     public GreenfootScenarioViewer(RootPaneContainer rootPane)
     {
         rootPaneContainer = rootPane;
@@ -110,15 +116,16 @@ public class GreenfootScenarioViewer extends JApplet
             // it will be null when running as applet, so set it to the applet.
             rootPaneContainer = this;
         }
-
+        
         JPanel centerPanel = new JPanel(new CenterLayout());
-        centerPanel.add(canvas);
+        centerPanel.add( canvas );
         canvas.setBorder(BorderFactory.createLineBorder(Color.BLACK));
         
-        centerPanel.setBorder( BorderFactory.createEmptyBorder(EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE)); 
+        JScrollPane outer = new JScrollPane( centerPanel );
+        outer.setBorder(BorderFactory.createEmptyBorder(EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE));
         controls.setBorder(BorderFactory.createCompoundBorder( BorderFactory.createEmptyBorder(0,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE,EMPTY_BORDER_SIZE), BorderFactory.createEtchedBorder()));
         
-        rootPaneContainer.getContentPane().add(centerPanel, BorderLayout.CENTER);
+        rootPaneContainer.getContentPane().add(outer, BorderLayout.CENTER);
         rootPaneContainer.getContentPane().add(controls, BorderLayout.SOUTH);
     }
 
@@ -148,15 +155,22 @@ public class GreenfootScenarioViewer extends JApplet
             ActorDelegateStandAlone.setupAsActorDelegate();
             ActorDelegateStandAlone.initProperties(properties);
 
-            canvas = new WorldCanvas(null);
+            Class<?> worldClass = Class.forName(worldClassName);
+            worldConstructor = worldClass.getConstructor(new Class[]{});
+            World world = instantiateNewWorld();
+            
+            canvas = new WorldCanvas(world);
             
             WorldHandler.initialise(canvas, new WorldHandlerDelegateStandAlone(this, lockScenario));
             WorldHandler worldHandler = WorldHandler.getInstance();
             Simulation.initialize(worldHandler, new SimulationDelegateStandAlone());
+            
             LocationTracker.initialize();
             sim = Simulation.getInstance();
             controls = new ControlPanel(sim, ! lockScenario);
-            
+
+            worldHandler.setWorld(world);
+
             // Make sure the SoundCollection is initialized and listens for events
             sim.addSimulationListener(SoundFactory.getInstance().getSoundCollection());
             
@@ -182,31 +196,22 @@ public class GreenfootScenarioViewer extends JApplet
             } catch (NumberFormatException nfe) {
                 // If there is no speed info in the properties we don't care...
             }
-            Class<?> worldClass = Class.forName(worldClassName);
-            worldConstructor = worldClass.getConstructor(new Class[]{});
-            instantiateNewWorld();
+            
+            buildGUI();
         }
         catch (ClassNotFoundException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
         catch (SecurityException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
         catch (NoSuchMethodException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
         catch (IllegalArgumentException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
-
-        buildGUI();
     }
-
-
     
     /**
      * Called by the browser or applet viewer to inform this JApplet that it
@@ -235,7 +240,7 @@ public class GreenfootScenarioViewer extends JApplet
      */
     public void stop()
     {
-    	sim.setPaused(true);
+        sim.setPaused(true);
     }
 
     /**
@@ -287,30 +292,25 @@ public class GreenfootScenarioViewer extends JApplet
     /**
      * Creates a new instance of the world. And initialises with that world.
      */
-    public void instantiateNewWorld() 
+    public World instantiateNewWorld() 
     {
         try {
             World world = (World) worldConstructor.newInstance(new Object[]{});
-            canvas.setWorld(world);
-            WorldHandler.getInstance().setWorld(world);
+            return world;
         }
         catch (IllegalArgumentException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
         catch (InstantiationException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
         catch (IllegalAccessException e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
         catch (InvocationTargetException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
             e.getCause().printStackTrace();
         }
+        return null;
     }
     
     /**
@@ -327,6 +327,6 @@ public class GreenfootScenarioViewer extends JApplet
      */
     public ReentrantReadWriteLock getWorldLock(World world)
     {
-        return WorldVisitor.getLock(world);
+        return WorldHandler.getInstance().getWorldLock();
     }
 }

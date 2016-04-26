@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,21 +23,18 @@ package bluej.debugger.jdi;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import bluej.debugger.DebuggerClass;
+import bluej.debugger.DebuggerField;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.gentype.GenTypeClass;
 import bluej.debugger.gentype.JavaType;
 import bluej.debugger.gentype.Reflective;
-import bluej.utility.Debug;
-import bluej.utility.JavaNames;
 
 import com.sun.jdi.ArrayReference;
 import com.sun.jdi.Field;
 import com.sun.jdi.ObjectReference;
 import com.sun.jdi.ReferenceType;
-import com.sun.jdi.Value;
 
 /**
  * Represents an object running on the user (remote) machine, together with an optional generic
@@ -56,21 +53,26 @@ public class JdiObject extends DebuggerObject
      */
     public static JdiObject getDebuggerObject(ObjectReference obj)
     {
-        if (obj instanceof ArrayReference)
+        if (obj instanceof ArrayReference) {
             return new JdiArray((ArrayReference) obj);
-        else
+        }
+        else {
             return new JdiObject(obj);
+        }
     }
     
     public static JdiObject getDebuggerObject(ObjectReference obj, JavaType expectedType)
     {
-        if( obj instanceof ArrayReference )
+        if( obj instanceof ArrayReference ) {
             return new JdiArray((ArrayReference) obj, expectedType);
+        }
         else {
-            if( expectedType instanceof GenTypeClass )
+            if( expectedType instanceof GenTypeClass ) {
                 return new JdiObject(obj, (GenTypeClass)expectedType);
-            else
+            }
+            else {
                 return new JdiObject(obj);
+            }
         }
     }
 
@@ -84,11 +86,13 @@ public class JdiObject extends DebuggerObject
     public static JdiObject getDebuggerObject(ObjectReference obj, Field field, JdiObject parent)
     {
         JavaType expectedType = JdiReflective.fromField(field, parent);
-        if (obj instanceof ArrayReference)
+        if (obj instanceof ArrayReference) {
             return new JdiArray((ArrayReference) obj, expectedType);
+        }
         
-        if (expectedType instanceof GenTypeClass)
-            return new JdiObject(obj, (GenTypeClass) expectedType);
+        if (expectedType.asClass() != null) {
+            return new JdiObject(obj, expectedType.asClass());
+        }
         
         return new JdiObject(obj);
     }
@@ -133,6 +137,7 @@ public class JdiObject extends DebuggerObject
         }
     }
     
+    @Override
     protected void finalize()
     {
         if (obj != null) {
@@ -140,68 +145,41 @@ public class JdiObject extends DebuggerObject
         }
     }
     
+    @Override
     public String toString()
     {
         return JdiUtils.getJdiUtils().getValueString(obj);
     }
     
-    /**
-     *  Get the (raw) name of the class of this object.
-     *
-     *  @return    The ClassName value
+    /*
+     * Get the (raw) name of the class of this object.
      */
+    @Override
     public String getClassName()
     {
-        if (obj == null)
+        if (obj == null) {
             return "";
-        else
+        }
+        else {
             return obj.referenceType().name();
+        }
     }
 
-    /**
-     * Get the generic name of the class of the object. All names are fully
-     * qualified
-     *  (eg. java.util.List&lt;java.lang.Integer&gt;).
-     * 
-     *  @return    The generic class name
+    /*
+     * Get the class of this object.
      */
-    public String getGenClassName()
-    {
-        if (obj == null)
-            return "";
-        if(genType != null)
-            return genType.toString();
-        else
-            return getClassName();
-    }
-    
-    /**
-     * Get the generic name of the class of the object. The base names of types
-     * are returned. (eg. List&lt;Integer&gt;).
-     */
-    public String getStrippedGenClassName()
-    {
-        if(obj == null)
-            return "";
-        if(genType != null)
-            return genType.toString(true);
-        else
-            return JavaNames.stripPrefix(getClassName());
-    }
-
-    /**
-     *  Get the class of this object.
-     *
-     *  @return    The class object.
-     */
+    @Override
     public DebuggerClass getClassRef()
     {
-        if (obj == null)
+        if (obj == null) {
             return null;
-        else
+        }
+        else {
             return new JdiClass(obj.referenceType());
+        }
     }
     
+    @Override
     public GenTypeClass getGenType()
     {
         if(genType != null) {
@@ -222,24 +200,16 @@ public class JdiObject extends DebuggerObject
      *
      *@return    The Array value
      */
+    @Override
     public boolean isArray()
     {
         return false;
     }
 
+    @Override
     public boolean isNullObject()
     {
         return obj == null;
-    }
-
-    /**
-     *  Return the number of static fields (including inherited fields).
-     *
-     *@return    The StaticFieldCount value
-     */
-    public int getStaticFieldCount()
-    {
-        return getFieldCount(true);
     }
 
     /**
@@ -247,313 +217,53 @@ public class JdiObject extends DebuggerObject
      *
      *@return    The InstanceFieldCount value
      */
-    public int getInstanceFieldCount()
-    {
-        return getFieldCount(false);
-    }
-
-    /**
-     *  Return the name of the static field at 'slot'.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       The StaticFieldName value
-     */
-    public String getStaticFieldName(int slot)
-    {
-        return getField(true, slot).name();
-    }
-
-    /**
-     *  Return the name of the object field at 'slot'.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       The InstanceFieldName value
-     */
-    public String getInstanceFieldName(int slot)
-    {
-        return getField(false, slot).name();
-    }
-
-    /**
-     * Return the type of the instance field at 'slot'.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       The type of the field
-     */
     @Override
-    public String getInstanceFieldType(int slot)
-    {    
-        return JdiReflective.fromField(getField(false, slot), this).toString(false);
-    }
-
-    /**
-     *  Return the object in static field 'slot'. Slot must exist and
-     *  must be of object type.
-     *
-     *@param  slot  The slot number to be returned
-     *@return       the object at slot
-     */
-    public DebuggerObject getStaticFieldObject(int slot)
+    public int getElementCount()
     {
-        Field field = getField(true, slot);
-        ObjectReference val = (ObjectReference) obj.getValue(field);
-        return getDebuggerObject(val, field, this);
-    }
-
-    /**
-     *  Return the object in object field 'slot'. Slot must exist and
-     *  must be of object type.
-     *
-     *@param  slot  The slot number to be returned
-     *@return       The InstanceFieldObject value
-     */
-    public DebuggerObject getInstanceFieldObject(int slot)
-    {
-        Field field = getField(false, slot);
-        ObjectReference val = (ObjectReference) obj.getValue(field);
-        return getDebuggerObject(val, field, this);
+        return -1;
     }
     
-    /**
-     * Return the object, about which some static type information is known,
-     * in object field 'slot'.
-     * 
-     * @param slot          The slot number to be returned
-     * @param expectedType  The static type of the value in the field
-     * @return   The value in the field, as a DebuggerObject.
-     */
-    public DebuggerObject getInstanceFieldObject(int slot, JavaType expectedType)
+    @Override
+    public JavaType getElementType()
     {
-        Field field = getField(false, slot);
-        ObjectReference val = (ObjectReference) obj.getValue(field);
-        return getDebuggerObject(val, expectedType);
+        return null;
     }
 
-
-    /**
-     *  Return the object in field 'slot'. Slot must exist and
-     *  must be of object type.
-     *
-     *@param  slot  The slot number to be returned
-     *@return       The FieldObject value
-     */
-    public DebuggerObject getFieldObject(int slot)
+    @Override
+    public DebuggerObject getElementObject(int index)
     {
-        Field field = (Field) fields.get(slot);
-        ObjectReference val = (ObjectReference) obj.getValue(field);
-        return getDebuggerObject(val, field, this);
+        return null;
     }
     
-    /**
-     * Return the object, about which some static type information is known,
-     * in the field 'slot'.
-     * 
-     * @param slot          The slot number to be returned
-     * @param expectedType  The static type of the value in the field
-     * @return              The field object value (as a DebuggerObject)
-     */
-    public DebuggerObject getFieldObject(int slot, JavaType expectedType)
+    @Override
+    public String getElementValueString(int index)
     {
-        Field field = (Field) fields.get(slot);
-        ObjectReference val = (ObjectReference) obj.getValue(field);
-        return getDebuggerObject(val, expectedType);
-    }
-
-    public DebuggerObject getFieldObject(String name)
-    {
-        Field field = obj.referenceType().fieldByName(name);
-        ObjectReference val = (ObjectReference) obj.getValue(field);
-        return getDebuggerObject(val, field, this);
+        return null;
     }
     
-    public String getFieldValueString(int slot) 
-    {
-        Field field = (Field) fields.get(slot);
-        Value val = obj.getValue(field);
-        return JdiUtils.getJdiUtils().getValueString(val); 
-    }
-    
-    public String getFieldValueTypeString(int slot) 
-    {
-        Field field = (Field) fields.get(slot);
-        Value val = obj.getValue(field);
-        return val.type().name();  
-    }
-
+    @Override
     public ObjectReference getObjectReference()
     {
         return obj;
     }
-
-    /*
-     * @see bluej.debugger.DebuggerObject#getInstanceFields(boolean, java.util.Map)
-     */
-    public List<String> getInstanceFields(boolean includeModifiers, Map<String, List<String>> restrictedClasses)
+    
+    @Override
+    public List<DebuggerField> getFields()
     {
-        List<String> fieldStrings = new ArrayList<String>(obj == null ? 0 : fields.size());
-        
-        if (obj == null)
-            return fieldStrings;
-            
-        ReferenceType cls = obj.referenceType();
-        List<Field> visible = cls.visibleFields();
-        
-        for (int i = 0; i < fields.size(); i++) {
-            Field field = (Field) fields.get(i);
-        
-            if (checkIgnoreField(field))
-                continue;
-            
-            if (restrictedClasses != null) {
-                List<String> fieldWhitelist = restrictedClasses.get(field.declaringType().name());
-                if (fieldWhitelist != null && !fieldWhitelist.contains(field.name())) 
-                    continue; // ignore this one
-            }            
-        
-            if (field.isStatic() == false) {
-                Value val = obj.getValue(field);
-        
-                String valString = JdiUtils.getJdiUtils().getValueString(val);
-                String fieldString = "";
-        
-                if (includeModifiers) {
-                    if (field.isPrivate()) {
-                        fieldString = "private ";
-                    }
-                    if (field.isProtected()) {
-                        fieldString = "protected ";
-                    }
-                    if (field.isPublic()) {
-                        fieldString = "public ";
-                    }
-                }
-        
-                fieldString += JdiReflective.fromField(field, this).toString(true);
-        
-                if (!visible.contains(field)) {
-                    fieldString += " (hidden)";
-                }
-                
-                fieldString += " " + field.name() + " = " +valString;
-                
-                // the following code adds the word "inherited" to inherited
-                // fields - currently unused
-                //else if (!field.declaringType().equals(cls)) {
-                //    fieldString += " (inherited)";
-                //}
-                fieldStrings.add(fieldString);
+        List<Field> visibleFields = obj.referenceType().visibleFields();
+        List<DebuggerField> rlist = new ArrayList<DebuggerField>(fields.size());
+        for (Field field : fields) {
+            if (! checkIgnoreField(field)) {
+                boolean visible = visibleFields.remove(field);
+                rlist.add(new JdiField(field, this, !visible));
             }
         }
-        return fieldStrings;
-    }
-
-
-    /**
-     *  Return true if the static field 'slot' is public.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public boolean staticFieldIsPublic(int slot)
-    {
-        return getField(true, slot).isPublic();
-    }
-
-    /**
-     *  Return true if the object field 'slot' is public.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public boolean instanceFieldIsPublic(int slot)
-    {
-        return getField(false, slot).isPublic();
-    }
-
-
-    /**
-     *  Return true if the static field 'slot' is an object (and not
-     *  a simple type).
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public boolean staticFieldIsObject(int slot)
-    {
-        return checkFieldForObject(true, slot);
-    }
-
-    /**
-     *  Return true if the object field 'slot' is an object (and not
-     *  a simple type).
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public boolean instanceFieldIsObject(int slot)
-    {
-        return checkFieldForObject(false, slot);
-    }
-
-    /**
-     *  Return true if the object field 'slot' is an object (and not
-     *  a simple type).
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public boolean fieldIsObject(int slot)
-    {
-        Field field = fields.get(slot);
-        Value val = obj.getValue(field);
-        return (val instanceof ObjectReference);
-    }
-
-    private int getFieldCount(boolean getStatic)
-    {
-        int count = 0;
-
-        for (int i = 0; i < fields.size(); i++) {
-            Field field = (Field) fields.get(i);
-
-            if (checkIgnoreField(field))
-                continue;
-
-            if (field.isStatic() == getStatic) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-
-    private Field getField(boolean getStatic, int slot)
-    {
-        for (int i = 0; i < fields.size(); i++) {
-            Field field = (Field) fields.get(i);
-
-            if (checkIgnoreField(field))
-                continue;
-
-            if (field.isStatic() == getStatic) {
-                if (slot == 0) {
-                    return field;
-                }
-                else {
-                    slot--;
-                }
-            }
-        }
-        Debug.reportError("invalid slot in remote object");
-        return null;
+        return rlist;
     }
 
     private boolean checkIgnoreField(Field f)
     {
-        if (f.name().indexOf('$') >= 0)
-            return true;
-        else
-            return false;
+        return (f.name().indexOf('$') >= 0);
     }
 
     /**
@@ -562,8 +272,7 @@ public class JdiObject extends DebuggerObject
     protected void getRemoteFields()
     {
         if (obj != null) {
-        ReferenceType cls = obj.referenceType();
-
+            ReferenceType cls = obj.referenceType();
             if (cls != null) {
                 fields = cls.allFields();
                 return;
@@ -574,33 +283,30 @@ public class JdiObject extends DebuggerObject
         fields = new ArrayList<Field>();
     }
 
-    private boolean checkFieldForObject(boolean getStatic, int slot)
-    {
-        Field field = getField(getStatic, slot);
-        Value val = obj.getValue(field);
-        return (val instanceof ObjectReference);
-    }  // list of fields of the object
-
     /**
      * Base our object equality on the object that we are referring
      * to in the remote VM.
      */
+    @Override
     public boolean equals(Object o)
     {
-        if(this == o)
+        if(this == o) {
             return true;
-        if((o == null) || (o.getClass() != this.getClass()))
+        }
+        if((o == null) || (o.getClass() != this.getClass())) {
             return false;
+        }
 
         // object must be JdiObject at this point
         JdiObject test = (JdiObject)o;
         return this.obj.equals(test.obj);
     }
-		
+
     /**
      * Base our hashcode on the hashcode of the object that we are
      * referring to in the remote VM.
      */
+    @Override
     public int hashCode()
     {
         return obj.hashCode();

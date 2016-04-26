@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -32,6 +32,7 @@ import greenfoot.core.GProject;
 import greenfoot.core.Simulation;
 import greenfoot.core.WorldHandler;
 import greenfoot.core.WorldInvokeListener;
+import greenfoot.event.SimulationUIListener;
 import greenfoot.gui.DragGlassPane;
 import greenfoot.gui.GreenfootFrame;
 import greenfoot.gui.MessageDialog;
@@ -62,12 +63,14 @@ import rmiextension.wrappers.RObject;
 import bluej.Config;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.gentype.JavaType;
+import bluej.debugmgr.inspector.InspectorManager;
 import bluej.debugmgr.objectbench.ObjectBenchEvent;
 import bluej.debugmgr.objectbench.ObjectBenchInterface;
 import bluej.debugmgr.objectbench.ObjectBenchListener;
 import bluej.debugmgr.objectbench.ObjectWrapper;
 import bluej.prefmgr.PrefMgr;
 import bluej.utility.Debug;
+import bluej.views.CallableView;
 
 
 /**
@@ -76,7 +79,7 @@ import bluej.utility.Debug;
  * @author Poul Henriksen
  */
 public class WorldHandlerDelegateIDE
-    implements WorldHandlerDelegate, ObjectBenchInterface, InteractionListener
+    implements WorldHandlerDelegate, ObjectBenchInterface, InteractionListener, SimulationUIListener
 {
     protected final Color envOpColour = Config.getItemColour("colour.menu.environOp");
 
@@ -89,6 +92,7 @@ public class WorldHandlerDelegateIDE
     private GProject project;
     
     private GreenfootFrame frame;
+    private InspectorManager inspectorManager;
     
     // Records actions manually performed on the world:
     private GreenfootRecorder greenfootRecorder;
@@ -96,11 +100,14 @@ public class WorldHandlerDelegateIDE
 
     private boolean worldInitialising;
 
-    public WorldHandlerDelegateIDE(GreenfootFrame frame, ClassStateManager classStateManager)
+    public WorldHandlerDelegateIDE(GreenfootFrame frame, InspectorManager inspectorManager,
+            ClassStateManager classStateManager)
     {
         this.frame = frame;
-        saveWorldAction = new SaveWorldAction(this, classStateManager);
-        greenfootRecorder = new GreenfootRecorder(saveWorldAction);
+        this.inspectorManager = inspectorManager;
+        greenfootRecorder = new GreenfootRecorder();
+        saveWorldAction = new SaveWorldAction(greenfootRecorder, classStateManager);
+        saveWorldAction.setRecordingValid(false);
     }
 
     /**
@@ -112,7 +119,7 @@ public class WorldHandlerDelegateIDE
         JPopupMenu menu = new JPopupMenu();
 
         ObjectWrapper.createMethodMenuItems(menu, obj.getClass(),
-                new WorldInvokeListener(frame, obj, this, frame, project),
+                new WorldInvokeListener(frame, obj, this, inspectorManager, this, project),
                 LocalObject.getLocalObject(obj), null, false);
 
         // "inspect" menu item
@@ -125,7 +132,7 @@ public class WorldHandlerDelegateIDE
             public void actionPerformed(ActionEvent e)
             {
                 worldHandler.getWorld().removeObject(obj);
-                worldHandler.notifyRemovedActor(obj);
+                removedActor(obj);
                 worldHandler.repaint();
             }
         });
@@ -148,7 +155,7 @@ public class WorldHandlerDelegateIDE
         
         ObjectWrapper.createMethodMenuItems(menu, world.getClass(),
                 new WorldInvokeListener(frame, world, WorldHandlerDelegateIDE.this,
-                        frame, project),
+                        inspectorManager, this, project),
                 LocalObject.getLocalObject(world), null, false);
         // "inspect" menu item
         JMenuItem m = getInspectMenuItem(world);
@@ -184,7 +191,7 @@ public class WorldHandlerDelegateIDE
                 catch (RemoteException e1) {
                     Debug.reportError("Could not get instance name for inspection", e1);
                 }
-                frame.getInspectorInstance(dObj, instanceName, null, null, parent);
+                inspectorManager.getInspectorInstance(dObj, instanceName, null, null, parent);
             }
         });
         m.setFont(PrefMgr.getStandoutMenuFont());
@@ -197,6 +204,7 @@ public class WorldHandlerDelegateIDE
      * Pop-up menu depends on if the MouseEvent occurred on an Actor
      * or the world.
      */
+    @Override
     public boolean maybeShowPopup(MouseEvent e)
     {
         if (e.isPopupTrigger()) {
@@ -204,7 +212,7 @@ public class WorldHandlerDelegateIDE
             Actor obj = worldHandler.getObject(e.getX(), e.getY());
             // if null then the user clicked on the world
             if (obj == null) {
-            	menu = makeWorldPopupMenu(worldHandler.getWorld());
+                menu = makeWorldPopupMenu(worldHandler.getWorld());
             } else {
                 menu = makeActorPopupMenu(obj);
             }
@@ -220,40 +228,45 @@ public class WorldHandlerDelegateIDE
     /**
      * Displays the world pop-up menu in the location specified
      * by the parameter MouseEvent.
-     * @param e	Used to get the component to display in as well as the x
+     * @param e Used to get the component to display in as well as the x
      * and y coordinates.
      */
-    public void showWorldPopupMenu(MouseEvent e) {
-    	JPopupMenu menu = makeWorldPopupMenu(worldHandler.getWorld());
-    	if (menu != null) {
-    	    menu.show(e.getComponent(), e.getX(), e.getY());
-    	}
+    public void showWorldPopupMenu(MouseEvent e)
+    {
+        JPopupMenu menu = makeWorldPopupMenu(worldHandler.getWorld());
+        if (menu != null) {
+            menu.show(e.getComponent(), e.getX(), e.getY());
+        }
     }
 
     /**
      * Clear the world from the cache.
-     * @param world		World to discard
+     * @param world  World to discard
      */
+    @Override
     public void discardWorld(World world)
     {        
         ObjectTracker.clearRObjectCache();
     }
     
-    // It is important that we reset the recorder here in this method, which is called at the start of the world's constructor.
-    // Doing it in setWorld is too late, as we will miss the recording/naming needed
-    // that happens when the prepare method creates new actors -- prepare is invoked from the world's constructor.
-    public void initialisingWorld(World world)
-    {
-        worldInitialising = true;
-        greenfootRecorder.reset(world);        
-    }
-    
+    @Override
     public void setWorld(final World oldWorld, final World newWorld)
     {
-        worldInitialising = false;
+        greenfootRecorder.clearCode(false);
+        greenfootRecorder.setWorld(newWorld);
         if (oldWorld != null) {
             discardWorld(oldWorld);
         }
+        
+        GClass lastWorld = null;
+        if (project != null && newWorld != null) {
+            String lastWorldClass = newWorld.getClass().getName();
+            if (lastWorldClass != null) {
+                lastWorld = project.getDefaultPackage().getClass(lastWorldClass);
+            }
+        }
+
+        saveWorldAction.setLastWorldGClass(lastWorld);
     }
     
     /**
@@ -289,33 +302,25 @@ public class WorldHandlerDelegateIDE
         }
     }
     
-    /**
-     * Add listener to recieve events when objects in the world are clicked.
-     * @param listener
-     */
+    @Override
     public void addObjectBenchListener(ObjectBenchListener listener)
     {
         worldHandler.getListenerList().add(ObjectBenchListener.class, listener);
     }
     
-    
-    /**
-     * Add listener to recieve events when objects in the world are clicked.
-     * @param listener
-     */
+    @Override
     public void removeObjectBenchListener(ObjectBenchListener listener)
     {
         worldHandler.getListenerList().remove(ObjectBenchListener.class, listener);
     }
     
-    /* (non-Javadoc)
-     * @see bluej.debugmgr.objectbench.ObjectBenchInterface#hasObject(java.lang.String)
-     */
+    @Override
     public boolean hasObject(String name)
     {
         return false;
     }
 
+    @Override
     public void mouseClicked(MouseEvent e)
     {
         if (SwingUtilities.isLeftMouseButton(e)) {
@@ -326,6 +331,7 @@ public class WorldHandlerDelegateIDE
         }
     }
     
+    @Override
     public void mouseMoved(MouseEvent e)
     {
         // While dragging, other methods set the mouse cursor instead:
@@ -348,22 +354,45 @@ public class WorldHandlerDelegateIDE
         this.project = (GProject) project;
     }
 
+    @Override
     public void setWorldHandler(WorldHandler handler)
     {
         this.worldHandler = handler;
     }
 
+    @Override
     public void instantiateNewWorld()
     {
+        greenfootRecorder.reset();
+        worldInitialising = true;
+        String lastWorldClassname = getLastWorldClassName();
         Class<? extends World> cls = getLastWorldClass();
         
-        cls = getLastWorldClass();
-        if(cls == null) {
+        if (lastWorldClassname == null) {
             List<Class<? extends World>> worldClasses = project.getDefaultPackage().getWorldClasses();
             if(worldClasses.isEmpty() ) {
                 return;
             }
-            cls = worldClasses.get(0);
+            
+            for (Class<? extends World> wclass : worldClasses) {
+                try {
+                    wclass.getConstructor(new Class<?>[0]);
+                    cls = wclass;
+                    break;
+                }
+                catch (LinkageError le) { }
+                catch (NoSuchMethodException nsme) { }
+            }
+            if (cls == null) {
+                // Couldn't find a world with a suitable constructor
+                showMissingConstructorDialog();
+                return;
+            }
+        }
+        
+        if (cls == null) {
+            // Can occur if last instantiated world class is not compiled.
+            return;
         }
         
         final Class<? extends World> icls = cls;
@@ -373,8 +402,13 @@ public class WorldHandlerDelegateIDE
             {
                 try {
                     Constructor<?> cons = icls.getConstructor(new Class<?>[0]);
-                    World w = (World) Simulation.newInstance(cons);
-                    worldHandler.setWorld(w);
+                    WorldHandler.getInstance().clearWorldSet();
+                    World newWorld = (World) Simulation.newInstance(cons);
+                    if (! WorldHandler.getInstance().checkWorldSet()) {
+                        WorldHandler.getInstance().setWorld(newWorld);
+                    }
+                    saveWorldAction.setRecordingValid(true);
+                    project.setLastWorldClassName(icls.getName());
                 }
                 catch (LinkageError e) { }
                 catch (NoSuchMethodException nsme) {
@@ -391,6 +425,7 @@ public class WorldHandlerDelegateIDE
                     // Or for other reasons.
                     ite.getCause().printStackTrace();
                 }
+                worldInitialising = false;
             }
         });
     }
@@ -418,26 +453,37 @@ public class WorldHandlerDelegateIDE
         
         return project.getDefaultPackage().getClass(lastWorldClass);
     }
-
-    @SuppressWarnings("unchecked")
-    public Class<? extends World> getLastWorldClass()
+    
+    /**
+     * Get the name of the most recently explicitly instantiated world class
+     */
+    private String getLastWorldClassName()
     {
-        try {
-            GClass gclass = getLastWorldGClass();
-            if (gclass != null) {
-                Class<? extends World> rclass = (Class<? extends World>) gclass.getJavaClass();
-                if (GreenfootUtil.canBeInstantiated(rclass)) {
-                    return  rclass;
-                }
-            }
+        if (project != null) {
+            return project.getLastWorldClassName();
         }
-        catch (Exception e) {
-            Debug.reportError("Error trying to get world class", e);
+        return null;
+    }
+
+    /**
+     * Get the last world class that was instantiated, if it can (still) be instantiated.
+     * May return null.
+     */
+    @SuppressWarnings("unchecked")
+    private Class<? extends World> getLastWorldClass()
+    {
+        GClass gclass = getLastWorldGClass();
+        if (gclass != null) {
+            Class<? extends World> rclass = (Class<? extends World>) gclass.getJavaClass();
+            if (GreenfootUtil.canBeInstantiated(rclass)) {
+                return  rclass;
+            }
         }
 
         return null;
     }
 
+    @Override
     public InputManager getInputManager()
     {
         InputManager inputManager = new InputManager();       
@@ -451,104 +497,121 @@ public class WorldHandlerDelegateIDE
         return inputManager;
     }
     
+    @Override
+    public void beginCallExecution(CallableView callableView)
+    {
+        if (callableView.isConstructor() && World.class.isAssignableFrom(callableView.getDeclaringView().getViewClass())) {
+            worldInitialising = true;
+            greenfootRecorder.reset();
+            saveWorldAction.setRecordingValid(true);            
+        }
+    }
+    
+    @Override
+    public void worldConstructed(Object world)
+    {
+        worldInitialising = false;
+        if (project != null) {
+            project.setLastWorldClassName(world.getClass().getName());
+        }
+    }
+    
+    @Override
     public void addActor(Actor actor, int x, int y)
     {
         greenfootRecorder.addActorToWorld(actor, x, y);
     }
 
+    @Override
     public void createdActor(Object actor, String[] args, JavaType[] argTypes)
     {
         greenfootRecorder.createActor(actor, args, argTypes);
     }
 
+    @Override
     public void methodCall(Object obj, String actorName, String name, String[] args, JavaType[] argTypes)
     {
-        greenfootRecorder.callActorMethod(obj, actorName, name, args, argTypes);        
+        if (obj != null) {
+            greenfootRecorder.callActorMethod(obj, actorName, name, args, argTypes);
+        }
+        else {
+            greenfootRecorder.callStaticMethod(actorName, name, args, argTypes);
+        }
     }
-
-    public void staticMethodCall(String className, String name, String[] args, JavaType[] argTypes)
-    {
-        greenfootRecorder.callStaticMethod(className, name, args, argTypes);        
-    }
-
-    public void movedActor(Actor actor, int xCell, int yCell)
+    
+    @Override
+    public void actorDragged(Actor actor, int xCell, int yCell)
     {
         greenfootRecorder.moveActor(actor, xCell, yCell);
     }
 
+    @Override
     public void removedActor(Actor obj)
     {
         greenfootRecorder.removeActor(obj);        
     }
 
-    public List<String> getInitWorldCode()
-    {
-        return greenfootRecorder.getCode();
-    }
-
+    @Override
     public void objectAddedToWorld(Actor object)
     {
         if (worldInitialising) {
-            try {
-                // This code is nasty; we look at the stack trace to see if
-                // we have been called from the prepare() method of the world class.
-                //
-                // We do this so that when the prepare() method is called again from the
-                // code, we give the first names to those objects that are created in the prepare()
-                // method -- which should then be identical to the names the objects had when
-                // they were first recorded.  That way we can record additional code,
-                // and the names of the live objects will be the same as the names of the objects
-                // when the code was initially recorded.
-                //
-                // I don't know if getting the stack trace is slow, but it's probably
-                // still more efficient (in time and memory) than giving every actor a name.
-                // Also, this code only runs in the IDE, not in the stand-alone version
-                // And I've now added a check above to make sure this is only done while the 
-                // world is being initialised (which is when prepare() would be called).
-                StackTraceElement[] methods = Thread.currentThread().getStackTrace();
-                
-                boolean gonePastUs = false;
-                for (StackTraceElement item : methods) {
-    
-                    if (GreenfootRecorder.METHOD_NAME.equals(item.getMethodName()) && item.getClassName().endsWith(getLastWorldGClass().getName())) {
-                        // This call gives the object a name,
-                        // which will be necessary for appending operations with the object to the world's code:
-                        greenfootRecorder.nameActor(object);
-                        return;
-                    }
-                    
-                    if (gonePastUs && item.getClassName().startsWith("java.")) {
-                        //We won't find any java.* classes between us and the prepare method, so if
-                        //we do hit one, we know we won't find anything; this should speed things up a bit:
-                        return;
-                    }
-                    
-                    gonePastUs = gonePastUs || "objectAddedToWorld".equals(item.getMethodName());
+            // This code is nasty; we look at the stack trace to see if
+            // we have been called from the prepare() method of the world class.
+            //
+            // We do this so that when the prepare() method is called again from the
+            // code, we give the first names to those objects that are created in the prepare()
+            // method -- which should then be identical to the names the objects had when
+            // they were first recorded.  That way we can record additional code,
+            // and the names of the live objects will be the same as the names of the objects
+            // when the code was initially recorded.
+            //
+            // I don't know if getting the stack trace is slow, but it's probably
+            // still more efficient (in time and memory) than giving every actor a name.
+            // Also, this code only runs in the IDE, not in the stand-alone version
+            // And I've now added a check above to make sure this is only done while the 
+            // world is being initialised (which is when prepare() would be called).
+            StackTraceElement[] methods = Thread.currentThread().getStackTrace();
+
+            boolean gonePastUs = false;
+            GClass lastWorldGClass = getLastWorldGClass();
+            if (lastWorldGClass == null) {
+                return;
+            }
+            String lastWorldClassName = getLastWorldGClass().getName();
+            
+            for (StackTraceElement item : methods) {
+                if (GreenfootRecorder.METHOD_NAME.equals(item.getMethodName()) &&
+                        item.getClassName().equals(lastWorldClassName)) {
+                    // This call gives the object a name,
+                    // which will be necessary for appending operations with the object to the world's code:
+                    greenfootRecorder.nameActor(object);
+                    return;
                 }
-            } catch (Exception e) {
-                // Never mind then...
+
+                if (gonePastUs && item.getClassName().startsWith("java.")) {
+                    //We won't find any java.* classes between us and the prepare method, so if
+                    //we do hit one, we know we won't find anything; this should speed things up a bit:
+                    return;
+                }
+
+                gonePastUs = gonePastUs || "objectAddedToWorld".equals(item.getMethodName());
             }
         }
     }
 
-    public void clearRecorderCode()
-    {
-        greenfootRecorder.clearCode(false);        
-    }
-    
+    /**
+     * Notify that the simulation has become active ("act" or "run" pressed). Any recorded interaction
+     * then becomes invalid.
+     */
+    @Override
     public void simulationActive()
     {
         greenfootRecorder.clearCode(true);
+        saveWorldAction.setRecordingValid(false);
     }
 
     public SaveWorldAction getSaveWorldAction()
     {
         return saveWorldAction;
     }
-    
-    public InteractionListener getInteractionListener()
-    {
-        return this;
-    }
-    
 }

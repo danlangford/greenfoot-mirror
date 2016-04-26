@@ -78,8 +78,8 @@ public class JavaNames
 
     /**
      * Check whether a string is valid Java qualified identifier
-     * ie java.util or util or com.sun.test or the empty string
-     * but not .java or java..util to com.sun.
+     * ie "java.util" or "util" or "com.sun.test" or the empty string
+     * but not ".java" or "java..util" or "com.sun.".
      */
     public static boolean isQualifiedIdentifier(String str)
     {
@@ -108,8 +108,9 @@ public class JavaNames
     {
         if(fullClassName != null) {
             int index = fullClassName.lastIndexOf(".");
-            if(index >= 0)
+            if(index >= 0) {
                 return fullClassName.substring(++index);
+            }
         }
 
         return fullClassName;
@@ -177,49 +178,45 @@ public class JavaNames
      * Returns null if the file is outside the base
      * directory.
      *
-     * The behaviour of this function is not guaranteed if
+     *<p>The behaviour of this function is not guaranteed if
      * you pass in a directory name. It is meant for filenames
      * like /foo/bar/p1/s1/TestName.java
      *
-     * An example of its use is if your baseDir was the
+     * <p>An example of its use is if your baseDir was the
      * directory /foo/bar and you passed in
      * /foo/bar/p1/s1/TestName.java the function would
      * return p1.s1.TestName
      *
-     * Makes no guarantee that the returned name is a valid
+     * <p>Makes no guarantee that the returned name is a valid
      * Java identifier (ie. some of the directory names used
      * may not be valid java identifiers but no check is made
      * for this).
      */
     public static String convertFileToQualifiedName(File baseDir, File f)
     {
-        try {
-            File pathFile = f.getCanonicalFile();
-            File parent = null;
-            String name = "";
+        File pathFile = f.getAbsoluteFile();
+        File parent = null;
+        String name = "";
 
-            while((parent = pathFile.getParentFile()) != null) {
-                if(pathFile.equals(baseDir)) {
-                    return name;
-                }
-
-                if (name == "") {
-                    name = pathFile.getName();
-
-                    int firstDot;
-
-                    if((firstDot = name.indexOf('.')) >= 0) {
-                        name = name.substring(0, firstDot);
-                    }
-                }
-                else {
-                    name = pathFile.getName() + "." + name;
-                }
-
-                pathFile = parent;
+        while((parent = pathFile.getParentFile()) != null) {
+            if(pathFile.equals(baseDir)) {
+                return name;
             }
+
+            if (name == "") {
+                name = pathFile.getName();
+
+                int firstDot = name.indexOf('.');
+                if (firstDot >= 0) {
+                    name = name.substring(0, firstDot);
+                }
+            }
+            else {
+                name = pathFile.getName() + "." + name;
+            }
+
+            pathFile = parent;
         }
-        catch(IOException ioe) { }
 
         return null;
     }
@@ -249,7 +246,7 @@ public class JavaNames
     /**
      * Fix up Java class names as returned by Class.getName()
      *
-     * The Class.getName() functions are okay for non-array
+     * <p>The Class.getName() functions are okay for non-array
      * classes (we don't need to do anything for them), but are in a funny
      * format for arrays. "String[]", for example, is shown as
      * "[Ljava.lang.String;". See the Class.getName() documentation for
@@ -266,24 +263,24 @@ public class JavaNames
             name = name + "[]";
         }
         switch (className.charAt(0)) {
-	    case 'L' : name = className.substring(1, className.length()-1)
+            case 'L' : name = className.substring(1, className.length()-1)
                        + name;
         break;
-	    case 'B' : name = "byte" + name;
+            case 'B' : name = "byte" + name;
             break;
-	    case 'C' : name = "char" + name;
+            case 'C' : name = "char" + name;
             break;
-	    case 'D' : name = "double" + name;
+            case 'D' : name = "double" + name;
             break;
-	    case 'F' : name = "float" + name;
+            case 'F' : name = "float" + name;
             break;
-	    case 'I' : name = "int" + name;
+            case 'I' : name = "int" + name;
             break;
-	    case 'J' : name = "long" + name;
+            case 'J' : name = "long" + name;
             break;
-	    case 'S' : name = "short" + name;
+            case 'S' : name = "short" + name;
             break;
-	    case 'Z' : name = "boolean" + name;
+            case 'Z' : name = "boolean" + name;
             break;
         }
         return name;

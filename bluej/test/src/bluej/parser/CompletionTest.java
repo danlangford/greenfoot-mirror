@@ -24,6 +24,7 @@ package bluej.parser;
 import java.io.Reader;
 import java.io.StringReader;
 import java.lang.reflect.Modifier;
+import java.util.List;
 import java.util.Map;
 
 import javax.swing.text.BadLocationException;
@@ -32,6 +33,7 @@ import javax.swing.text.PlainDocument;
 import junit.framework.TestCase;
 import bluej.debugger.gentype.FieldReflective;
 import bluej.debugger.gentype.GenTypeClass;
+import bluej.debugger.gentype.GenTypeSolid;
 import bluej.debugger.gentype.JavaType;
 import bluej.debugger.gentype.MethodReflective;
 import bluej.debugger.gentype.Reflective;
@@ -44,6 +46,7 @@ import bluej.parser.entity.TypeEntity;
 import bluej.parser.lexer.LocatableToken;
 import bluej.parser.nodes.ParsedCUNode;
 import bluej.pkgmgr.JavadocResolver;
+import bluej.utility.JavaReflective;
 
 public class CompletionTest extends TestCase
 {
@@ -69,6 +72,14 @@ public class CompletionTest extends TestCase
      */
     private ParsedCUNode cuForSource(String sourceCode, String pkg)
     {
+        return documentForSource(sourceCode, pkg).getParser();
+    }
+    
+    /**
+     * Get a MoeSyntaxDocument (with parser enabled) for the given source code.
+     */
+    private MoeSyntaxDocument documentForSource(String sourceCode, String pkg)
+    {
         EntityResolver presolver = new PackageResolver(resolver, pkg);
         MoeSyntaxDocument document = new MoeSyntaxDocument(presolver);
         document.enableParser(true);
@@ -76,7 +87,7 @@ public class CompletionTest extends TestCase
             document.insertString(0, sourceCode, null);
         }
         catch (BadLocationException ble) {}
-        return document.getParser();
+        return document;
     }
     
     /**
@@ -406,6 +417,33 @@ public class CompletionTest extends TestCase
         assertEquals("A", outer.getName());
     }
     
+    public void testInnerClasses4() throws Exception
+    {
+        String aClassSrc =
+            "class A {\n" +                         // 0-10
+            "  Runnable r = new Thread(new String(\"xxxx\")) {\n" +   // 10-58
+            "    String x = \"\";\n" +              // 58-77
+            "    public void run() {\n" +           // 77-101
+            "      this.run();\n" +                 //  this. <-- 112
+            "    }\n" +
+            "  };\n" +
+            "}\n";
+        
+        PlainDocument doc = new PlainDocument();
+        doc.insertString(0, aClassSrc, null);
+        
+        ParsedCUNode aNode = cuForSource(aClassSrc, "");
+        resolver.addCompilationUnit("", aNode);
+        
+        CodeSuggestions suggests = aNode.getExpressionType(109, doc);
+        assertNotNull(suggests);
+        GenTypeClass suggestsType = suggests.getSuggestionType().asClass();
+        assertNotNull(suggestsType);
+        List<GenTypeClass> supers = suggestsType.getReflective().getSuperTypes();
+        assertEquals(1, supers.size());
+        assertEquals("java.lang.Thread", supers.get(0).toString());
+    }
+    
     public void testPartial() throws Exception
     {
         String aClassSrc = "class A {\n" +   // 0 - 10
@@ -491,6 +529,102 @@ public class CompletionTest extends TestCase
         assertFalse(suggests.isStatic());
     }
     
+    public void testTparCompletion2() throws Exception
+    {
+        String aClassSrc = "class A<T extends String & Runnable> {\n" +   // 0 - 39
+        "public void m(T t) {\n" +              // 39 - 60   
+        "  (t+4).\n" +                          // 60 -   (t+4). <- 68   
+        "}\n" +
+        "}\n";
+
+        MoeSyntaxDocument doc = documentForSource(aClassSrc, "");
+        ParsedCUNode aNode = doc.getParser();
+        resolver.addCompilationUnit("", aNode);
+        
+        // Now rename the "T" tpar to "U"
+        doc.remove(8, 1);
+        doc.insertString(8, "U", null);
+        doc.getParser();
+        doc.remove(53, 1);
+        doc.insertString(53, "U", null);
+        aNode = doc.getParser();
+        
+        CodeSuggestions suggests = aNode.getExpressionType(68, doc);
+        assertNotNull(suggests);
+        assertEquals("java.lang.String", suggests.getSuggestionType().toString());
+        assertFalse(suggests.isStatic());
+    }
+    
+    public void testTparCompletion3() throws Exception
+    {
+        String aClassSrc = "class A<T extends String & Runnable> {\n" +   // 0 - 39
+        "public void m(T t) {\n" +              // 39 - 60   
+        "  (t+4).\n" +                          // 60 -   (t+4). <- 68   
+        "}\n" +
+        "}\n";
+
+        MoeSyntaxDocument doc = documentForSource(aClassSrc, "");
+        ParsedCUNode aNode = doc.getParser();
+        resolver.addCompilationUnit("", aNode);
+        
+        // Now rename the "T" tpar to "U" (in the method first)
+        doc.remove(53, 1);
+        doc.insertString(53, "U", null);
+        doc.getParser();
+        doc.remove(8, 1);
+        doc.insertString(8, "U", null);
+        aNode = doc.getParser();
+        
+        CodeSuggestions suggests = aNode.getExpressionType(68, doc);
+        assertNotNull(suggests);
+        assertEquals("java.lang.String", suggests.getSuggestionType().toString());
+        assertFalse(suggests.isStatic());
+    }
+    
+    public void testTparCompletion4() throws Exception
+    {
+        String aClassSrc = "class A<T extends String, U extends T> {\n" +   // 0 - 41
+        "public void m(U u) {\n" +              // 41 - 62   
+        "  u.\n" +                              // 62 -   u. <- 66   
+        "}\n" +
+        "}\n";
+
+        MoeSyntaxDocument doc = documentForSource(aClassSrc, "");
+        ParsedCUNode aNode = doc.getParser();
+        resolver.addCompilationUnit("", aNode);
+        
+        CodeSuggestions suggests = aNode.getExpressionType(66, doc);
+        assertNotNull(suggests);
+        GenTypeSolid stsolid = suggests.getSuggestionType().asSolid();
+        assertNotNull(stsolid);
+        GenTypeClass [] stypes = stsolid.getReferenceSupertypes();
+        assertEquals(1, stypes.length);
+        assertEquals("java.lang.String", stypes[0].toString());
+        assertFalse(suggests.isStatic());
+    }
+    
+    public void testTparCompletion5() throws Exception
+    {
+        String aClassSrc = "class A {\n" +      // 0 - 10
+        "public <T extends String, U extends T> void m(U u) {\n" +  // 10 - 63
+        "  u.\n" +                              // 63 -   u. <- 67   
+        "}\n" +
+        "}\n";
+
+        MoeSyntaxDocument doc = documentForSource(aClassSrc, "");
+        ParsedCUNode aNode = doc.getParser();
+        resolver.addCompilationUnit("", aNode);
+        
+        CodeSuggestions suggests = aNode.getExpressionType(67, doc);
+        assertNotNull(suggests);
+        GenTypeSolid stsolid = suggests.getSuggestionType().asSolid();
+        assertNotNull(stsolid);
+        GenTypeClass [] stypes = stsolid.getReferenceSupertypes();
+        assertEquals(1, stypes.length);
+        assertEquals("java.lang.String", stypes[0].toString());
+        assertFalse(suggests.isStatic());
+    }
+    
     public void testCompletionOnKeyword1() throws Exception
     {
         String aClassSrc = "class A {\n" +   // 0 - 10
@@ -564,7 +698,7 @@ public class CompletionTest extends TestCase
     {
         String aClassSrc = "class A {\n" +   // 0 - 10
             "public void m() {\n" +          // 10 - 28  
-            "  for\n" +                      // 28 - 34  new <-- 33  
+            "  for\n" +                      // 28 - 34  for <-- 33  
             "}\n" +
             "}\n";
     
@@ -728,6 +862,67 @@ public class CompletionTest extends TestCase
         });
         
         assertNotNull(acontent);
+    }
+    
+    public void testRegression340() throws Exception
+    {
+        String aClassSrc =
+            "class A {\n" +            // 0 - 10
+            "  public void g() {\n" +   // 10 - 30
+            "    someMethod(new int[] {new String().length, 45});\n" +  //  }.  <-- 80
+            "  }\n" +                   
+            "}\n";
+
+        PlainDocument doc = new PlainDocument();
+        doc.insertString(0, aClassSrc, null);
+        ParsedCUNode aNode = cuForSource(aClassSrc, "");
+        resolver.addCompilationUnit("", aNode);
+        
+        // In ticket #340 this causes an EmptyStackException:
+        CodeSuggestions suggests = aNode.getExpressionType(80, doc);
+        assertNotNull(suggests);
+    }
+    
+    public void testCompletionAfterAnonClass() throws Exception
+    {
+        String aClassSrc =
+            "class A {\n" +            // 0 - 10
+            "  public void g() {\n" +   // 10 - 30
+            "    new Thread() {\n" +    // 30 - 49
+            "      public void run() {\n" +  // 49 - 75
+            "        int x = 5 + 6;\n" +  // 75 - 98
+            "      }\n" +               // 98 - 106
+            "    }.start();\n" +        //  }. <-- 112
+            "  }\n" +                   
+            "}\n";
+
+        PlainDocument doc = new PlainDocument();
+        doc.insertString(0, aClassSrc, null);
+        ParsedCUNode aNode = cuForSource(aClassSrc, "");
+        resolver.addCompilationUnit("", aNode);
+        
+        CodeSuggestions suggests = aNode.getExpressionType(112, doc);
+        assertNotNull(suggests);
+        assertTrue(new GenTypeClass(new JavaReflective(Thread.class)).isAssignableFrom(suggests.getSuggestionType()));
+    }
+    
+    public void testAfterArrayInitList() throws Exception
+    {
+        String aClassSrc =
+            "class A {\n" +            // 0 - 10
+            "  public void g() {\n" +   // 10 - 30
+            "    int l = new String[]{\"one\",\"two\"}.length;\n" +  //  }.  <-- 68
+            "  }\n" +                   
+            "}\n";
+
+        PlainDocument doc = new PlainDocument();
+        doc.insertString(0, aClassSrc, null);
+        ParsedCUNode aNode = cuForSource(aClassSrc, "");
+        resolver.addCompilationUnit("", aNode);
+        
+        CodeSuggestions suggests = aNode.getExpressionType(68, doc);
+        assertNotNull(suggests);
+        assertEquals("java.lang.String[]", suggests.getSuggestionType().toString());
     }
     
     // Yet to do:

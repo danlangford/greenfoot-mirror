@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -22,7 +22,6 @@
 package bluej.debugger;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * A class for representing classes in the debugged VM.
@@ -39,66 +38,17 @@ public abstract class DebuggerClass
     public abstract String getName();
 
     /**
-     *  Return the number of static fields.
-     *
-     *@return    The StaticFieldCount value
+     * Get a list of static fields declared in this class.
      */
-    public abstract int getStaticFieldCount();
-
-    /**
-     *  Return the name of the static field at 'slot'.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       The StaticFieldName value
-     */
-    public abstract String getStaticFieldName(int slot);
+    public abstract List<DebuggerField> getStaticFields();
     
     /**
-     * Return the type of the static field at 'slot'.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       The type of the static field
+     * Get the static field specified by the given index.
      */
-    public abstract String getStaticFieldType(int slot);
-
-    /**
-     *  Return the object in static field 'slot'.
-     *
-     *@param  slot  The slot number to be returned
-     *@return       The StaticFieldObject value
-     */
-    public abstract DebuggerObject getStaticFieldObject(int slot);
-
-    /**
-     *  Return a list of strings with the description of each static field
-     *  in the format "<modifier> <type> <name> = <value>".
-     *
-     *@param  includeModifiers  Whether to include modifiers (private,etc.)
-     *@return                   The StaticFields value
-     */
-    public abstract List<String> getStaticFields(boolean includeModifiers, Map<String, List<String>> restrictedClasses);
-    
-    public final List<String> getStaticFields(boolean includeModifiers)
+    public DebuggerField getStaticField(int slot)
     {
-        return getStaticFields(includeModifiers, null);
+        return getStaticFields().get(slot);
     }
-
-    /**
-     *  Return true if the static field 'slot' is public.
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public abstract boolean staticFieldIsPublic(int slot);
-
-    /**
-     *  Return true if the static field 'slot' is an object (and not
-     *  a simple type, or null).
-     *
-     *@param  slot  The slot number to be checked
-     *@return       Description of the Returned Value
-     */
-    public abstract boolean staticFieldIsObject(int slot);
     
     /**
      * Returns true if this represents a Java interface

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -57,8 +57,16 @@ import bluej.parser.nodes.NodeTree.NodeAndPosition;
  */
 public abstract class IncrementalParsingNode extends JavaParentNode
 {
+    /**
+     * The end position of each parse state. -1 means the marker is invalid.
+     */
     protected int [] stateMarkers = new int[0];
+    /**
+     * Whether the corresponding state marker specifically marks the end of the state (true), or if it rather
+     * marks the beginning of the next state (false).
+     */
     protected boolean [] marksEnd = new boolean[0];
+    
     
     /** The final token in the last partial parse. Should be set by doPartialParse if possible. */
     protected LocatableToken last;
@@ -88,6 +96,9 @@ public abstract class IncrementalParsingNode extends JavaParentNode
     protected final static int PP_ABORT = 9;
     
     
+    /**
+     * Construct an incremental parsing node with the given parent node.
+     */
     public IncrementalParsingNode(JavaParentNode parent)
     {
         super(parent);
@@ -148,14 +159,7 @@ public abstract class IncrementalParsingNode extends JavaParentNode
         NodeAndPosition<ParsedNode> nextNap = null;
         if (nap != null) {
             nextNap = nap.nextSibling();
-            if (nap.getEnd() > offset) {
-                // The reparse position straddles the child node. Remove the child.
-                removeChild(nap, listener);
-                offset = nap.getPosition(); // re-parse from where the removed child was
-            }
-            else {
-                offset = nap.getEnd();
-            }
+            offset = nap.getEnd();
         }
         else {
             offset = stateBoundary; // reparse from previous state marker
@@ -298,14 +302,13 @@ public abstract class IncrementalParsingNode extends JavaParentNode
                 }
                 complete = (ppr != PP_INCOMPLETE);
                 int oldSize = getSize();
+                endNodeCleanup(pparams, state, Integer.MAX_VALUE, nodePos + newsize);
                 if (newsize != oldSize) {
                     setSize(newsize);
                     nap = new NodeAndPosition<ParsedNode>(this, nodePos, newsize);
                     listener.nodeChangedLength(nap, nodePos, oldSize);
-                    endNodeCleanup(pparams, state, Integer.MAX_VALUE, nodePos + newsize);
                     return NODE_SHRUNK;
                 }
-                endNodeCleanup(pparams, state, Integer.MAX_VALUE, nodePos + newsize);
                 return ALL_OK;
             }
             else if (ppr == PP_INCOMPLETE) {
@@ -411,6 +414,7 @@ public abstract class IncrementalParsingNode extends JavaParentNode
                         
             if (nlaToken.getType() == JavaTokenTypes.EOF) {
                 endNodeCleanup(pparams, state, parseEnd, parseEnd);
+                processChildQueue(nodePos, childQueue, childQueue.peek());
                 if (parseEnd < nodePos + getSize()) {
                     // We had limited the parse amount deliberately. Schedule a continuation.
                     parser.completedNode(this, nodePos, getSize());
@@ -507,15 +511,25 @@ public abstract class IncrementalParsingNode extends JavaParentNode
         return false;
     }
     
+    /**
+     * Perform some general cleanup after a parse operation. Overwritten children are removed,
+     * Overwritten state markers are invalidated; comments seen by the parser are added as
+     * children of this node.
+     * 
+     * @param params The parse parameters
+     * @param state  The current parse state
+     * @param rpos   The point up to which overwritten children and state markers should be removed
+     * @param epos   The position where the parse ended
+     */
     private void endNodeCleanup(ParseParams params, int state, int rpos, int epos)
     {
-        while (++state < stateMarkers.length) {
-            if (stateMarkers[state] < rpos) {
+        while (state < stateMarkers.length) {
+            if (stateMarkers[state] < rpos || stateMarkers[state] == rpos && marksEnd[state]) {
                 stateMarkers[state] = -1;
             }
+            state++;
         }
-        removeOverwrittenChildren(params.childQueue, rpos,
-                params.listener);
+        removeOverwrittenChildren(params.childQueue, rpos, params.listener);
         params.parser.completedNode(this, params.nodePos, epos - params.nodePos);
     }
     
@@ -616,8 +630,7 @@ public abstract class IncrementalParsingNode extends JavaParentNode
                     // The text was removed right at the end of a state;
                     // reparse a bit before to prevent reparsing the wrong
                     // state:
-                    int spos = (i == 0) ? 0 : stateMarkers[i-1];
-                    spos = Math.max(0, spos); // in case the stateMarker was the invalid -1 value
+                    int spos = (i == 0) ? 0 : Math.max(stateMarkers[i-1], 0);
                     NodeAndPosition<ParsedNode> nap = getNodeTree().findNodeAtOrBefore(stateMarkers[i] - 1 + nodePos, nodePos);
                     if (nap != null && isDelimitingNode(nap)) {
                         // Note in some cases the node will overlap the statemarker, as the node
@@ -688,30 +701,50 @@ public abstract class IncrementalParsingNode extends JavaParentNode
     protected int handleDeletion(Document document, int nodePos, int dpos,
             NodeStructureListener listener)
     {
-        // Need to check that we haven't collapsed two nodes together
-        NodeAndPosition<ParsedNode> next = null;
-        NodeAndPosition<ParsedNode> nnext = findNodeAt(dpos, nodePos);;
-        while (nnext != null && nnext.getEnd() == dpos) {
-            next = nnext;
-            nnext = nnext.nextSibling();
-        }
+        int offset = dpos;
+        int state = getCurrentState(offset - nodePos);
         
-        if (next != null && nnext != null && nnext.getPosition() == dpos) {
-            if (next.getEnd() == dpos) {
-                if (! isDelimitingNode(next)) {
-                    removeChild(next, listener);
-                    ((MoeSyntaxDocument) document).scheduleReparse(next.getPosition(),
-                            next.getSize());
+        // Find the nearest container node or state boundary prior to the reparse point.
+        int stateBoundary = (state != 0) ? stateMarkers[state - 1] + nodePos : nodePos;
+        NodeAndPosition<ParsedNode> nap = null;
+        
+        if (offset > stateBoundary) {
+            nap = getNodeTree().findNodeAtOrBefore(offset, nodePos);
+            while (nap != null && nap.getSize() == 0) {
+                // Remove 0-size nodes at the delete position
+                NodeAndPosition<ParsedNode> pnap = nap.prevSibling();
+                removeChild(nap, listener);
+                nap = pnap;
+            }
+            
+            while (nap != null && nap.getEnd() > dpos) {
+                nap = nap.prevSibling();
+            }
+            
+            while (nap != null && !isDelimitingNode(nap)) {
+                boolean isLeadingComment = nap != null && nap.getNode().getNodeType() == ParsedNode.NODETYPE_COMMENT
+                        && nap.getPosition() == stateBoundary;
+                if (isLeadingComment) {
+                    break;
                 }
-                else if (! isDelimitingNode(nnext)) {
-                    removeChild(nnext, listener);
-                    ((MoeSyntaxDocument) document).scheduleReparse(nnext.getPosition(),
-                            nnext.getSize());
+                
+                if (nap.getPosition() >= stateBoundary) {
+                    NodeAndPosition<ParsedNode> pnap = nap.prevSibling();
+                    if (pnap != null && isDelimitingNode(pnap) && pnap.getEnd() == dpos && nap.getPosition() == dpos) {
+                        // Special case: two nodes have been collapsed together
+                        removeChild(nap, listener);
+                        return super.handleDeletion(document, nodePos, dpos, listener);
+                    }
+                    nap = pnap;
+                }
+                else {
+                    nap = null;
                 }
             }
         }
         
-        return super.handleDeletion(document, nodePos, dpos, listener);
+        int adjustedPos = (nap != null) ? nap.getEnd() : stateBoundary;
+        return super.handleDeletion(document, nodePos, adjustedPos, listener);
     }
     
     @Override

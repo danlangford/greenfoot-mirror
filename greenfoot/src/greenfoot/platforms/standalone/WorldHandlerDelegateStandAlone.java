@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,7 +27,6 @@ import greenfoot.core.WorldHandler;
 import greenfoot.export.GreenfootScenarioViewer;
 import greenfoot.gui.input.InputManager;
 import greenfoot.platforms.WorldHandlerDelegate;
-import greenfoot.record.InteractionListener;
 
 import java.awt.event.MouseEvent;
 
@@ -65,6 +64,7 @@ public class WorldHandlerDelegateStandAlone implements WorldHandlerDelegate
         // Not used in standalone
     }
 
+    @Override
     public void setWorld(final World oldWorld, final World newWorld)
     {
         // Not needed
@@ -77,16 +77,9 @@ public class WorldHandlerDelegateStandAlone implements WorldHandlerDelegate
 
     public void instantiateNewWorld()
     {
-        viewer.instantiateNewWorld();
+        WorldHandler.getInstance().setWorld(viewer.instantiateNewWorld());
     }
 
-    @SuppressWarnings("unchecked")
-    public Class getLastWorldClass()
-    {
-        // Not used in standalone
-        return null;
-    }
-    
     public InputManager getInputManager()
     {
         InputManager inputManager = new InputManager();
@@ -104,7 +97,7 @@ public class WorldHandlerDelegateStandAlone implements WorldHandlerDelegate
 
     public void discardWorld(World world)
     {
-    	// Nothing special to do.    
+        // Nothing special to do.    
     }
 
     public void addActor(Actor actor, int x, int y)
@@ -112,18 +105,13 @@ public class WorldHandlerDelegateStandAlone implements WorldHandlerDelegate
         // Nothing to be done
     }
 
-    public void initialisingWorld(World world)
+    @Override
+    public void actorDragged(Actor actor, int xCell, int yCell)
     {
-        // Nothing to be done        
     }
     
-    public void simulationActive()
+    @Override
+    public void objectAddedToWorld(Actor actor)
     {
-        // Nothing to be done        
-    }
-    
-    public InteractionListener getInteractionListener()
-    {
-        return null;
     }
 }

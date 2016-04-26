@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,14 +21,15 @@
  */
 package greenfoot.gui.export;
 
+import greenfoot.core.GClass;
 import greenfoot.core.GProject;
 import greenfoot.core.WorldHandler;
 import greenfoot.export.Exporter;
 import greenfoot.gui.GreenfootFrame;
 import greenfoot.gui.MessageDialog;
 
-import java.awt.Color;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Frame;
@@ -36,6 +37,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.lang.reflect.Constructor;
 import java.util.HashMap;
 
 import javax.swing.JButton;
@@ -48,15 +50,22 @@ import bluej.BlueJTheme;
 import bluej.Config;
 import bluej.utility.DialogManager;
 import bluej.utility.EscapeDialog;
+import bluej.utility.Utility;
 
+/**
+ * A dialog allowing the user to export a scenario in a variety of ways.
+ */
 public class ExportDialog extends EscapeDialog
         implements TabbedIconPaneListener
 {
     // Internationalisation
-    private static final String dialogTitle =Config.getString("export.dialog.title");
+    private static final String dialogTitle = Config.getApplicationName() + ": "
+        + Config.getString("export.dialog.title");
 
     private static final String noWorldDialogTitle = Config.getString("export.noworld.dialog.title");
     private static final String noWorldDialogMsg = Config.getString("export.noworld.dialog.msg");
+    private static final String noZeroArgConsTitle = Config.getString("export.noconstructor.dialog.title");
+    private static final String noZeroArgConsMsg = Config.getString("export.noconstructor.dialog.msg");
     
     private Frame parent;
     private GProject project;
@@ -69,6 +78,10 @@ public class ExportDialog extends EscapeDialog
     private ExportPane selectedPane;
     private String selectedFunction;
     private int progress;
+    /** Has the dialog been made visible previously? */
+    private boolean haveBeenVisible;
+
+    private TabbedIconPane tabbedPane;
 
     public ExportDialog(GreenfootFrame parent)
     {
@@ -85,7 +98,6 @@ public class ExportDialog extends EscapeDialog
 
     /**
      * Show this dialog.
-     * 
      */
     public void display()
     {
@@ -95,31 +107,62 @@ public class ExportDialog extends EscapeDialog
                 return;         // Cancel export
             }
         }
-        if (project.getLastWorldClassName() == null) {
+        String lastWorldClassName = project.getLastWorldClassName();
+        GClass lastWorldClass = lastWorldClassName == null ? null
+                : project.getDefaultPackage().getClass(lastWorldClassName);
+        if (lastWorldClass == null) {
             JButton[] buttons = new JButton[]{new JButton(Config.getString("greenfoot.continue"))};
             MessageDialog errorDialog = new MessageDialog(parent, noWorldDialogMsg, noWorldDialogTitle, 50 , buttons);
+            errorDialog.display();
+            return;
+        }
+
+        // Check that a zero-argument constructor is available
+        boolean haveNoArgConstructor = false;
+        try {
+            Class<?> realClass = lastWorldClass.getJavaClass();
+            Constructor<?> [] cons = realClass.getConstructors();
+            for (Constructor<?> con : cons) {
+                if (con.getParameterTypes().length == 0) {
+                    haveNoArgConstructor = true;
+                    break;
+                }
+            }
+        }
+        catch (LinkageError le) {}
+        
+        if (! haveNoArgConstructor) {
+            JButton[] buttons = new JButton[]{new JButton(Config.getString("greenfoot.continue"))};
+            MessageDialog errorDialog = new MessageDialog(parent, noZeroArgConsMsg, noZeroArgConsTitle, 50 , buttons);
             errorDialog.display();
             return;
         }
         
         final ExportPublishPane publishPane = (ExportPublishPane) panes.get(ExportPublishPane.FUNCTION);
         
-        // getSnapShot has to be invoked on the EDT.
-        SwingUtilities.invokeLater(new Runnable(){
-            public void run()
-            {
-                BufferedImage snapShot = WorldHandler.getInstance().getSnapShot();
-                if(snapShot != null) {
-                    publishPane.setImage(snapShot);
-                }        
-                clearStatus();
-                setVisible(true);  // returns after OK or Cancel, which set 'ok'
-            }});
+        BufferedImage snapShot = WorldHandler.getInstance().getSnapShot();
+        if(snapShot != null) {
+            publishPane.setImage(snapShot);
+        }        
+        clearStatus();
+        
+        if (selectedPane == null) {
+            String preferredPane = Config.getPropString("greenfoot.lastExportPane", ExportPublishPane.FUNCTION);
+            showPane(preferredPane, false);
+        }
+        
+        if (! haveBeenVisible) {
+            pack();
+            DialogManager.centreDialog(this);
+            haveBeenVisible = true;
+        }
+
+        setVisible(true);  // returns after OK or Cancel, which set 'ok'
     }
 
     /**
      * Display or hide the progress bar and status text. If 'showProgress' is 
-     * true, an indeterminite progress bar is shown, otherwise hidden. 
+     * true, an indeterminate progress bar is shown, otherwise hidden. 
      * If 'text' is null, the text is hidden, otherwise shown.
      *
      * setProgress can be invoked from a worker thread.
@@ -142,14 +185,22 @@ public class ExportDialog extends EscapeDialog
     }
 
     /**
+     * Set the text for the export/share button.
+     */
+    public void setExportButtonText(String s)
+    {
+        continueButton.setText(s);
+    }
+    
+    /**
      * Close action when OK is pressed.
      */
     private void doOK()
     {
-        if(!project.isCompiled())  {
+        if(!project.isCompiled()) {
             boolean isCompiled = showCompileDialog(project);
             if(!isCompiled) {               
-                return;         // Cancel export
+                return;  // Cancel export
             }
         }
         doExport();
@@ -188,7 +239,6 @@ public class ExportDialog extends EscapeDialog
 
                 if(function.equals(ExportPublishPane.FUNCTION)) {
                     exporter.publishToWebServer(project, (ExportPublishPane)pane, ExportDialog.this);
-                    
                 }
                 if(function.equals(ExportWebPagePane.FUNCTION)) {
                     exporter.makeWebPage(project, (ExportWebPagePane)pane, ExportDialog.this);
@@ -250,7 +300,7 @@ public class ExportDialog extends EscapeDialog
      */
     public void tabSelected(String function)
     {
-        showPane(function);
+        showPane(function, true);
     }
 
     // === end of TabbedIconListener interface ===
@@ -258,20 +308,23 @@ public class ExportDialog extends EscapeDialog
     /** 
      * Called when the selection of the tabs changes.
      */
-    public void showPane(String function)
+    private void showPane(String function, boolean saveAsDefault)
     {
         ExportPane chosenPane = panes.get(function);
         if(chosenPane != selectedPane) {
-            if(selectedPane != null)
+            if(selectedPane != null) {
                 contentPane.remove(selectedPane);
-            continueButton.setText(Config.getString("export.dialog.continue"));
-            chosenPane.activated(continueButton);
+            }
+            continueButton.setText(Config.getString("export.dialog.export"));
+            chosenPane.activated();
             contentPane.add(chosenPane, BorderLayout.CENTER);
             selectedPane = chosenPane;
             selectedFunction = function;
             clearStatus();
             pack();
-            Config.putPropString("greenfoot.lastExportPane", function);
+            if (saveAsDefault) {
+                Config.putPropString("greenfoot.lastExportPane", function);
+            }
         }
     }
     
@@ -281,7 +334,7 @@ public class ExportDialog extends EscapeDialog
     private void createPanes(GProject project, File defaultExportDir)
     {
         panes = new HashMap<String, ExportPane>();
-        panes.put(ExportPublishPane.FUNCTION, new ExportPublishPane(project));
+        panes.put(ExportPublishPane.FUNCTION, new ExportPublishPane(project, this));
         panes.put(ExportWebPagePane.FUNCTION, new ExportWebPagePane(project.getName(), defaultExportDir));
         panes.put(ExportAppPane.FUNCTION, new ExportAppPane(project.getName(), defaultExportDir));
         
@@ -304,7 +357,7 @@ public class ExportDialog extends EscapeDialog
         contentPane.setBorder(null);
         contentPane.setBackground(new Color(220, 220, 220));
         
-        TabbedIconPane tabbedPane = new TabbedIconPane(preferredPane);
+        tabbedPane = new TabbedIconPane(preferredPane);
         tabbedPane.setListener(this);
         contentPane.add(tabbedPane, BorderLayout.NORTH);
 
@@ -354,8 +407,6 @@ public class ExportDialog extends EscapeDialog
 
         contentPane.add(bottomPanel, BorderLayout.SOUTH);
         
-        showPane(preferredPane);
-
         DialogManager.centreDialog(this);
     }
 
@@ -378,13 +429,18 @@ public class ExportDialog extends EscapeDialog
         }
     }
 
+    /**
+     * Inform the user that some classes aren't compiled, and give the option to compile them.
+     */
     private boolean showCompileDialog(GProject project)
     {
         ExportCompileDialog dlg; 
-        if(this.isVisible()) 
+        if(this.isVisible()) {
            dlg = new ExportCompileDialog(this, project);
-        else
+        }
+        else {
             dlg = new ExportCompileDialog(parent, project);
+        }
         
         project.addCompileListener(dlg);
         boolean compiled = dlg.display();
@@ -394,14 +450,15 @@ public class ExportDialog extends EscapeDialog
     }
 
     /**
-     * Tell this dialog that the publish has finished and whether it was succesfull.
-     * @param success
-     * @param string
+     * Tell this dialog that the publish (to the Gallery) has finished and whether it was successful.
      */
     public void publishFinished(boolean success, String msg)
     {
         selectedPane.postPublish(success);
-        setProgress(false, msg);        
+        setProgress(false, msg);
+        if (success) {
+            Utility.openWebBrowser(Config.getString("greenfoot.gameserver.address"));
+        }
     }
     
     /**
@@ -424,5 +481,14 @@ public class ExportDialog extends EscapeDialog
     {
         progress += bytes;
         progressBar.setValue(progress);
+    }
+
+    /**
+     * Selects the pane with the gallery export
+     */
+    public void selectGalleryPane()
+    {
+        tabbedPane.select(ExportPublishPane.FUNCTION);
+        showPane(ExportPublishPane.FUNCTION, false);
     }
 }

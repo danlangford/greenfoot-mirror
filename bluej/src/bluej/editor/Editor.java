@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -24,10 +24,12 @@ package bluej.editor;
 import java.awt.Rectangle;
 import java.awt.print.PrinterJob;
 import java.io.IOException;
+import java.nio.charset.Charset;
 
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
 
+import bluej.compiler.Diagnostic;
 import bluej.parser.SourceLocation;
 import bluej.parser.nodes.ParsedCUNode;
 
@@ -42,14 +44,15 @@ public interface Editor
 {
     /**
      * Read a file into the editor buffer and show the editor. If the editor
-     * already contains text, it is cleared first.
+     * already contains text, it is cleared first. If the file cannot be read,
+     * the editor should not be displayed.
      * 
      * @param filename    the file to be read
      * @param compiled    true if this is a compiled class
      * 
      * @return false is there was a problem, true otherwise
      */
-    boolean showFile(String filename, boolean compiled, String docFilename, Rectangle bounds);
+    boolean showFile(String filename, Charset charset, boolean compiled, String docFilename, Rectangle bounds);
 
     /**
      * Reload and display the same file that was displayed before.
@@ -84,6 +87,16 @@ public interface Editor
      */
     void setSelection(int lineNumber, int column, int len);
 
+    /**
+     * Request to the editor to mark the text between begin and end as selected.
+     *
+     * @param  begin                      where to start the selection
+     * @param  end                        where to end the selection
+     * @throws  IllegalArgumentException  if either of the specified TextLocations
+     * represent a position which does not exist in the text.
+     */
+    public void setSelection(SourceLocation begin, SourceLocation end);
+    
     /**
      * Set the selection of the editor to be a len characters on the line
      * lineNumber, starting with column columnNumber
@@ -141,11 +154,19 @@ public interface Editor
      * @param column        the column to move the cursor to
      * @param beep        if true, do a system beep
      * @param setStepMark    if true, set step mark (for single stepping)
-     * @param help        name of help group (may be null)
+     * @param help        name of help group (may be null); this should be the compiler
+     *                    name such as "javac".
      */
     void displayMessage(String message, int lineNumber, int column, 
                         boolean beep, boolean setStepMark, String help);
 
+    /**
+     * Display a diagnostic message from the compiler.
+     * 
+     * @param diagnostic  The diagnostic to be displayed.
+     */
+    void displayDiagnostic(Diagnostic diagnostic);
+    
     /**
      *  Display a message into the info area.
      *  The message will be cleared when the caret is moved.
@@ -299,17 +320,7 @@ public interface Editor
      */
     public void setText(SourceLocation begin, SourceLocation end, String newText)
         throws BadLocationException;
-    
-    /**
-     * Request to the editor to mark the text between begin and end as selected.
-     *
-     * @param  begin                      where to start the selection
-     * @param  end                        where to end the selection
-     * @throws  IllegalArgumentException  if either of the specified TextLocations
-     * represent a position which does not exist in the text.
-     */
-    public void setSelection(SourceLocation begin, SourceLocation end);
-    
+        
     /**
      * Returns the LineColumn object from the given offset in the text.
      *

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -213,6 +213,18 @@ public class MethodNode extends JavaParentNode
     @Override
     public JavaEntity getValueEntity(String name, Reflective querySource)
     {
+        JavaEntity paramEntity = getParameterEntity(name, querySource);
+        if (paramEntity != null) {
+            return paramEntity;
+        }
+        return super.getValueEntity(name, querySource);
+    }
+    
+    /**
+     * Look for a value entity in the method parameters.
+     */
+    private JavaEntity getParameterEntity(String name, Reflective querySource)
+    {
         Iterator<String> i = paramNames.iterator();
         Iterator<JavaEntity> j = paramTypes.iterator();
         while (i.hasNext()) {
@@ -225,7 +237,7 @@ public class MethodNode extends JavaParentNode
             }
             j.next();
         }
-        return super.getValueEntity(name, querySource);
+        return null;
     }
     
     @Override

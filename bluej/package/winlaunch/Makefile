@@ -6,7 +6,7 @@
 #APPNAME=\"BlueJ\"
 #GREENFOOTDEF=
 #EXECNAME=bjlaunch.exe
-#REQUIREDJAVA=\"1.5\"
+#REQUIREDJAVA=\"1.6\"
 
 # For Greenfoot
 APPNAME=\"Greenfoot\"
@@ -14,7 +14,7 @@ GREENFOOTDEF=-DGREENFOOT
 EXECNAME=gflaunch.exe
 REQUIREDJAVA=\"1.6\"
 
-JDKDIR=/c/Program Files/Java/jdk1.6.0_05
+JDKDIR=/c/Program Files/Java/jdk1.6.0_21
 
 OBJECTS = resources.o bjlaunch.o javatest.o javaprops.o bjdialog.o
 

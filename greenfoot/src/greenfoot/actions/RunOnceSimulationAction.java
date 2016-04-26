@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -25,6 +25,7 @@ import bluej.Config;
 import greenfoot.core.Simulation;
 import greenfoot.event.SimulationEvent;
 import greenfoot.event.SimulationListener;
+import greenfoot.event.SimulationUIListener;
 
 import java.awt.EventQueue;
 import java.awt.event.ActionEvent;
@@ -44,6 +45,10 @@ public class RunOnceSimulationAction extends AbstractAction
 {
     private static final String iconFile = "step.png";
     private static RunOnceSimulationAction instance = new RunOnceSimulationAction();
+
+    private Simulation simulation;
+    protected boolean stateOnDebugResume;
+    private SimulationUIListener listener; 
     
     /**
      * Singleton factory method for action.
@@ -53,10 +58,6 @@ public class RunOnceSimulationAction extends AbstractAction
         return instance;
     }
     
-
-    private Simulation simulation;
-    protected boolean stateOnDebugResume;
-
     private RunOnceSimulationAction()
     {
         super(Config.getString("run.once"), new ImageIcon(RunOnceSimulationAction.class.getClassLoader().getResource(iconFile)));
@@ -71,20 +72,25 @@ public class RunOnceSimulationAction extends AbstractAction
         simulation.addSimulationListener(this);
     }
     
+    /**
+     * Attach a listener to be notified when the action fires.
+     */
+    public void attachListener(SimulationUIListener listener)
+    {
+        this.listener = listener;
+    }
+    
     public void actionPerformed(ActionEvent e)
     {
         if(simulation == null) {
             Debug.reportError("attempt to pause a simulation while none exists.");
             return;
         }
-        //We don't want to block!
-        new Thread() {
-            public void run()
-            {
-                simulation.runOnce();
-            }
-
-        }.start();
+        
+        if (listener != null) {
+            listener.simulationActive();
+        }
+        simulation.runOnce();
     }
 
     /**
@@ -92,29 +98,27 @@ public class RunOnceSimulationAction extends AbstractAction
      */
     public void simulationChanged(final SimulationEvent e)
     {
-        if (e.getType() != SimulationEvent.NEW_ACT) {
-            EventQueue.invokeLater(new Runnable() {
-                public void run()
-                {
-                    int eventType = e.getType();
-                    if (eventType == SimulationEvent.STOPPED) {
-                        setEnabled(stateOnDebugResume = true);
-                    }
-                    else if (eventType == SimulationEvent.STARTED) {
-                        setEnabled(stateOnDebugResume = false);
-                    }
-                    else if (eventType == SimulationEvent.DISABLED) {
-                        setEnabled(stateOnDebugResume = false);
-                    }
-                    else if (eventType == SimulationEvent.DEBUGGER_PAUSED) {
-                        stateOnDebugResume = isEnabled();
-                        setEnabled(false);                        
-                    }
-                    else if (eventType == SimulationEvent.DEBUGGER_RESUMED) {
-                        setEnabled(stateOnDebugResume);
-                    }
+        EventQueue.invokeLater(new Runnable() {
+            public void run()
+            {
+                int eventType = e.getType();
+                if (eventType == SimulationEvent.STOPPED) {
+                    setEnabled(stateOnDebugResume = true);
                 }
-            });
-        }
+                else if (eventType == SimulationEvent.STARTED) {
+                    setEnabled(stateOnDebugResume = false);
+                }
+                else if (eventType == SimulationEvent.DISABLED) {
+                    setEnabled(stateOnDebugResume = false);
+                }
+                else if (eventType == SimulationEvent.DEBUGGER_PAUSED) {
+                    stateOnDebugResume = isEnabled();
+                    setEnabled(false);                        
+                }
+                else if (eventType == SimulationEvent.DEBUGGER_RESUMED) {
+                    setEnabled(stateOnDebugResume);
+                }
+            }
+        });
     }
 }

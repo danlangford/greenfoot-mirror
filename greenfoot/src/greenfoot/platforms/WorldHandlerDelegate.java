@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -25,21 +25,20 @@ import greenfoot.Actor;
 import greenfoot.World;
 import greenfoot.core.WorldHandler;
 import greenfoot.gui.input.InputManager;
-import greenfoot.record.InteractionListener;
 
 import java.awt.event.MouseEvent;
 
 
 /**
  * Interface to classes that contain specialized behaviour for the WorldHandler
- * depending on where and how the greenfoot project is running.
+ * depending on where and how the Greenfoot project is running.
  * 
  * @author Poul Henriksen
  */
 public interface WorldHandlerDelegate
 {
     /**
-     * Show the popup menu if the mouseevent is a popup trigger.
+     * Show the popup menu if the MouseEvent is a popup trigger.
      */
     boolean maybeShowPopup(MouseEvent e);
 
@@ -47,6 +46,11 @@ public interface WorldHandlerDelegate
 
     void mouseMoved(MouseEvent e);
     
+    /**
+     * A new world has been set as the active world.
+     * @param oldWorld   The previously active world
+     * @param newWorld   The new active world
+     */
     void setWorld(World oldWorld, World newWorld);
 
     void setWorldHandler(WorldHandler handler);
@@ -62,9 +66,13 @@ public interface WorldHandlerDelegate
 
     void discardWorld(World world);
     
-    void initialisingWorld(World world);
+    /**
+     * An actor was dragged to a new location. Called with the world locked.
+     */
+    public void actorDragged(Actor actor, int xCell, int yCell);
     
-    void simulationActive();
-
-    InteractionListener getInteractionListener();
+    /**
+     * An actor was added into the world (by any means, possibly programmatically). Called with the world locked.
+     */
+    public void objectAddedToWorld(Actor actor);
 }

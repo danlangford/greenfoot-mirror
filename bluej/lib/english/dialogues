@@ -87,7 +87,7 @@ The jar file could not be written correctly.
 (Check the file system for access rights and
 disk space availability.)
 
-error-jar-exists
+error-file-exists
 The file you have selected already exists.
 Do you want to overwrite it?
 Overwrite
@@ -352,6 +352,10 @@ Specify a name for this test.
 Recording will then start.
 New Test Method
 null
+
+unittest-io-error
+An I/O error occurred when trying to read the unit
+test source file.
 
 getobject-new-name
 Enter the name for the new object on the

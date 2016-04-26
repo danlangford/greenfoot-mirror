@@ -26,15 +26,15 @@ package bluej.parser.nodes;
  *  
  * @author Davin McCall
  */
-public class RBTreeNode
+public class RBTreeNode<T extends RBTreeNode<T>>
 {
-    private NodeTree<?> containingNodeTree;
+    private NodeTree<T> containingNodeTree;
 
     /**
      * Set the containing node tree. This is normally only called by NodeTree when inserting
      * this node into the tree.
      */
-    protected final void setContainingNodeTree(NodeTree<?> cnode)
+    protected final void setContainingNodeTree(NodeTree<T> cnode)
     {
         containingNodeTree = cnode;
     }
@@ -43,16 +43,24 @@ public class RBTreeNode
      * Get the containing node tree for this node.
      * @return
      */
-    protected final NodeTree<?> getContainingNodeTree()
+    protected final NodeTree<T> getContainingNodeTree()
     {
         return containingNodeTree;
     }
     
+    /**
+     * Move the node. This also has the effect of moving all following nodes.
+     * @param offset  The amount by which to move the node
+     */
     public void slide(int amount)
     {
         getContainingNodeTree().slideNode(amount);
     }
 
+    /**
+     * Move the node's beginning, but not its end position. This shrinks or grows
+     * the node accordingly. The position of following nodes is not affected.
+     */
     public void slideStart(int offset)
     {
         getContainingNodeTree().slideStart(offset);

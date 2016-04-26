@@ -36,8 +36,10 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
+import java.awt.event.WindowListener;
 import java.util.Vector;
 
 import javax.swing.AbstractAction;
@@ -63,6 +65,7 @@ import bluej.Config;
 import bluej.parser.AssistContent;
 import bluej.parser.SourceLocation;
 import bluej.parser.lexer.LocatableToken;
+import bluej.prefmgr.PrefMgr;
 import bluej.utility.JavaUtils;
 
 
@@ -77,6 +80,7 @@ public class CodeCompletionDisplay extends JFrame
     private static final Color msgTextColor = new Color(200,170,100);
 
     private MoeEditor editor;
+    private WindowListener editorListener;
     private AssistContent[] values;
     private String prefix;
     private String suggestionType;
@@ -115,20 +119,46 @@ public class CodeCompletionDisplay extends JFrame
         populatePanel();
 
         addWindowFocusListener(new WindowFocusListener() {
-
+            @Override
             public void windowGainedFocus(WindowEvent e)
             {
                 methodList.requestFocusInWindow();
                 editor.getSourcePane().getCaret().setVisible(true);
             }
 
+            @Override
             public void windowLostFocus(WindowEvent e)
             {
-                dispose();
+                doClose();
             }
         });
+        
+        editorListener = new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e)
+            {
+                doClose();
+            }
+            
+            @Override
+            public void windowIconified(WindowEvent e)
+            {
+                doClose();
+            }
+        };
+        
+        ed.addWindowListener(editorListener);
     }
 
+    /**
+     * Close the code completion display window.
+     */
+    private void doClose()
+    {
+        editor.removeWindowListener(editorListener);
+        dispose();
+    }
+    
     /**
      * Creates a component with a main panel (list of available methods & values)
      * and a text area where the description of the chosen value is displayed
@@ -174,6 +204,7 @@ public class CodeCompletionDisplay extends JFrame
         // we set the background with an alpha component of zero to get transparency
         // (see http://forums.java.net/jive/thread.jspa?messageID=267839)
         methodDescription.setBackground(new Color(0,0,0,0));
+        methodDescription.setFont(methodDescription.getFont().deriveFont((float)PrefMgr.getEditorFontSize()));
         
         methodList = new JList();
         methodList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -246,6 +277,7 @@ public class CodeCompletionDisplay extends JFrame
         
         // Set a standard height/width
         Font mlFont = methodList.getFont();
+        mlFont = mlFont.deriveFont((float)PrefMgr.getEditorFontSize());
         FontMetrics metrics = methodList.getFontMetrics(mlFont);
         Dimension size = new Dimension(metrics.charWidth('m') * 30, metrics.getHeight() * 15);
 
@@ -254,7 +286,7 @@ public class CodeCompletionDisplay extends JFrame
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         scrollPane.setPreferredSize(size);
         methodPanel.add(scrollPane);
-
+        methodPanel.setFont(mlFont);
         
         scrollPane = new GradientFillScrollPane(methodDescription, new Color(250,246,229), new Color(240,220,140));
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
@@ -288,7 +320,7 @@ public class CodeCompletionDisplay extends JFrame
         actionMap.put("escapeAction", new AbstractAction() {
             public void actionPerformed(ActionEvent e)
             {
-                dispose();
+                doClose();
             }
         });
         actionMap.put("completeAction", new AbstractAction(){ 

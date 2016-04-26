@@ -795,4 +795,153 @@ public class IncrementalParseTest extends TestCase
         assertEquals(13, nap.getPosition());
         assertEquals(19, nap.getSize());
     }
+    
+    public void testImportStmt() throws Exception
+    {
+        MoeSyntaxDocument aDoc = docForSource("import somepkg.*; ;", "");
+        
+        // The import node should be size 16
+        ParsedCUNode aNode = aDoc.getParser();
+        NodeAndPosition<ParsedNode> nap = aNode.findNodeAt(0, 0);
+        assertNotNull(nap);
+        assertEquals(17, nap.getSize());
+        
+        // Remove the first ';'
+        aDoc.remove(16, 1);
+        
+        // Node should now extend to the next ';'
+        aNode = aDoc.getParser();
+        nap = aNode.findNodeAt(0, 0);
+        assertNotNull(nap);
+        assertEquals(18, nap.getSize());        
+    }
+
+    public void testImportStmt2() throws Exception
+    {
+        MoeSyntaxDocument aDoc = docForSource("import somepkg.* abc/* a comment */;", "");
+
+        ParsedCUNode aNode = aDoc.getParser();
+        
+        // Remove the 'abc'
+        aDoc.remove(17, 3);
+        
+        // Import node should exist now and extend to the ';'
+        aNode = aDoc.getParser();
+        NodeAndPosition<ParsedNode> nap = aNode.findNodeAt(0, 0);
+        assertNotNull(nap);
+        assertEquals(33, nap.getSize());        
+    }
+    
+    public void testRegression331() throws Exception
+    {
+        String aSrc = "class A {\n" +         // 0 - 10
+            "  public void someFunc() {\n" +  // 10 - 37
+            "  \n" +                          // 37 - 40  
+            "  }\n" +                         // 40 - 44
+            "}\n";                            // 44 - 46
+
+        MoeSyntaxDocument aDoc = docForSource(aSrc, "");
+        ParsedCUNode aNode = aDoc.getParser();
+        NodeAndPosition<ParsedNode> nap = aNode.findNodeAt(0, 0);
+
+        assertNotNull(nap);
+        assertEquals(0, nap.getPosition());
+        assertEquals(45, nap.getSize());
+        
+        // Now insert " extends javax.swing.JFrame"
+        aDoc.insertString(7, " extends javax", null);
+        aNode = aDoc.getParser();
+        
+        aDoc.insertString(21, ".", null);
+        aNode = aDoc.getParser();
+        
+        aDoc.insertString(22, "swing.JFrame", null);
+        
+        aNode = aDoc.getParser();
+        nap = aNode.findNodeAt(0, 0);
+        
+        assertNotNull(nap);
+        assertEquals(0, nap.getPosition());
+        assertEquals(72, nap.getSize());
+    }
+    
+    public void testRegression331p2() throws Exception
+    {
+        // Note the comment is significant in this.
+        String aSrc = "/* comment */ class A extends javax.swing.JFrame {\n" +
+            "  public void someFunc() {\n" +
+            "  \n" +  
+            "  }\n" +
+            "}\n";
+
+        MoeSyntaxDocument aDoc = docForSource(aSrc, "");
+        ParsedCUNode aNode = aDoc.getParser();
+        NodeAndPosition<ParsedNode> nap = aNode.findNodeAt(0, 0);
+
+        assertNotNull(nap);
+        assertEquals(0, nap.getPosition());
+        assertEquals(86, nap.getSize());
+        
+        aDoc.insertString(48, ".", null);  // insert "." after "JFrame" - cause error
+        aNode = aDoc.getParser();
+        
+        aDoc.remove(48, 1);  // remove it again
+        aNode = aDoc.getParser();
+        
+        nap = aNode.findNodeAt(0, 0);
+        assertNotNull(nap);
+        assertEquals(0, nap.getPosition());
+        assertEquals(86, nap.getSize());
+    }
+    
+    public void testNewStmt() throws Exception
+    {
+        String aSrc = "class A {\n" +         // 0 - 10 
+            "  public void someFunc() {\n" +  // 10 - 37 
+            "    A a = new \\A();\n" +        // 37 - 57
+            "  }\n" +                         // 57 - 61 
+            "}\n";                            // 61 - 63 
+
+        MoeSyntaxDocument aDoc = docForSource(aSrc, "");
+        ParsedCUNode aNode = aDoc.getParser();
+        
+        aDoc.remove(51, 1); // remove the '\' before 'A()'
+        
+        aNode = aDoc.getParser();
+        NodeAndPosition<ParsedNode> nap = aNode.findNodeAt(0, 0);
+
+        assertNotNull(nap);
+        assertEquals(0, nap.getPosition());
+        assertEquals(61, nap.getSize());
+        
+        // type inner node
+        nap = nap.getNode().findNodeAt(12, nap.getPosition());
+        assertNotNull(nap);
+        assertEquals(9, nap.getPosition());
+        assertEquals(51, nap.getSize());
+        
+        // method node
+        nap = nap.getNode().findNodeAt(12, nap.getPosition());
+        assertNotNull(nap);
+        assertEquals(12, nap.getPosition());
+        assertEquals(47, nap.getSize());
+        
+        // method inner
+        nap = nap.getNode().findNodeAt(36, nap.getPosition());
+        assertNotNull(nap);
+        assertEquals(36, nap.getPosition());
+        assertEquals(22, nap.getSize());
+        
+        // field declaration node:
+        nap = nap.getNode().findNodeAt(41, nap.getPosition());
+        assertNotNull(nap);
+        assertEquals(41, nap.getPosition());
+        assertEquals(14, nap.getSize());
+        
+        // expression node:
+        nap = nap.getNode().findNodeAt(47, nap.getPosition());
+        assertNotNull(nap);
+        assertEquals(47, nap.getPosition());
+        assertEquals(7, nap.getSize());
+    }
 }

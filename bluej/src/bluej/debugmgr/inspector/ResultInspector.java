@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,11 +27,16 @@ import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
+import java.awt.event.ActionEvent;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -40,6 +45,7 @@ import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
 import javax.swing.border.Border;
@@ -47,6 +53,7 @@ import javax.swing.border.EmptyBorder;
 
 import bluej.BlueJTheme;
 import bluej.Config;
+import bluej.debugger.DebuggerField;
 import bluej.debugger.DebuggerObject;
 import bluej.debugger.gentype.GenTypeClass;
 import bluej.debugger.gentype.GenTypeDeclTpar;
@@ -55,8 +62,8 @@ import bluej.debugger.gentype.JavaType;
 import bluej.debugmgr.ExpressionInformation;
 import bluej.pkgmgr.Package;
 import bluej.testmgr.record.InvokerRecord;
+import bluej.utility.Debug;
 import bluej.utility.DialogManager;
-import bluej.utility.JavaNames;
 import bluej.utility.JavaUtils;
 import bluej.utility.MultiLineLabel;
 import bluej.views.Comment;
@@ -131,7 +138,7 @@ public class ResultInspector extends Inspector
         Method m = methodView.getMethod();
 
         // Find the expected return type
-        JavaType methodReturnType = JavaUtils.getJavaUtils().getReturnType(m);
+        JavaType methodReturnType = methodView.getGenericReturnType();
 
         // TODO: infer type of generic parameters based on the actual
         // arguments passed to the method.
@@ -169,11 +176,13 @@ public class ResultInspector extends Inspector
     /**
      * Returns a single string representing the return value.
      */
-    protected Object[] getListData()
+    @Override
+    protected List<FieldInfo> getListData()
     {
         String fieldString;
+        DebuggerField resultField = obj.getField(0);
         if (!resultType.isPrimitive()) {
-            DebuggerObject resultObject = obj.getFieldObject(0, resultType);
+            DebuggerObject resultObject = resultField.getValueObject(resultType);
             if (!resultObject.isNullObject()) {
                 fieldString = resultObject.getGenType().toString(true);
             }
@@ -182,11 +191,12 @@ public class ResultInspector extends Inspector
             }
         }
         else {
-            fieldString = JavaNames.stripPrefix(obj.getFieldValueTypeString(0));
+            fieldString = resultField.getType().toString(true);
         }
         
-        fieldString += " = " + obj.getFieldValueString(0);
-        return new Object[]{fieldString};
+        List<FieldInfo> rlist = new ArrayList<FieldInfo>(1);
+        rlist.add(new FieldInfo(fieldString, resultField.getValueString()));
+        return rlist;
     }
 
     /**
@@ -229,8 +239,23 @@ public class ResultInspector extends Inspector
         Box result = Box.createVerticalBox();
         result.setOpaque(false);
 
-        JLabel expression = new JLabel(expressionInformation.getExpression(), JLabel.LEFT);
+        final JLabel expression = new JLabel(expressionInformation.getExpression(), JLabel.LEFT);
         expression.setAlignmentX(JComponent.LEFT_ALIGNMENT);
+        JPopupMenu copyPopup = new JPopupMenu();
+        copyPopup.add(new AbstractAction(Config.getString("editor.copyLabel")) {
+            @Override
+            public void actionPerformed(ActionEvent e)
+            {
+                try {
+                    StringSelection ss = new StringSelection(expression.getText());
+                    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(ss, ss);
+                }
+                catch (IllegalStateException ise) {
+                    Debug.log("Copy: clipboard unavailable.");
+                }
+            }
+        });
+        expression.setComponentPopupMenu(copyPopup);
 
         result.add(expression);
         result.add(Box.createVerticalStrut(5));
@@ -289,6 +314,7 @@ public class ResultInspector extends Inspector
             assertPanel = new AssertPanel();
             {
                 assertPanel.setAlignmentX(LEFT_ALIGNMENT);
+                assertPanel.setResultType(resultType);
                 bottomPanel.add(assertPanel);
             }
         }
@@ -331,17 +357,11 @@ public class ResultInspector extends Inspector
      */
     protected void listElementSelected(int slot)
     {
-        if (obj.instanceFieldIsObject(slot)) {
-
+        DebuggerField field = obj.getInstanceField(0);
+        if (field.isReferenceType() && ! field.isNull()) {
             // Don't use the name, since it is meaningless anyway (it is always "result")
-            setCurrentObj(obj.getInstanceFieldObject(slot, resultType), null, resultType.toString(false));
-
-            if (obj.instanceFieldIsPublic(slot)) {
-                setButtonsEnabled(true, true);
-            }
-            else {
-                setButtonsEnabled(true, false);
-            }
+            setCurrentObj(field.getValueObject(resultType), null, resultType.toString(false));
+            setButtonsEnabled(true, true);
         }
         else {
             setCurrentObj(null, null, null);
@@ -383,7 +403,10 @@ public class ResultInspector extends Inspector
      */
     public String getResult()
     {
-        return (String) obj.getInstanceFields(false).get(0);
+        DebuggerField resultField = obj.getField(0);
+        
+        String result = resultField.getType() + " " + resultField.getName() + " = " + resultField.getValueString();
+        return result;
     }
 
     protected int getPreferredRows()

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -43,7 +43,6 @@ public class JdiReflective extends Reflective
     // If the type has not been loaded, we know only it's name, and the
     // type from which we discovered the reference to it:
     protected String name = null;
-    // private ReferenceType sourceType = null;
     private ClassLoaderReference sourceLoader = null;
     private VirtualMachine sourceVM = null;
 
@@ -71,7 +70,6 @@ public class JdiReflective extends Reflective
     public JdiReflective(String name, ReferenceType sourceType)
     {
         this.name = name;
-        // this.sourceType = sourceType;
         this.sourceLoader = sourceType.classLoader();
         this.sourceVM = sourceType.virtualMachine();
     }
@@ -93,12 +91,24 @@ public class JdiReflective extends Reflective
         this.sourceVM = vm;
     }
     
+    /**
+     * Get the JDI ReferenceType this reflective represents.
+     */
+    public ReferenceType getJdiType()
+    {
+        checkLoaded();
+        return rclass;
+    }
+    
+    @Override
     public Reflective getRelativeClass(String name)
     {
-        if (rclass != null)
+        if (rclass != null) {
             return new JdiReflective(name, rclass);
-        else
+        }
+        else {
             return new JdiReflective(name, sourceLoader, sourceVM);
+        }
     }
 
     /**
@@ -108,18 +118,10 @@ public class JdiReflective extends Reflective
     {
         if (rclass == null) {
             rclass = findClass(name, sourceLoader, sourceVM);
-            outOk:
             if (rclass == null) {
-                // Try and load the class.
-                VMReference vmr = VMReference.getVmForMachine(sourceVM);
-                if (vmr != null) {
-                    rclass = vmr.loadClass(name, sourceLoader);
-                    if (rclass != null)
-                        break outOk;
-                }
                 Debug.message("Attempt to use unloaded type: " + name);
                 Debug.message("  name = " +  name + ", sourceLoader = " + sourceLoader);
-                new Exception().printStackTrace(System.out);
+                Debug.message("  (in JdiReflective.checkLoader()");
                 return;
             }
             name = null;
@@ -130,9 +132,16 @@ public class JdiReflective extends Reflective
 
     public String getName()
     {
-        if (name != null)
+        if (name != null) {
             return name;
-        return rclass.name();
+        }
+        
+        if (rclass.signature().startsWith("[")) {
+            return rclass.signature().replace('/', '.');
+        }
+        else {
+            return rclass.name();
+        }
     }
     
     @Override
@@ -441,6 +450,12 @@ public class JdiReflective extends Reflective
             }
         }
         
+        // Try and load the class.
+        VMReference vmr = VMReference.getVmForMachine(vm);
+        if (vmr != null) {
+           return vmr.loadClass(name, cl);
+        }
+        
         return null;
     }
 
@@ -456,10 +471,7 @@ public class JdiReflective extends Reflective
         char c = i.next();
         String r = new String();
         while (c != '<' && c != ';' && c != ':') {
-            if (c == '/')
-                r += '.';
-            else
-                r += c;
+            r += (c == '/') ? '.' : c;
             c = i.next();
         }
         return r;
@@ -520,15 +532,22 @@ public class JdiReflective extends Reflective
         return typeFromSignature(i, tparams, parent);
     }
     
-    private static JavaType typeFromSignature(StringIterator i,
+    /**
+     * Derive a type from a type signature.
+     * @param i   An iterator through the signature
+     * @param tparams  The type parameters of the parent type (the type from where this signature comes);
+     *                 may be null.
+     * @param parent   The parent type
+     */
+    public static JavaType typeFromSignature(StringIterator i,
             Map<String,? extends GenTypeParameter> tparams, ReferenceType parent)
     {
         char c = i.next();
         if (c == '[') {
             // array
             JavaType t = typeFromSignature(i, tparams, parent);
-            t = new GenTypeArray(t);
-            return t;
+            JdiArrayReflective ar = new JdiArrayReflective(t, parent.classLoader(), parent.virtualMachine());
+            return new GenTypeArrayClass(ar, t);
         }
         if (c == 'T') {
             // type parameter
@@ -576,8 +595,9 @@ public class JdiReflective extends Reflective
             return JavaPrimitiveType.getVoid();
         }
 
-        if (c != 'L')
+        if (c != 'L') {
             Debug.message("Generic signature begins without 'L'?? (got " + c + ")");
+        }
 
         String basename = readClassName(i);
         Reflective reflective = new JdiReflective(basename, parent);
@@ -670,14 +690,41 @@ public class JdiReflective extends Reflective
             return JavaPrimitiveType.getShort();
         else {
             // The class may or may not be loaded.
-            Reflective ref;
-            ref = new JdiReflective(typeName, clr, vm);
+            String tname = t.signature();
+            if (tname.startsWith("[")) {
+                JavaType arrayType = typeFromSignature(new StringIterator(tname), null, (ReferenceType) t);
+                return arrayType;
+            }
+            else {
+                tname = t.name();
+            }
+            Reflective ref = new JdiReflective(tname, clr, vm);
             return new GenTypeClass(ref, (List<GenTypeParameter>) null);
         }
     }
 
     /**
-     * Determine the complete type of an instance field.
+     * Convert a type name (as returned from JdiField.typeName() and so on) to a binary name
+     * that can be passed to a classloader.
+     */
+    private static String typeNameToBinaryName(String typeName)
+    {
+        int arrIndex = typeName.indexOf('[');
+        if (arrIndex == -1) {
+            return typeName;
+        }
+        
+        String binName = "L" + typeName.substring(0, arrIndex) + ";";
+        do {
+            binName = "[" + binName;
+            arrIndex = typeName.indexOf('[', arrIndex + 1);
+        } while (arrIndex != -1);
+        
+        return binName;
+    }
+    
+    /**
+     * Determine the complete declared type of an instance field.
      * 
      * @param f
      *            The field
@@ -692,23 +739,12 @@ public class JdiReflective extends Reflective
         // For a field whose value is unset/null, the corresponding class
         // type may not have been loaded. In this case "f.type()" throws a
         // ClassNotLoadedException.
-        //
-        // In the case of string literals, however, it's possible that trying
-        // to get a reference to "java.lang.String" throws
-        // ClassNotLoadedException even when the value isn't null. In this
-        // case, findClass() and v.type() both successfully get a reference
-        // to the type. Perhaps it's a VM bug.
 
-        Value v = parent.obj.getValue(f); // cheap way to make sure class is
-                                          // loaded (if value not null)
         try {
             t = f.type();
         }
         catch (ClassNotLoadedException cnle) {
-            // Debug.message("ClassNotLoadedException, name = " + f.typeName());
-            t = findClass(f.typeName(), parent.obj.referenceType().classLoader(), parent.obj.virtualMachine());
-            if (t == null && v != null)
-                t = v.type();
+            t = findClass(typeNameToBinaryName(f.typeName()), f.declaringType().classLoader(), f.virtualMachine());
         }
 
         final String gensig = JdiUtils.getJdiUtils().genericSignature(f);
@@ -719,7 +755,7 @@ public class JdiReflective extends Reflective
             return getNonGenericType(f.typeName(), t, parent.obj.referenceType().classLoader(), parent.obj
                     .virtualMachine());
         }
-
+        
         // generic version.
         GenTypeClass genType = parent.getGenType();
         
@@ -747,55 +783,49 @@ public class JdiReflective extends Reflective
      *            The object in which the field is located
      * @return The type of the field value
      */
-    public static JavaType fromField(Field f, ReferenceType parent)
+    public static JavaType fromField(Field f)
     {
         Type t = null;
+        ReferenceType parent = f.declaringType();
 
         // For a field whose value is unset/null, the corresponding class
         // type may not have been loaded. In this case "f.type()" throws a
         // ClassNotLoadedException.
-        //
-        // In the case of string literals, however, it's possible that trying
-        // to get a reference to "java.lang.String" throws
-        // ClassNotLoadedException even when the value isn't null. In this
-        // case, findClass() and v.type() both successfully get a reference
-        // to the type. Perhaps it's a VM bug.
 
-        Value v = parent.getValue(f); // cheap way to make sure class is loaded
         try {
             t = f.type();
         }
         catch (ClassNotLoadedException cnle) {
-            // Debug.message("ClassNotLoadedException, name = " + f.typeName());
-            t = findClass(f.typeName(), parent.classLoader(), parent.virtualMachine());
-            if (t == null && v != null)
-                t = v.type();
+            t = findClass(typeNameToBinaryName(f.typeName()), f.declaringType().classLoader(), f.virtualMachine());
         }
 
         final String gensig = JdiUtils.getJdiUtils().genericSignature(f);
 
-        if (gensig == null)
+        if (gensig == null) {
             return getNonGenericType(f.typeName(), t, parent.classLoader(), parent.virtualMachine());
+        }
 
         // if the generic signature wasn't null, get the type from it.
         StringIterator iterator = new StringIterator(gensig);
         return typeFromSignature(iterator, null, parent);
     }
 
+    /**
+     * Determine the complete type of a local variable,
+     * 
+     * @param sf
+     *            The stack frame containing the variable
+     * @param var
+     *            The local variable
+     * @return The type of the field value
+     */
     public static JavaType fromLocalVar(StackFrame sf, LocalVariable var)
     {
         Type t = null;
+        
         // For a variable whose value is unset/null, the corresponding class
         // type may not have been loaded. In this case "var.type()" throws a
         // ClassNotLoadedException.
-        //
-        // In the case of string literals, however, it's possible that trying
-        // to get a reference to "java.lang.String" throws
-        // ClassNotLoadedException even when the value isn't null. In this
-        // case, findClass() and v.type() both successfully get a reference
-        // to the type. Perhaps it's a VM bug.
-
-        Value v = sf.getValue(var);
 
         Location l = sf.location();
         ReferenceType declType = l.declaringType();
@@ -804,17 +834,14 @@ public class JdiReflective extends Reflective
             t = var.type();
         }
         catch (ClassNotLoadedException cnle) {
-            // Debug.message("ClassNotLoadedException, name = " + f.typeName());
-            t = findClass(var.typeName(), declType.classLoader(), declType.virtualMachine());
-            if (t == null && v != null) {
-                t = v.type();
-            }
+            t = findClass(typeNameToBinaryName(var.typeName()), declType.classLoader(), sf.virtualMachine());
         }
 
         final String gensig = JdiUtils.getJdiUtils().genericSignature(var);
 
-        if (gensig == null)
-            return getNonGenericType(var.typeName(), t, declType.classLoader(), declType.virtualMachine());
+        if (gensig == null) {
+            return getNonGenericType(var.typeName(), t, declType.classLoader(), sf.virtualMachine());
+        }
 
         // if the generic signature wasn't null, get the type from it.
         StringIterator iterator = new StringIterator(gensig);

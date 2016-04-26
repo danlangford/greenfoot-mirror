@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -42,6 +42,7 @@ import java.util.Stack;
 
 import bluej.Config;
 import bluej.compiler.CompileObserver;
+import bluej.compiler.Diagnostic;
 import bluej.compiler.EventqueueCompileObserver;
 import bluej.compiler.JobQueue;
 import bluej.debugger.Debugger;
@@ -582,6 +583,8 @@ public final class Package extends Graph
     /**
      * Load the elements of a package from a specified directory. If the package
      * file (bluej.pkg) is not found, an IOException is thrown.
+     * 
+     * <p>This does not cause targets to be loaded. Use refreshPackage() for that.
      */
     public void load()
         throws IOException
@@ -592,14 +595,6 @@ public final class Package extends Graph
         
         // try to load the package file for this package
         packageFile.load(lastSavedProps);
-        
-        //Set the internal project flag identifying Java Micro Edition projects
-        String javaMEflag = lastSavedProps.getProperty( "package.isJavaMEproject", "false" );
-        if ( javaMEflag.equals( "true" ) ) {
-            getProject().setJavaMEproject( true );
-        } else {
-            getProject().setJavaMEproject( false );
-        }
     }
     
     /**
@@ -936,8 +931,8 @@ public final class Package extends Graph
             int width = Integer.parseInt(props.getProperty("target" + (i + 1) + ".width"));
             target = getTarget(identifierName);
             if (target != null){
-            	target.setPos(x, y);
-            	target.setSize(width, height);
+                target.setPos(x, y);
+                target.setSize(width, height);
             }
         }
         repaint();
@@ -959,12 +954,6 @@ public final class Package extends Graph
         }
 
         SortedProperties props = new SortedProperties();
-        
-        String javaMEflag = lastSavedProps.getProperty( "package.isJavaMEproject", "false" );
-        if ( javaMEflag.equals( "true" ) )  {
-            props.put( "package.isJavaMEproject", "true" );
-        }
-         
         props.putAll(frameProperties);
 
         // save targets and dependencies in package
@@ -1300,7 +1289,7 @@ public final class Package extends Graph
      */
     public void saveFilesInEditors() throws IOException
     {
-    	 for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
+        for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
             Target target = it.next();
             if (target instanceof ClassTarget) {
                 ClassTarget ct = (ClassTarget) target;
@@ -1309,7 +1298,7 @@ public final class Package extends Graph
                 if(ed != null)
                     ed.save();
             }
-    	 }
+        }
     }
     
     /**
@@ -1910,13 +1899,15 @@ public final class Package extends Graph
 
         for (Iterator<Target> it = targets.iterator(); it.hasNext();) {
             Target t = it.next();
-            if (!(t instanceof ClassTarget))
+            if (!(t instanceof ClassTarget)) {
                 continue;
+            }
 
             ClassTarget ct = (ClassTarget) t;
 
-            if (filename.equals(ct.getSourceFile().getPath()))
+            if (filename.equals(ct.getSourceFile().getPath())) {
                 return ct;
+            }
         }
 
         return null;
@@ -2192,6 +2183,70 @@ public final class Package extends Graph
         }
         return true;
     }
+    
+    /**
+     * Display a compiler diagnostic (error or warning) in the appropriate editor window.
+     * 
+     * @param diagnostic   The diagnostic to display
+     * @param messageCalc  The message "calculator", which returns a modified version of the message;
+     *                     may be null, in which case the original message is shown unmodified.
+     */
+    private boolean showEditorDiagnostic(Diagnostic diagnostic, MessageCalculator messageCalc)
+    {
+        String fileName = diagnostic.getFileName();
+        if (fileName == null) {
+            return false;
+        }
+        
+        String fullName = getProject().convertPathToPackageName(diagnostic.getFileName());
+        if (fullName == null) {
+            return false;
+        }
+        
+        String packageName = JavaNames.getPrefix(fullName);
+        String className = JavaNames.getBase(fullName);
+
+        ClassTarget t = null;
+
+        // check if the error is from a file belonging to another package
+        if (packageName != getQualifiedName()) {
+
+            Package pkg = getProject().getPackage(packageName);
+            
+            if (pkg != null) {
+                PkgMgrFrame pmf = PkgMgrFrame.findFrame(pkg);
+
+                if ((pmf = PkgMgrFrame.findFrame(pkg)) == null) {
+                    pmf = PkgMgrFrame.createFrame(pkg);
+                }
+
+                pmf.setVisible(true);
+
+                t = (ClassTarget) pkg.getTarget(className);
+            }
+        }
+        else {
+            t = (ClassTarget) getTarget(className);
+        }
+
+        if (t == null) {
+            return false;
+        }
+
+        Editor editor = t.getEditor();
+        if (editor != null) {
+            editor.setVisible(true);
+            if (messageCalc != null) {
+                diagnostic.setMessage(messageCalc.calculateMessage(editor));
+            }
+            editor.displayDiagnostic(diagnostic);
+        }
+        else {
+            Debug.message(t.getDisplayName() + ", line" + diagnostic.getStartLine() +
+                    ": " + diagnostic.getMessage());
+        }
+        return true;
+    }
 
     /**
      * A breakpoint in this package was hit.
@@ -2368,11 +2423,13 @@ public final class Package extends Graph
                 String fileName = sources[i].getPath();
                 String fullName = getProject().convertPathToPackageName(fileName);
 
-                Target t = getTarget(JavaNames.getBase(fullName));
+                if (fullName != null) {
+                    Target t = getTarget(JavaNames.getBase(fullName));
 
-                if (t instanceof ClassTarget) {
-                    ClassTarget ct = (ClassTarget) t;
-                    ct.setState(ClassTarget.S_COMPILING);
+                    if (t instanceof ClassTarget) {
+                        ClassTarget ct = (ClassTarget) t;
+                        ct.setState(ClassTarget.S_COMPILING);
+                    }
                 }
             }
         }
@@ -2410,13 +2467,25 @@ public final class Package extends Graph
             markAsCompiling(sources);
         }
 
-        public void errorMessage(String filename, int lineNo, String message)
+        public void compilerMessage(Diagnostic diagnostic)
+        {
+            if (diagnostic.getType() == Diagnostic.ERROR) {
+                errorMessage(diagnostic.getFileName(), (int) diagnostic.getStartLine(),
+                        diagnostic.getMessage());
+            }
+            else {
+                warningMessage(diagnostic.getFileName(), (int) diagnostic.getStartLine(),
+                        diagnostic.getMessage());
+            }
+        }
+        
+        private void errorMessage(String filename, int lineNo, String message)
         {
             // Send a compilation Error event to extensions.
             sendEventToExtensions(filename, lineNo, message, CompileEvent.COMPILE_ERROR_EVENT);
         }
 
-        public void warningMessage(String filename, int lineNo, String message)
+        private void warningMessage(String filename, int lineNo, String message)
         {
             // Send a compilation Error event to extensions.
             sendEventToExtensions(filename, lineNo, message, CompileEvent.COMPILE_WARNING_EVENT);
@@ -2432,11 +2501,15 @@ public final class Package extends Graph
                 String filename = sources[i].getPath();
 
                 String fullName = getProject().convertPathToPackageName(filename);
+                if (fullName == null) {
+                    continue;
+                }
 
                 ClassTarget t = (ClassTarget) targets.get(JavaNames.getBase(fullName));
 
-                if (t == null)
+                if (t == null) {
                     continue;
+                }
 
                 boolean newCompiledState = successful;
 
@@ -2624,29 +2697,57 @@ public final class Package extends Graph
      */
     private class PackageCompileObserver extends QuietPackageCompileObserver
     {
+        private boolean hadError;
+        
+        @Override
+        public void startCompile(File[] sources)
+        {
+            hadError = false;
+            super.startCompile(sources);
+        }
+        
+        @Override
+        public void compilerMessage(Diagnostic diagnostic)
+        {
+            super.compilerMessage(diagnostic);
+            if (diagnostic.getType() == Diagnostic.ERROR) {
+                errorMessage(diagnostic);
+            }
+            else {
+                warningMessage(diagnostic.getFileName(), (int) diagnostic.getStartLine(),
+                        diagnostic.getMessage());
+            }
+        }
+        
         /**
          * Display an error message associated with a specific line in a class.
          * This is done by opening the class's source, highlighting the line and
          * showing the message in the editor's information area.
          */
-        public void errorMessage(String filename, int lineNo, String message)
+        private void errorMessage(Diagnostic diagnostic)
         {
-            super.errorMessage(filename, lineNo, message);
-            
-            boolean messageShown;
-            
-            // See if we can help the user a bit more if they've mis-spelt a method:
-            if (message.contains("cannot find symbol - method")) {
-                messageShown = showEditorMessage(filename, lineNo,
-                        new MisspeltMethodChecker(message, lineNo, project), true, true,
-                        false, Config.compilertype);
-            } else {
-                messageShown = showEditorMessage(filename, lineNo, message, true, true, false,
-                        Config.compilertype);
-            }
-            // Display the error message in the source editor
-            if (false == messageShown) {
-                showMessageWithText("error-in-file", filename + ":" + lineNo + "\n" + message);
+            if (! hadError) {
+                hadError = true;
+                boolean messageShown;
+
+                if (diagnostic.getFileName() == null) {
+                    showMessageWithText("compiler-error", diagnostic.getMessage());
+                    return;
+                }
+                
+                String message = diagnostic.getMessage();
+                // See if we can help the user a bit more if they've mis-spelt a method:
+                if (message.contains("cannot find symbol - method")) {
+                    messageShown = showEditorDiagnostic(diagnostic,
+                            new MisspeltMethodChecker(message, (int) diagnostic.getStartLine(), project));
+                } else {
+                    messageShown = showEditorDiagnostic(diagnostic, null);
+                }
+                // Display the error message in the source editor
+                if (!messageShown) {
+                    showMessageWithText("error-in-file", diagnostic.getFileName() + ":" +
+                            diagnostic.getStartLine() + "\n" + message);
+                }
             }
         }
 
@@ -2658,10 +2759,8 @@ public final class Package extends Graph
          * into a single dialog.
          * If searchCompile() built a single list, we wouldn't need to do this
          */
-        public void warningMessage(String filename, int lineNo, String message)
+        private void warningMessage(String filename, int lineNo, String message)
         {
-            super.warningMessage(filename, lineNo, message);
-            
             // Add this message-fragment to, and display, the warning dialog
             bluej.compiler.CompilerWarningDialog.getDialog().addWarningMessage(message);
         }

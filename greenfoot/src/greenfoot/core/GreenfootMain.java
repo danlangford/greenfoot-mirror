@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -73,7 +73,7 @@ import bluej.views.View;
  * but each will be in its own JVM so it is effectively a singleton.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: GreenfootMain.java 8514 2010-10-21 10:31:51Z nccb $
+ * @version $Id: GreenfootMain.java 8895 2011-04-29 04:27:18Z davmac $
  */
 public class GreenfootMain extends Thread implements CompileListener, RProjectListener
 {
@@ -255,8 +255,8 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
         // Display msg dialog of project does not exist.
         if (!projectDirFile.exists()) {
             JOptionPane.showMessageDialog(frame, 
-            		Config.getString("noproject.dialog.msg") + System.getProperty("line.separator") + projectDir,
-            		Config.getString("noproject.dialog.title"), JOptionPane.WARNING_MESSAGE);
+                    Config.getString("noproject.dialog.msg") + System.getProperty("line.separator") + projectDir,
+                    Config.getString("noproject.dialog.title"), JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -296,10 +296,9 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
                 } catch(ProjectNotOpenException e) { }
                 catch (PackageNotFoundException e) { }
             }
-                
 
-            // if this is the dummy startup project, close it now.
-            if (frame.getProject() == null) {
+            // if this is the dummy startup project and there is a valid project to open, close it now
+            if (proj != null && frame.getProject() == null) {
                 project.close();
             }
         }
@@ -454,8 +453,9 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
                     // The rest of the project preparation will be done by the
                     // ProjectManager on the BlueJ VM.
 
-                    // if the project that is already open is the dummy startup project, close it now.
-                    if (isStartupProject()) {
+                    // if the project that is already open is the dummy startup project
+                    // or if there is an empty project, close it now
+                    if (isStartupProject()|| frame.isClosedProject()) {
                         project.close();
                     }
                     
@@ -633,16 +633,7 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
 
         Version apiVersion = GreenfootMain.getAPIVersion();
 
-        if(projectVersion == null) {
-            // Poul: I don't actually think this can happen anymore, but leaving it in just in case.
-            String message = apiVersion.getNotGreenfootMessage(projectDir);
-            JButton continueButton = new JButton(Config.getString("greenfoot.continue"));
-            MessageDialog dialog = new MessageDialog(parent, message, Config.getString("project.version.mismatch"), 50,
-                    new JButton[]{continueButton});
-            dialog.displayModal();
-            return VERSION_BAD;
-        }
-        else if (projectVersion.isBad()) {
+        if (projectVersion.isBad()) {
             String message = projectVersion.getBadMessage();
             JButton continueButton = new JButton(Config.getString("greenfoot.continue"));
             MessageDialog dialog = new MessageDialog(parent, message, Config.getString("project.version.mismatch"), 50,

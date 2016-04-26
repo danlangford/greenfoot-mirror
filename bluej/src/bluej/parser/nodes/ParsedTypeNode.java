@@ -21,6 +21,7 @@
  */
 package bluej.parser.nodes;
 
+import java.util.Collections;
 import java.util.List;
 
 import javax.swing.text.Document;
@@ -57,18 +58,21 @@ public class ParsedTypeNode extends IncrementalParsingNode
     private List<JavaEntity> extendedTypes;
     private List<JavaEntity> implementedTypes;
     private int modifiers;
+    private ParsedTypeNode containingClass;
     
     private int type; // one of JavaParser.TYPEDEF_CLASS, INTERFACE, ENUM, ANNOTATION
     
     /**
-     * Construct a new ParsedTypeNode
+     * Construct a new ParsedTypeNode.
+     * 
      * @param parent  The parent node
-     * @param name    The base name of the type
+     * @param containingClass   The node representing the class containing this one
+     * @param type    The type of this type: JavaParser.{TYPEDEF_CLASS,_INTERFACE,_ENUM or _ANNOTATION}
      * @param prefix  The prefix of the name, including the final ".", to make this a full
      *                type name
      * @param modifiers  The class modifiers (see java.lang.reflect.Modifier)
      */
-    public ParsedTypeNode(JavaParentNode parent, int type, String prefix, int modifiers)
+    public ParsedTypeNode(JavaParentNode parent, ParsedTypeNode containingClass, int type, String prefix, int modifiers)
     {
         super(parent);
         stateMarkers = new int[2];
@@ -78,6 +82,12 @@ public class ParsedTypeNode extends IncrementalParsingNode
         this.type = type;
         this.prefix = prefix;
         this.modifiers = modifiers;
+        this.containingClass = containingClass;
+        
+        // Set defaults for various members
+        typeParams = Collections.emptyList();
+        extendedTypes = Collections.emptyList();
+        implementedTypes = Collections.emptyList();
     }
     
     /**
@@ -97,28 +107,48 @@ public class ParsedTypeNode extends IncrementalParsingNode
         return modifiers;
     }
     
+    /**
+     * Get the node representing the class containing this one.
+     */
+    public ParsedTypeNode getContainingClass()
+    {
+        return containingClass;
+    }
+    
+    /**
+     * Set the type parameters for this type (empty list for none).
+     */
     public void setTypeParams(List<TparEntity> typeParams)
     {
         this.typeParams = typeParams;
     }
     
+    /**
+     * Get the type parameters for this type (empty list if none).
+     */
     public List<TparEntity> getTypeParams()
     {
         return typeParams;
     }
     
+    /**
+     * Set the types that this type is declared to implement (empty list for none).
+     */
     public void setImplementedTypes(List<JavaEntity> implementedTypes)
     {
         this.implementedTypes = implementedTypes;
     }
     
+    /**
+     * Get the types this type is declared to implement (empty list if none).
+     */
     public List<JavaEntity> getImplementedTypes()
     {
         return implementedTypes;
     }
     
     /**
-     * Specify which types this type explicitly extends.
+     * Specify which types this type explicitly extends (empty list for none).
      */
     public void setExtendedTypes(List<JavaEntity> extendedTypes)
     {
@@ -127,6 +157,8 @@ public class ParsedTypeNode extends IncrementalParsingNode
     
     /**
      * Return the types which this type explicit extends.
+     * For an anonymous inner class, the returned list will contain a single
+     * type which may be a class or interface.
      */
     public List<JavaEntity> getExtendedTypes()
     {
@@ -139,11 +171,15 @@ public class ParsedTypeNode extends IncrementalParsingNode
         return NODETYPE_TYPEDEF;
     }
     
+    @Override
     public boolean isContainer()
     {
         return true;
     }
     
+    /**
+     * Set the unqualified name of the type this node represents.
+     */
     public void setName(String name)
     {
         String oldName = this.name;
@@ -157,6 +193,9 @@ public class ParsedTypeNode extends IncrementalParsingNode
         return name;
     }
     
+    /**
+     * Get the package qualification prefix for the type this node represents.
+     */
     public String getPrefix()
     {
         return prefix;
@@ -219,6 +258,7 @@ public class ParsedTypeNode extends IncrementalParsingNode
             last = token;
             params.tokenStream.pushBack(token);
             setExtendedTypes(params.parser.getExtendedTypes());
+            setTypeParams(params.parser.getTparList(this));
             return PP_BEGINS_NEXT_STATE;
         }
         else if (state == 1) {

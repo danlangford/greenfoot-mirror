@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2011  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -32,6 +32,7 @@ package greenfoot.sound;
  */
 public interface Sound
 {
+
     /**
      * Closes this sound. Will immediately release any resources for the sound.
      */
@@ -43,7 +44,7 @@ public interface Sound
      * After this method has been called: isStopped=true, isPlaying=false, isPaused=false.
      */
     public abstract void stop();
-    
+
     /**
      * Pause the song. Paused sounds can be resumed.
      *
@@ -57,7 +58,7 @@ public interface Sound
      * After this method has been called: isStopped=false, isPlaying=true, isPaused=false.
      */
     public abstract void resume();
-	
+
     /**
      * Play this sound. 
      * 
@@ -66,7 +67,7 @@ public interface Sound
      * 
      */
     public abstract void play();
-	
+
     /**
      * Plays this sound in a loop. 
      * 
@@ -74,7 +75,7 @@ public interface Sound
      * If a problem occurs it should be: isStopped=true, isPlaying=false, isPaused=false.
      * 
      */
-    public abstract void loop() ;
+    public abstract void loop();
 
     /**
      * True if the sound is currently playing.
@@ -94,5 +95,15 @@ public interface Sound
      */
     public abstract boolean isStopped();
 
+    /**
+     * Set the sound volume.
+     * @param level the level between 0-100 of the sound.
+     */
+    public abstract void setVolume(int level);
 
+    /**
+     * Get the current volume of the sound.
+     * @return the sound volume, between 0-100.
+     */
+    public abstract int getVolume();
 }

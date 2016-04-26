@@ -28,6 +28,7 @@
 ## a new language, please send it to support@greenfoot.org
 #####################################################################
 bluej.language=english
+#bluej.language=chinese
 #bluej.language=czech
 #bluej.language=dutch
 #bluej.language=french
@@ -36,6 +37,7 @@ bluej.language=english
 #bluej.language=italian
 #bluej.language=russian
 #bluej.language=spanish
+#bluej.language=chinese
 
 #####################################################################
 ## If you have a translated version of the Greenfoot API documentation
@@ -52,6 +54,7 @@ bluej.language=english
 greenfoot.url.greenfoot=http://www.greenfoot.org
 greenfoot.url.scenarios=http://www.greenfoot.org/scenarios/index.html
 greenfoot.url.tutorial=http://www.greenfoot.org/doc/tutorial.html
+greenfoot.url.discuss=http://www.greenfootgallery.org/topics/
 
 
 # The URL for the Java API documentation can be specified here, however
@@ -59,7 +62,7 @@ greenfoot.url.tutorial=http://www.greenfoot.org/doc/tutorial.html
 # setting is saved in the user preferences file (and the setting here
 # is ignored). You can adjust the user preferences via the preferences
 # dialog in Greenfoot.
-greenfoot.url.javaStdLib=http://java.sun.com/j2se/1.5/docs/api/index.html
+greenfoot.url.javaStdLib=http://download.oracle.com/javase/6/docs/api/
 
 # Options for the generation of the JavaDoc shown in the documentation view of the editor.
 doctool.options=-author -version -nodeprecated -protected
