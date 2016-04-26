@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2012,2013,2014,2015  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -33,6 +33,8 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.Element;
 import javax.swing.text.MutableAttributeSet;
 
+import threadchecker.OnThread;
+import threadchecker.Tag;
 import bluej.Config;
 import bluej.parser.entity.EntityResolver;
 import bluej.parser.nodes.NodeStructureListener;
@@ -51,6 +53,7 @@ import bluej.utility.PersistentMarkDocument;
  * @author Bruce Quig
  * @author Jo Wood (Modified to allow user-defined colours, March 2001)
  */
+@OnThread(value = Tag.Swing, ignoreParent = true)
 public class MoeSyntaxDocument extends PersistentMarkDocument
 {
     private static Color[] colors = null;
@@ -548,6 +551,39 @@ public class MoeSyntaxDocument extends PersistentMarkDocument
         
         scheduledUpdates[scheduledUpdates.length - 1] = r;        
     }
+
+    /**
+     * Run any scheduled document updates. This is called from update handlers.
+     */
+    private void runScheduledUpdates()
+    {
+        // Sometimes a callback wants to modify the document. AbstractDocument doesn't allow that;
+        // we have 'scheduled updates' to work around the problem.
+        if (scheduledUpdates != null && ! runningScheduledUpdates) {
+            // Mark the queue as running, to avoid running it twice:
+            runningScheduledUpdates = true;
+            for (int i = 0; i < scheduledUpdates.length; i++) {
+                // Note the callback may schedule further updates!
+                // They will be appended to the array, and so will be
+                // processed after any updates that are already pending.
+                scheduledUpdates[i].run();
+            }
+            scheduledUpdates = null;
+            runningScheduledUpdates = false;
+        }
+    }
+    
+    /**
+     * Check if scheduled updates are being run presently. This might be used as a cue to
+     * recognize that document updates do not need processing in the normal fashion,
+     * because they have been generated automatically rather than being due to user input. 
+     * 
+     * @return  true if scheduled updates are currently being run
+     */
+    public boolean isRunningScheduledUpdates()
+    {
+        return runningScheduledUpdates;
+    }
     
     /**
      * Get an integer value from a property whose value is hex-encoded.
@@ -593,20 +629,10 @@ public class MoeSyntaxDocument extends PersistentMarkDocument
         recordEvent(e);
         super.fireInsertUpdate(mse);
         inNotification = false;
-        
-        // Sometimes a callback wants to modify the document. AbstractDocument doesn't allow that;
-        // we have 'scheduled updates' to work around the problem.
-        if (scheduledUpdates != null && ! runningScheduledUpdates) {
-            // Mark the queue as running, to avoid running it twice:
-            runningScheduledUpdates = true;
-            for (int i = 0; i < scheduledUpdates.length; i++) {
-                // Note the callback may schedule further updates!
-                scheduledUpdates[i].run();
-            }
-            scheduledUpdates = null;
-            runningScheduledUpdates = false;
-        }
+
+        runScheduledUpdates();
     }
+    
     
     /* 
      * If part of the document was removed, the reparse-record tree needs to be updated.
@@ -614,6 +640,7 @@ public class MoeSyntaxDocument extends PersistentMarkDocument
     @Override
     protected void fireRemoveUpdate(DocumentEvent e)
     {
+        inNotification = true;
         NodeAndPosition<ReparseRecord> napRr = (reparseRecordTree != null) ?
                 reparseRecordTree.findNodeAtOrAfter(e.getOffset()) :
                     null;
@@ -681,6 +708,9 @@ public class MoeSyntaxDocument extends PersistentMarkDocument
         }
         recordEvent(e);
         super.fireRemoveUpdate(mse);
+        inNotification = false;
+        
+        runScheduledUpdates();
     }
     
     /**

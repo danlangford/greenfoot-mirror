@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -72,12 +72,12 @@ public class TypeEntity extends PackageOrClass
     
     public GenTypeClass getClassType()
     {
-        return thisType.getCapture().asClass();
+        return thisType.asClass();
     }
     
     public JavaEntity getSubentity(String name, Reflective accessor)
     {
-        GenTypeClass thisClass = thisType.getCapture().asClass();
+        GenTypeClass thisClass = thisType.asClass();
         if (thisClass == null) {
             return null;
         }
@@ -113,19 +113,23 @@ public class TypeEntity extends PackageOrClass
         return getPackageOrClassMember(name);
     }
     
+    @Override
     public TypeEntity getPackageOrClassMember(String name)
     {
-        GenTypeClass thisClass = thisType.getCapture().asClass();
+        GenTypeClass thisClass = thisType.asClass();
         if (thisClass == null || thisClass.getArrayComponent() != null) {
             return null;
         }
+        
+        // We need to check our own class, but also the superclasses, for
+        // the requested member.
 
         LinkedList<Reflective> stypes = new LinkedList<Reflective>();
         stypes.add(thisClass.getReflective());
         
         while (! stypes.isEmpty()) {
             Reflective thisRef = stypes.poll();
-            Reflective member = thisRef.getRelativeClass(thisRef.getName() + '$' + name);
+            Reflective member = thisRef.getInnerClass(name);
             if (member != null) {
                 // TODO check access
                 //boolean accessAllowed = JavaUtils.checkMemberAccess(thisRef,
@@ -135,16 +139,6 @@ public class TypeEntity extends PackageOrClass
                 return new TypeEntity(inner);
             }
             stypes.addAll(thisRef.getSuperTypesR());
-        }
-        
-        Reflective thisRef = thisClass.getReflective();
-        if (thisRef != null) {
-            Reflective member = thisRef.getRelativeClass(thisRef.getName() + '$' + name);
-            if (member != null) {
-                GenTypeClass inner = new GenTypeClass(member,
-                    Collections.<GenTypeParameter>emptyList(), thisClass);
-                return new TypeEntity(inner);
-            }
         }
         
         return null;
@@ -160,7 +154,7 @@ public class TypeEntity extends PackageOrClass
      */
     public TypeEntity setTypeArgs(List<TypeArgumentEntity> tparams)
     {
-        GenTypeClass classType = thisType.getCapture().asClass();
+        GenTypeClass classType = thisType.asClass();
         if (classType == null) {
             return null;
         }

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2013  Michael Kolling and John Rosenberg
+ Copyright (C) 1999-2009,2010,2013,2015  Michael Kolling and John Rosenberg
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -30,6 +30,7 @@
 #include <string>
 #include <cstring>
 #include <list>
+#include <shlwapi.h>
 
 
 #undef __cplusplus
@@ -569,6 +570,93 @@ static string trimString(const string &src)
     return src.substr(i, j - i + 1);
 }
 
+// Display a message box with a message and an "OK" button.
+static void displayMessage(LPCTSTR msg)
+{
+    MessageBox(0, msg, TEXT(APPNAME), MB_ICONEXCLAMATION | MB_OK);
+}
+
+// Get the current working directory as a dynamically allocated array.
+// Returns NULL if unsucessful or a pointer to the allocated string,
+// which should be freed with delete[].
+static TCHAR *getCurrentDir()
+{
+	DWORD reqLen = GetCurrentDirectory(0, NULL);
+	if (reqLen == 0) {
+		return NULL;
+	}
+	TCHAR * buf = new TCHAR[reqLen];
+	DWORD gcdResult = GetCurrentDirectory(reqLen, buf);
+	if (gcdResult == 0 || gcdResult > reqLen) {
+		delete [] buf;
+		return NULL;
+	}
+	return buf;
+}
+
+// Given two paths, convert the first to an absolute path and apply
+// the second path as a relative path to it. Store the resulting path.
+// (If the second path is an absolute path, returns it unmodified).
+//
+// Returns true if successful or false if not.
+static bool getAbsolutePath(string &result, const string &bjp, const string &jdkPath)
+{
+    if (PathIsRelative(jdkPath.c_str()) == 0) {
+        //the jdk is actually absolute. Nothing to be done.
+        result = jdkPath;
+        return true;
+    }
+    
+    // jdkPath is not absolute.
+    // Determine the absolute path to bjp. (Note that PathCombine does not work properly
+    // if the first path given to it begins with a ".." sequence, which is why we need
+    // an absolute path).
+
+    LPCTSTR bjPath = bjp.c_str();
+    bool bjPathAllocd = false;
+
+    if (PathIsRelative(bjPath)) {
+    	LPTSTR currentDirectory = getCurrentDir();
+    	if (currentDirectory == NULL) {
+    		displayMessage(TEXT("Unable to determine current directory."));
+    		return false;
+    	}
+
+    	LPTSTR tmpPath = new TCHAR[MAX_PATH];
+    	if (PathCombine(tmpPath, currentDirectory, bjPath) == NULL) {
+    		return false;
+    	}
+
+    	bjPath = tmpPath;
+    	bjPathAllocd = true;
+    }
+
+    // We now have an absolute path in bjPath. Combine it with jdkPath:
+    LPTSTR resultPath = new TCHAR[MAX_PATH];
+    if (PathCombine(resultPath, bjPath, jdkPath.c_str()) == NULL) {
+    	return false;
+    }
+
+    // Canonicalize, for good measure:
+    LPTSTR canonicalPath = new TCHAR[MAX_PATH];
+    if (PathCanonicalize(canonicalPath, resultPath)) {
+    	delete [] resultPath;
+    	resultPath = canonicalPath;
+    }
+    else {
+    	delete [] canonicalPath;
+    }
+
+    result.clear();
+    result.append(resultPath);
+    delete [] resultPath;
+
+    if (bjPathAllocd) {
+    	delete [] bjPath;
+    }
+
+    return true;
+}
 
 // Program entry point
 int WINAPI WinMain
@@ -626,7 +714,8 @@ int WINAPI WinMain
             if (verBuffer != NULL) {
                 UINT plen = 0;
                 LPTSTR productVersion = 0;
-                BOOL verResult = VerQueryValue(verBuffer,
+                /* BOOL verResult = */
+                VerQueryValue(verBuffer,
                         TEXT("\\StringFileInfo\\04091200\\ProductVersion"),
                         (void **) &productVersion, &plen);
                 appVersion = productVersion;
@@ -673,7 +762,13 @@ int WINAPI WinMain
     // Check for VM in bluej.defs
     string defsVm = getBlueJProperty(VM_PROP);
     if (defsVm.length() != 0) {
-        string reason;
+        // Gets the VM's absolute path
+        if (! getAbsolutePath(defsVm, bluejPath, defsVm)) {
+            displayMessage(TEXT("Could not determine JDK path -\n" "specified path or current directory may be too long"));
+            return 1;
+        }
+
+        string reason;                
         if (testJdkPath(defsVm, &reason)) {
             if (! forceVMselect) {
                 if (launchVM(defsVm)) {
@@ -681,9 +776,9 @@ int WINAPI WinMain
                 }
             }
             goodVMs.insert(defsVm);
-        }
+        } 
     }
-
+    
     // Check to see if there's a currently selected VM
     checkCurrentVM();
 

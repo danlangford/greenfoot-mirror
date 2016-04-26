@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 2010,2014,2015  Michael Kolling and John Rosenberg
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import bluej.debugger.gentype.ConstructorReflective;
 import bluej.debugger.gentype.FieldReflective;
 import bluej.debugger.gentype.GenTypeClass;
 import bluej.debugger.gentype.GenTypeDeclTpar;
@@ -66,12 +67,6 @@ public class DummyReflective extends Reflective
     public Map<String, Set<MethodReflective>> getDeclaredMethods()
     {
         return Collections.emptyMap();
-    }
-
-    @Override
-    public List<Reflective> getInners()
-    {
-        return Collections.emptyList();
     }
 
     @Override
@@ -132,4 +127,15 @@ public class DummyReflective extends Reflective
         return false;
     }
     
+    @Override
+    public Reflective getInnerClass(String name)
+    {
+        return null;
+    }
+
+    @Override
+    public List<ConstructorReflective> getDeclaredConstructors()
+    {
+        return Collections.emptyList();
+    }
 }

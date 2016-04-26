@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2010,2011,2012,2013  Michael Kolling and John Rosenberg 
+ Copyright (C) 2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -33,6 +33,8 @@ import java.util.Stack;
 import javax.swing.text.Document;
 import javax.swing.text.Element;
 
+import threadchecker.OnThread;
+import threadchecker.Tag;
 import bluej.debugger.gentype.Reflective;
 import bluej.editor.moe.MoeSyntaxDocument;
 import bluej.parser.entity.EntityResolver;
@@ -152,6 +154,9 @@ public class EditorParser extends JavaParser
     }
     
     @Override
+    // This tag is not correct, but if document is an instanceof MoeSyntaxDocument, the parsing
+    // should be happening on the Swing thread:
+    @OnThread(value = Tag.Swing, ignoreParent = true)
     protected void error(String msg, int beginLine, int beginColumn, int endLine, int endColumn)
     {
         // TODO make a proper listener interface
@@ -601,7 +606,7 @@ public class EditorParser extends JavaParser
     protected void endForLoopBody(LocatableToken token, boolean included)
     {
         if (scopeStack.peek().getNodeType() != ParsedNode.NODETYPE_ITERATION) {
-            endTopNode(token, false);
+            endTopNode(token, included);
         }
     }
     
@@ -636,7 +641,7 @@ public class EditorParser extends JavaParser
     protected void endWhileLoopBody(LocatableToken token, boolean included)
     {
         if (scopeStack.peek().getNodeType() != ParsedNode.NODETYPE_ITERATION) {
-            endTopNode(token, false);
+            endTopNode(token, included);
         }
     }
     
@@ -671,7 +676,7 @@ public class EditorParser extends JavaParser
     protected void endDoWhileBody(LocatableToken token, boolean included)
     {
         if (scopeStack.peek().getNodeType() != ParsedNode.NODETYPE_ITERATION) {
-            endTopNode(token, false);
+            endTopNode(token, included);
         }
     }
         
@@ -705,8 +710,12 @@ public class EditorParser extends JavaParser
     @Override
     protected void endIfCondBlock(LocatableToken token, boolean included)
     {
+        // If the inner block is a statement block delimited by curlies ie '{' and '}', it's already
+        // been closed. In that case the scopestack top is the outer 'if' node, which we don't want
+        // to close.
         if (scopeStack.peek().getNodeType() != ParsedNode.NODETYPE_SELECTION) {
-            endTopNode(token, false);
+            // If the stack top is *not* the outer 'if' node, we can close it.
+            endTopNode(token, included);
         }
     }
     
@@ -772,6 +781,8 @@ public class EditorParser extends JavaParser
     @Override
     protected void endTryBlock(LocatableToken token, boolean included)
     {
+        // Even if the end token is '}' we don't want it as part of the inner block,
+        // so pass included=false.
         endTopNode(token, false);
     }
     
@@ -807,8 +818,11 @@ public class EditorParser extends JavaParser
     @Override
     protected void endStmtblockBody(LocatableToken token, boolean included)
     {
-        endTopNode(token, false); // inner
+        endTopNode(token, false); // Don't include the final curly as part of inner block
         if (scopeStack.peek().getNodeType() == ParsedNode.NODETYPE_NONE) {
+            // This is a statement block that is not part of a loop or definition,
+            // i.e. it is just a pair of curly braces appearing as a regular statement.
+            // We need to close that statement now.
             endTopNode(token, included);
         }
     }
@@ -860,7 +874,7 @@ public class EditorParser extends JavaParser
     @Override
     protected void endTypeBody(LocatableToken token, boolean included)
     {
-        endTopNode(token, false);
+        endTopNode(token, false); // Don't include the final curly as part of inner block
     }
     
     @Override
@@ -981,6 +995,7 @@ public class EditorParser extends JavaParser
     @Override
     protected void gotMethodParameter(LocatableToken token, LocatableToken ellipsisToken)
     {
+        if (lastTypeSpec == null) return;
         JavaEntity paramType = ParseUtils.getTypeEntity(scopeStack.peek(),
                 currentQuerySource(), lastTypeSpec);
         if (paramType == null) {
@@ -1022,7 +1037,7 @@ public class EditorParser extends JavaParser
     protected void endMethodBody(LocatableToken token, boolean included)
     {
         scopeStack.peek().setComplete(included);
-        endTopNode(token, false);
+        endTopNode(token, false); // Don't include the final curly as part of inner block
     }
     
     @Override

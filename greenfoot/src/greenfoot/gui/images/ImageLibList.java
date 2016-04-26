@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2012  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2012,2014,2015  Poul Henriksen and Michael Kolling
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -23,6 +23,7 @@ package greenfoot.gui.images;
 
 import greenfoot.gui.EditableList;
 import greenfoot.gui.MessageDialog;
+import greenfoot.util.GraphicsUtilities;
 import greenfoot.util.GreenfootUtil;
 import greenfoot.util.Selectable;
 
@@ -58,6 +59,7 @@ import javax.swing.table.TableColumn;
 
 import bluej.BlueJTheme;
 import bluej.Config;
+import bluej.utility.Debug;
 
 /**
  * A list component which displays a list of images (found in a directory) with their
@@ -81,6 +83,8 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
     
     /** The minimum width we'd like */
     private int minWidth;
+
+    private BufferedImage defaultImage;
     
     /**
      * Construct an empty ImageLibList.
@@ -119,11 +123,13 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
      * the given directory.
      * 
      * @param directory  The directory to retrieve images from
+     * @param defaultImage The image the class will have if it does not specify one (blank or parent's)
      */
-    public ImageLibList(File directory, final boolean editable, ImageLibFrame imageLibFrame)
+    public ImageLibList(File directory, final boolean editable, ImageLibFrame imageLibFrame, BufferedImage defaultImage)
     {
         this(editable, imageLibFrame);
-        setDirectory(directory);
+        this.defaultImage = defaultImage;
+        setDirectory(directory, false);
     }
 
     /**
@@ -132,7 +138,7 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
      * 
      * @param directory   The directory to retrieve images from
      */
-    public void setDirectory(File directory)
+    public void setDirectory(File directory, boolean includeNoImageOption)
     {
         this.directory = directory;
         
@@ -152,10 +158,11 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
         Arrays.sort(imageFiles);
                 
         data = new LinkedList<ImageListEntry>();
-        data.add(new ImageListEntry(null));
+        if (includeNoImageOption)
+            data.add(new ImageListEntry(defaultImage));
         
         for (int i = 0; i < imageFiles.length; i++) {
-            ImageListEntry entry = new ImageListEntry(imageFiles[i]);
+            ImageListEntry entry = new ImageListEntry(imageFiles[i], true);
             data.add(entry);
             Icon icon = entry.imageIcon;
             if (icon != null) {
@@ -182,7 +189,7 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
     public void refresh()
     {
         if(getDirectory()!=null) {
-            setDirectory(getDirectory());
+            setDirectory(getDirectory(), false);
         }
     }
     
@@ -240,7 +247,7 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
         Object[] list = super.getSelectedValues();
         ImageListEntry[] entries = new ImageListEntry[list.length];
         for (int i = 0; i < list.length; i++) {
-            entries[i] = (ImageListEntry) list[i];            
+            entries[i] = (ImageListEntry) list[i];
         }  
         return entries;
     }
@@ -308,7 +315,7 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
             if(value != null) {
                 ImageListEntry entry = (ImageListEntry) value;
                 if (null == entry.imageFile) {
-                    item.setText("No image");
+                    item.setText("Unspecified");
                 } else {
                     item.setText(entry.imageFile.getName());
                 }
@@ -370,9 +377,10 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
         public Icon imageIcon;
         private long lastModified;
         
-        private ImageListEntry(File file)
+        private ImageListEntry(BufferedImage def)
         {
-            this(file, true);
+            imageFile = null;
+            imageIcon = getPreview(def);
         }
         
         /**
@@ -405,22 +413,31 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
         {
             if (imageFile != null) {
                 lastModified = imageFile.lastModified();
-                int dpi = Toolkit.getDefaultToolkit().getScreenResolution();
-    
-                try {
-                    BufferedImage image = ImageIO.read(imageFile);
-                    if (image != null) {
-                        Image scaledImage = GreenfootUtil.getScaledImage(image, dpi / 3, dpi / 3);
-                        imageIcon = new ImageIcon(scaledImage);
-                    }
-                    
-                    imageLibFrame.imageFileRefreshed(imageFile, image);
+                try
+                {
+                    imageIcon = getPreview(ImageIO.read(imageFile));
                 }
-                catch (IllegalArgumentException iae) {
-                    // Some versions of the JDK seem to throw this when the image is malformed.
+                catch(IOException e)
+                {
+                    Debug.reportError(e);
                 }
-                catch (IOException ioe) {}
             }
+        }
+
+        private ImageIcon getPreview(BufferedImage image)
+        {
+            int dpi = Toolkit.getDefaultToolkit().getScreenResolution();
+   
+            try {
+                if (image != null) {
+                    Image scaledImage = GreenfootUtil.getScaledImage(image, dpi / 3, dpi / 3);
+                    return new ImageIcon(scaledImage);
+                }
+            }
+            catch (IllegalArgumentException iae) {
+                // Some versions of the JDK seem to throw this when the image is malformed.
+            }
+            return new ImageIcon(GraphicsUtilities.createCompatibleTranslucentImage(dpi/3, dpi/3));
         }
         
         public boolean equals(Object other) 
@@ -430,7 +447,10 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
             }
             ImageListEntry otherEntry = (ImageListEntry) other;
             //other cannot be null here because it passed the instanceof check above:
-            if (otherEntry.imageFile == null || this.imageFile == null) {
+            if (otherEntry.imageFile == null && this.imageFile == null) {
+                return true;
+            }
+            else if (otherEntry.imageFile == null || this.imageFile == null) {
                 return false;
             }
             else {

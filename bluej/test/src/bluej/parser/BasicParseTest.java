@@ -408,11 +408,13 @@ public class BasicParseTest extends junit.framework.TestCase
     {
         String aSrc = "class A<T> {\n"
                 + "  void method1(A<? extends T> a) { }\n"
+                + "  void method2(A<? super T> a) { }\n"
                 + "}\n";
             
         ClassInfo info = InfoParser.parse(new StringReader(aSrc), new ClassLoaderResolver(getClass().getClassLoader()), null);
         Properties comments = info.getComments();
         assertTrue(findTarget(comments, "void method1(A)") != -1);
+        assertTrue(findTarget(comments, "void method2(A)") != -1);
     }
     
     public void testMultipleInterfaceExtends() throws Exception
@@ -421,6 +423,21 @@ public class BasicParseTest extends junit.framework.TestCase
         
         ClassInfo info = InfoParser.parse(new StringReader(aSrc), null, null);
         assertNotNull(info);
+    }
+    
+    public void testClassTpars() throws Exception
+    {
+        String aSrc = "class B {\n"
+                + "  <T> void method1(A<? extends T> a) { }\n"
+                + "}\n";
+            
+        ClassInfo info = InfoParser.parse(new StringReader(aSrc), new ClassLoaderResolver(getClass().getClassLoader()), null);
+        assertTrue(info.getTypeParameterTexts().isEmpty());
+        
+        aSrc = "class B<U extends Runnable> { }";
+        info = InfoParser.parse(new StringReader(aSrc), new ClassLoaderResolver(getClass().getClassLoader()), null);
+        assertTrue(info.getTypeParameterTexts().size() == 1);
+        assertEquals("U", info.getTypeParameterTexts().get(0));
     }
     
     private ParsedCUNode cuForSource(String sourceCode, EntityResolver resolver)
@@ -758,6 +775,30 @@ public class BasicParseTest extends junit.framework.TestCase
         assertTrue(used.contains("I"));
         assertTrue(used.contains("J"));
     }
+
+    public void testDependencyAnalysis13()
+    {
+        InitConfig.init();
+        TestEntityResolver ter = new TestEntityResolver(
+                new ClassLoaderResolver(this.getClass().getClassLoader())
+                );
+        PackageResolver pkgr = new PackageResolver(ter, "testpkg");
+        ter.addCompilationUnit("testpkg", cuForSource("package testpkg; class I { }", pkgr));
+        ter.addCompilationUnit("testpkg", cuForSource("package testpkg; class J { }", pkgr));
+
+        StringReader sr = new StringReader(
+                "package testpkg;" +
+                "class A {\n" +
+                "  Class<? extends I> cc;" +
+                "  Class<? super J> cc2;" +
+                "}\n"
+        );
+        ClassInfo info = InfoParser.parse(sr, pkgr, "testpkg");
+        List<String> used = info.getUsed();
+
+        assertTrue(used.contains("I"));
+        assertTrue(used.contains("J"));
+    }
     
     public void testClassModifiers()
     {
@@ -777,18 +818,6 @@ public class BasicParseTest extends junit.framework.TestCase
         assertFalse(info.isApplet());
         assertFalse(info.isEnum());
     }
-    
-    public @interface Unfinished {
-        public enum Priority { LOW, MEDIUM, HIGH }
-        public class Xxxxx {}
-        String value();
-        String[] changedBy() default "";
-        String[] lastChangedBy() default "";
-        Priority priority() default Priority.MEDIUM;
-        String createdBy() default "Aqif Hamid";
-        String lastChanged() default "08/07/2011";
-        final String ff = "hello";
-    }
         
     public void testAnnotation1()
     {
@@ -804,5 +833,19 @@ public class BasicParseTest extends junit.framework.TestCase
         ClassInfo info = InfoParser.parse(new StringReader(aSrc), new ClassLoaderResolver(getClass().getClassLoader()), null);
         assertNotNull(info);
         assertFalse(info.hadParseError());
+    }
+    
+    /**
+     * Parse some code with an error in it (regression test).
+     */
+    public void testParseBroken()
+    {
+        String aSrc = "class A {\n" +
+                "  <T> fff(List<\n" +
+                "  void xyz(int n) { }\n" +
+                "}\n";
+        ClassInfo info = InfoParser.parse(new StringReader(aSrc), new ClassLoaderResolver(getClass().getClassLoader()), null);
+        assertNotNull(info);
+        assertTrue(info.hadParseError());
     }
 }

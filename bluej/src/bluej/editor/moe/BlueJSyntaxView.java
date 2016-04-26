@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011,2014  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2014,2015  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -117,15 +117,18 @@ public abstract class BlueJSyntaxView extends MoePlainView
 
     private Map<ParsedNode,Integer> nodeIndents = new HashMap<ParsedNode,Integer>();
 
+    private final MoeErrorManager errors;
+
 
     /**
      * Creates a new BlueJSyntaxView.
      * @param elem The element
      */
-    public BlueJSyntaxView(Element elem, int leftMargin)
+    public BlueJSyntaxView(Element elem, int leftMargin, MoeErrorManager errors)
     {
         super(elem, leftMargin);
         line = new Segment();
+        this.errors = errors;
     }
 
     @Override
@@ -167,7 +170,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
             document.getText(start, end - (start + 1), line);
             g.setColor(def);
 
-            paintTaggedLine(line, lineIndex, g, x, y, document, def, lineElement, tx);
+            paintTaggedLine(line, lineIndex, g, x, y, document, errors, def, lineElement, tx);
         }
         catch (BadLocationException bl) {
             // shouldn't happen
@@ -189,7 +192,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
      *           to the left of this point)
      */
     protected void paintTaggedLine(Segment line, int lineIndex, Graphics g, int x, int y, 
-            MoeSyntaxDocument document, Color def, Element lineElement, TabExpander tx)
+            MoeSyntaxDocument document, MoeErrorManager errors, Color def, Element lineElement, TabExpander tx)
     {
         paintSyntaxLine(line, lineIndex, x, y, g, document, def, tx);
     }
@@ -367,9 +370,6 @@ public abstract class BlueJSyntaxView extends MoePlainView
         int fullWidth = a.getBounds().width + a.getBounds().x;
 
         ListIterator<NodeAndPosition<ParsedNode>> li = prevScopeStack.listIterator();
-        //Color lastLineColor = C3;
-
-        NodeAndPosition<ParsedNode> parent = null;
 
         DrawInfo drawInfo = new DrawInfo();
         drawInfo.g = g;
@@ -378,6 +378,8 @@ public abstract class BlueJSyntaxView extends MoePlainView
         drawInfo.ypos = ypos;
         drawInfo.ypos2 = ypos2;
 
+        // Process the current scope stack. This contains all nodes that span the beginning of this line,
+        // the foremost child and its foremost child and so on.
         while (li.hasNext()) {
             NodeAndPosition<ParsedNode> nap = li.next();
             int napPos = nap.getPosition();
@@ -385,16 +387,16 @@ public abstract class BlueJSyntaxView extends MoePlainView
 
             if (napPos >= lines.thisLineEl.getEndOffset()) {
                 // The node isn't even on this line, go to the next line
-                break;
+                return;
+            }
+
+            if (! drawNode(drawInfo, nap, onlyMethods)) {
+                continue;
             }
 
             if (nodeSkipsEnd(napPos, napEnd, lines.thisLineEl, lines.thisLineSeg)) {
+                nodeDepth++;
                 break;
-            }
-
-            if (! drawNode(drawInfo, nap, parent, onlyMethods)) {
-                parent = nap;
-                continue;
             }
 
             // Draw the start node
@@ -417,25 +419,29 @@ public abstract class BlueJSyntaxView extends MoePlainView
                 drawScopeRight(drawInfo, rbound);
             }
             nodeDepth++;
-
-            //lastNodePos = nap;
         }
 
         // Move along.
+        nodeDepth--;
         li = prevScopeStack.listIterator(prevScopeStack.size());
         NodeAndPosition<ParsedNode> nap = li.previous(); // last node
         int napPos = nap.getPosition();
         int napEnd = napPos + nap.getSize();
 
-        // For nodes which end on this line:
+        // For nodes which end on this line, there may be subsequent nodes we
+        // need to draw (and anyway we need to build the scope stack).
         while (napEnd <= lines.thisLineEl.getEndOffset()) {
             // Node ends this line
-            li.remove(); nodeDepth--;
+            li.remove();
+            if (drawNode(drawInfo, nap, onlyMethods)) {
+                nodeDepth--;
+            }
 
             if (! li.hasPrevious()) return;
             NodeAndPosition<ParsedNode> napParent = li.previous();
             li.next();
 
+            // There might be a sibling which has to be processed:
             NodeAndPosition<ParsedNode> nextNap = nap.nextSibling();
             napPos = napParent.getPosition();
             napEnd = napPos + napParent.getSize();
@@ -444,12 +450,13 @@ public abstract class BlueJSyntaxView extends MoePlainView
             while (nextNap != null) {
                 li.add(nextNap);
                 li.previous(); li.next();  // so remove works
-                nodeDepth++;
                 napPos = nextNap.getPosition();
                 napEnd = napPos + nextNap.getSize();
-                if (! nodeSkipsStart(nextNap, lines.thisLineEl, lines.thisLineSeg)) {
-                    if (drawNode(drawInfo, nextNap, napParent, onlyMethods)) {
+                
+                if (napPos < lines.thisLineEl.getEndOffset() && ! nodeSkipsStart(nextNap, lines.thisLineEl, lines.thisLineSeg)) {
+                    if (drawNode(drawInfo, nextNap, onlyMethods)) {
                         // Draw it
+                        nodeDepth++;
                         int xpos = getNodeIndent(a, document, nextNap, lines.thisLineEl,
                                 lines.thisLineSeg);
                         int rbound = getNodeRBound(a, nextNap, fullWidth - rightMargin, nodeDepth,
@@ -469,7 +476,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
                         }
                     }
                 }
-
+                
                 nap = nextNap;
                 nextNap = nextNap.getNode().findNodeAtOrAfter(napPos, napPos);
             }
@@ -482,7 +489,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
      * @param node
      * @return
      */
-    private boolean drawNode(DrawInfo info, NodeAndPosition<ParsedNode> nap, NodeAndPosition<ParsedNode> parent, boolean onlyMethods)
+    private boolean drawNode(DrawInfo info, NodeAndPosition<ParsedNode> nap, boolean onlyMethods)
     {
         int napPos = nap.getPosition();
         int napEnd = napPos + nap.getSize();
@@ -503,13 +510,6 @@ public abstract class BlueJSyntaxView extends MoePlainView
             if (! PAINT_METHOD_INNER) {
                 return false;
             }
-            /*
-            if (nap.getNode().isInner() && parent != null && parent.getNode().getNodeType()
-                    == ParsedNode.NODETYPE_METHODDEF) {
-                return true;
-            }
-            return false;
-             */
         }
 
         if (nodeSkipsStart(nap, info.lines.thisLineEl, info.lines.thisLineSeg)) {
@@ -639,7 +639,7 @@ public abstract class BlueJSyntaxView extends MoePlainView
         boolean endsThisLine = info.ends;
         int ypos = info.ypos;
         int ypos2 = info.ypos2;
-
+        
         // draw node start
         g.setColor(color2);
         g.fillRect(xpos, ypos, rbounds - xpos, ypos2 - ypos);
@@ -822,9 +822,11 @@ public abstract class BlueJSyntaxView extends MoePlainView
                 }
                 
                 // Re-build the scope stack and skip inner nodes.
-                // Note, we find nodes at curpos + 1 to avoid nodes which *end* here.
+                // Note, we find nodes at curpos + 1 to avoid nodes which *end* here, but we filter
+                // out nodes which do not span curpos within the loop:
                 NodeAndPosition<ParsedNode> nextChild = top.getNode().findNodeAt(curpos + 1, top.getPosition());
                 while (nextChild != null) {
+                    if (nextChild.getPosition() > curpos) break;
                     if (nextChild.getNode().isInner()) {
                         curpos = nextChild.getEnd();
                         continue outer;

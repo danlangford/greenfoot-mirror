@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013,2014,2015  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -42,13 +42,14 @@ import java.awt.event.WindowEvent;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import javax.swing.AbstractAction;
-import javax.swing.AbstractButton;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -67,6 +68,7 @@ import javax.swing.JSplitPane;
 import javax.swing.JTree;
 import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
+import javax.swing.SwingConstants;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.event.TreeModelEvent;
@@ -204,6 +206,16 @@ public class ExecControls extends JFrame
     public void setRestrictedClasses(Map<String, Set<String>> restrictedClasses)
     {
         this.restrictedClasses = restrictedClasses;
+    }
+    
+    public Map<String, Set<String>> getRestrictedClasses()
+    {
+        HashMap<String, Set<String>> copy = new HashMap<String, Set<String>>();
+        for (Map.Entry<String, Set<String>> e : restrictedClasses.entrySet())
+        {
+            copy.put(e.getKey(), new HashSet<String>(e.getValue()));
+        }
+        return copy;
     }
 
 
@@ -824,8 +836,8 @@ public class ExecControls extends JFrame
     private JButton addButton(Action action, JPanel panel)
     {
         JButton button = new JButton(action);
-        button.setVerticalTextPosition(AbstractButton.BOTTOM);
-        button.setHorizontalTextPosition(AbstractButton.CENTER);
+        button.setVerticalTextPosition(SwingConstants.BOTTOM);
+        button.setHorizontalTextPosition(SwingConstants.CENTER);
         button.setEnabled(false);
         panel.add(button);
         return button;

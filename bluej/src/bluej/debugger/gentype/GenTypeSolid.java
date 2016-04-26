@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -93,7 +93,7 @@ public abstract class GenTypeSolid extends JavaType
     
     public GenTypeSolid [] getUpperBounds()
     {
-        return new GenTypeSolid [] {this};
+        return getIntersectionTypes();
     }
     
     @Override
@@ -282,15 +282,15 @@ public abstract class GenTypeSolid extends JavaType
      */
     private static GenTypeParameter leastContainingTypeArgument(GenTypeParameter a, GenTypeParameter b, Stack<GenTypeClass[]> lubBt)
     {
-        GenTypeSolid ac = a.getCapture().asSolid();
-        GenTypeSolid bc = b.getCapture().asSolid();
+        GenTypeSolid ac = a.asSolid();
+        GenTypeSolid bc = b.asSolid();
         
-        // Both arguments are of solid type
+        // Both arguments are of solid type?
         if (ac != null && bc != null) {
             if (ac.equals(bc))
                 return ac;
             else
-                return lub(new GenTypeSolid [] {ac, bc}, lubBt);
+                return new GenTypeWildcard(lub(new GenTypeSolid [] {ac, bc}, lubBt), null);
         }
         
         if (ac != null || bc != null) {
@@ -323,11 +323,11 @@ public abstract class GenTypeSolid extends JavaType
         }
         
         // The only option left is lcta(? extends U, ? extends V)
-        GenTypeSolid [] uboundsa = a.getUpperBounds();
-        GenTypeSolid [] uboundsb = b.getUpperBounds();
-        GenTypeClass [] args = new GenTypeClass[uboundsa.length + uboundsb.length];
-        System.arraycopy(uboundsa, 0, args, 0, uboundsa.length);
-        System.arraycopy(uboundsb, 0, args, uboundsa.length, uboundsb.length);
+        GenTypeSolid uboundsa = a.getUpperBound().asSolid();
+        GenTypeSolid uboundsb = b.getUpperBound().asSolid();
+        GenTypeSolid [] args = new GenTypeSolid[2];
+        args[0] = uboundsa;
+        args[1] = uboundsb;
         return lub(args);
     }
     
@@ -406,5 +406,11 @@ public abstract class GenTypeSolid extends JavaType
             }
         }
         return rlist.toArray(new GenTypeClass[rlist.size()]);
+    }
+    
+    @Override
+    public GenTypeSolid[] getIntersectionTypes()
+    {
+        return new GenTypeSolid[] {this};
     }
 }

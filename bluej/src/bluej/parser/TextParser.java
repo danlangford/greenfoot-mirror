@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012,2013  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -569,7 +569,7 @@ public class TextParser extends JavaParser
                 valueStack.push(new ErrorEntity());
                 return;
             }
-            GenTypeSolid stype = target.getType().asSolid();
+            GenTypeSolid stype = target.getType().getCapture().asSolid();
             if (stype == null) {
                 // call on a primitive
                 valueStack.push(new ErrorEntity());
@@ -614,7 +614,7 @@ public class TextParser extends JavaParser
                 valueStack.push(new ErrorEntity());
                 return;
             }
-            argTypes[i] = cent.getType().getCapture();
+            argTypes[i] = cent.getType();
         }
 
         // Determine type arguments to method invocation
@@ -1815,7 +1815,7 @@ public class TextParser extends JavaParser
             state = STATE_NEW_ARGS;
             
             if (entity != null) {
-                valueStack.push(new ValueEntity(entity.getType().getCapture()));
+                valueStack.push(new ValueEntity(entity.getType()));
             }
             else {
                 valueStack.push(new ErrorEntity());
@@ -2050,7 +2050,7 @@ public class TextParser extends JavaParser
                 }
                 
                 while (token.getType() == JavaTokenTypes.LBRACK) {
-                    poc = new TypeEntity(poc.getType().getCapture().getArray());
+                    poc = new TypeEntity(poc.getType().getArray());
                     if (i.hasNext()) {
                         token = i.next(); // RBRACK
                     }

@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -156,12 +156,10 @@ public abstract class JavaType extends GenTypeParameter
         return null;
     }
     
-    /**
-     * If this type represents a "solid" (reference) type, get it. Otherwise return null.
-     */
-    public GenTypeSolid asSolid()
+    @Override
+    public JavaType asType()
     {
-        return null;
+        return this;
     }
 
     abstract public boolean equals(JavaType other);
@@ -218,4 +216,27 @@ public abstract class JavaType extends GenTypeParameter
      * Get an array type whose component type is this type.
      */
     abstract public GenTypeSolid getArray();
+    
+    /**
+     * Get the intersecting types that form this type separately. If this type is not
+     * an intersection, the returned array contains only this type.
+     */
+    public JavaType[] getIntersectionTypes()
+    {
+        return new JavaType[] {this};
+    }
+    
+    /**
+     * Perform capture conversion (JLS 7 chapter 5.1.0) on this type and return the result.
+     */
+    public JavaType getCapture()
+    {
+        return this;
+    }
+    
+    @Override
+    public JavaType getTparCapture()
+    {
+        return this;
+    }
 }

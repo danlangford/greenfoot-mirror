@@ -3,24 +3,24 @@
 # Must set below, and edit version in bjlaunch.rc and in bjmanifest.xml or gfmanifest.xml
 
 # For BlueJ
-#APPNAME=\"BlueJ\"
-#GREENFOOTDEF=
-#EXECNAME=bjlaunch.exe
-#REQUIREDJAVA=\"1.6\"
+APPNAME=\"BlueJ\"
+GREENFOOTDEF=
+EXECNAME=bjlaunch.exe
+REQUIREDJAVA=\"1.8\"
 
 # For Greenfoot
-APPNAME=\"Greenfoot\"
-GREENFOOTDEF=-DGREENFOOT
-EXECNAME=gflaunch.exe
-REQUIREDJAVA=\"1.6\"
+#APPNAME=\"Greenfoot\"
+#GREENFOOTDEF=-DGREENFOOT
+#EXECNAME=gflaunch.exe
+#REQUIREDJAVA=\"1.8\"
 
-JDKDIR=/c/Program Files/Java/jdk1.6.0_39
+JDKDIR=/c/Program Files/Java/jdk1.6.0_45
 
 OBJECTS = resources.o bjlaunch.o javatest.o javaprops.o bjdialog.o
 CXXFLAGS = -Os -Wall
 
 $(EXECNAME): $(OBJECTS)
-	g++ -static -mwindows -o $(EXECNAME) $(OBJECTS) -lversion
+	g++ -static -mwindows -o $(EXECNAME) $(OBJECTS) -lversion -lshlwapi
 	strip $(EXECNAME)
 
 resources.o: bjlaunch.rc resources.h

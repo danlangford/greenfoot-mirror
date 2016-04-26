@@ -32,6 +32,8 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+import threadchecker.OnThread;
+import threadchecker.Tag;
 import bluej.debugger.gentype.GenTypeClass;
 import bluej.debugger.gentype.GenTypeParameter;
 import bluej.debugger.gentype.GenTypeSolid;
@@ -76,9 +78,11 @@ public class InfoParser extends EditorParser
     private int classLevel = 0; // number of nested classes
     private boolean isPublic;
     private boolean isAbstract;
+    private String comment;
     private int lastTdType; // last typedef type (TYPEDEF_CLASS, _INTERFACE etc)
     private boolean storeCurrentClassInfo;
     private int arrayCount = 0;
+    private boolean methodTypeParams = false;  // Type parameters are for a method
 
     private List<LocatableToken> lastTypespecToks;
     private boolean modPublic = false;
@@ -161,7 +165,8 @@ public class InfoParser extends EditorParser
      * Attempt to parse the specified source file, and resolve references via the specified
      * package (and its project). Returns null if the file could not be parsed.
      */
-    public static ClassInfo parse(File f, Package pkg) throws FileNotFoundException
+    @OnThread(Tag.Swing)
+    public static ClassInfo parseWithPkg(File f, Package pkg) throws FileNotFoundException
     {
         FileInputStream fis = new FileInputStream(f);
         EntityResolver resolver = new PackageResolver(pkg.getProject().getEntityResolver(),
@@ -320,13 +325,19 @@ public class InfoParser extends EditorParser
         if (ctype != null) {
             addTypeReference(ctype.getErasedType().toString());
             List<? extends GenTypeParameter> plist = ctype.getTypeParamList();
+            // Process type arguments:
             for (GenTypeParameter param : plist) {
-                GenTypeSolid [] ubounds = param.getUpperBounds();
-                for (GenTypeSolid ubound : ubounds) {
-                    GenTypeClass ubctype = ubound.asClass();
-                    if (ubctype != null) {
-                        addTypeReference(ubctype);
-                    }
+                GenTypeSolid sparam = param.asSolid();
+                if (sparam != null) {
+                    addTypeReference(sparam);
+                }
+                else {
+                    // primitive or wildcard type
+                    // (primitives are technically not allowed).
+                    JavaType upperBound = param.getUpperBound();
+                    JavaType lowerBound = param.getLowerBound();
+                    if (upperBound != null) addTypeReference(upperBound);
+                    if (lowerBound != null) addTypeReference(lowerBound);
                 }
             }
         }
@@ -447,11 +458,27 @@ public class InfoParser extends EditorParser
     }
 
     @Override
+    protected void gotMethodTypeParamsBegin()
+    {
+        super.gotMethodTypeParamsBegin();
+        methodTypeParams = true;
+    }
+    
+    @Override
     protected void gotTypeParam(LocatableToken idToken)
     {
         super.gotTypeParam(idToken);
-        info.addTypeParameterText(idToken.getText());
-        info.setTypeParametersSelection(getSelection(idToken));
+        if (storeCurrentClassInfo && !methodTypeParams && classLevel == 0) {
+            info.addTypeParameterText(idToken.getText());
+            info.setTypeParametersSelection(getSelection(idToken));
+        }
+    }
+    
+    @Override
+    protected void endMethodTypeParams()
+    {
+        super.endMethodTypeParams();
+        methodTypeParams = false;
     }
     
     @Override
@@ -550,7 +577,7 @@ public class InfoParser extends EditorParser
     protected void gotMethodParameter(LocatableToken token, LocatableToken ellipsisToken)
     {
         super.gotMethodParameter(token, ellipsisToken);
-        if (currentMethod != null) {
+        if (currentMethod != null && lastTypespecToks != null) {
             currentMethod.paramNames += token.getText() + " ";
             JavaEntity ptype = ParseUtils.getTypeEntity(scopeStack.peek(),
                     currentQuerySource(), lastTypespecToks);
@@ -587,6 +614,7 @@ public class InfoParser extends EditorParser
     {
         isPublic = modPublic;
         isAbstract = modAbstract;
+        comment = firstToken.getHiddenBefore() == null ? "" : firstToken.getHiddenBefore().getText();
         super.gotTypeDef(firstToken, tdType);
         lastTdType = tdType;
     }
@@ -604,6 +632,7 @@ public class InfoParser extends EditorParser
                 info.setEnum(lastTdType == TYPEDEF_ENUM);
                 info.setInterface(lastTdType == TYPEDEF_INTERFACE);
                 info.setAbstract(isAbstract);
+                info.addComment(info.getName(), comment, null);
                 Selection insertSelection = new Selection(nameToken.getLine(), nameToken.getEndColumn());
                 info.setExtendsInsertSelection(insertSelection);
                 info.setImplementsInsertSelection(insertSelection);

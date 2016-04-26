@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 2010,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -21,13 +21,17 @@
  */
 package bluej.debugmgr.texteval;
 
+import threadchecker.OnThread;
+import threadchecker.Tag;
 import bluej.debugger.gentype.JavaType;
+import bluej.debugmgr.NamedValue;
 
 /**
  * A class to represent a variable declared by a statement. This contains
  * the variable name and type, and whether or not it was initialized.
  */
-public class DeclaredVar
+@OnThread(value = Tag.Any, ignoreParent = true)
+public class DeclaredVar implements NamedValue
 {
     private boolean isVarInit = false;
     private JavaType declVarType;
@@ -45,6 +49,7 @@ public class DeclaredVar
     /**
      * Check whether the variable declaration included an initialization.
      */
+    @Override
     public boolean isInitialized()
     {
         return isVarInit;
@@ -59,9 +64,16 @@ public class DeclaredVar
         return declVarType;
     }
     
+    @Override
+    public JavaType getGenType()
+    {
+        return declVarType;
+    }
+    
     /**
      * Get the name of the declared variable.
      */
+    @Override
     public String getName()
     {
         return varName;
@@ -70,6 +82,7 @@ public class DeclaredVar
     /**
      * Check whether the variable was declared "final".
      */
+    @Override
     public boolean isFinal()
     {
         return isFinal;

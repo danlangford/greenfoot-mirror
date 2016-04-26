@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -32,10 +32,12 @@ import bluej.parser.entity.EntityResolver;
 import bluej.parser.entity.JavaEntity;
 import bluej.parser.entity.PackageResolver;
 import bluej.parser.entity.TypeEntity;
+import bluej.parser.entity.ValueEntity;
+import bluej.parser.nodes.NodeTree.NodeAndPosition;
 import bluej.parser.nodes.ParsedCUNode;
 import bluej.parser.nodes.ParsedNode;
 import bluej.parser.nodes.ParsedTypeNode;
-import bluej.parser.nodes.NodeTree.NodeAndPosition;
+import bluej.parser.nodes.TypeInnerNode;
 
 public class IncrementalParseTest extends TestCase
 {
@@ -677,6 +679,47 @@ public class IncrementalParseTest extends TestCase
         assertEquals(14, nap.getPosition());
         assertEquals(18, nap.getSize());
     }
+
+    public void test13() throws Exception
+    {
+        String aSrc = "class A {\n" +         // 0 - 10
+            "    \n" +                        // 10 - 15 
+            "    void xyz(int n) { }\n" +      // 15 - 39 
+            "}\n";                            // 39 - 41
+        
+        MoeSyntaxDocument aDoc = docForSource(aSrc, "");
+        ParsedCUNode aNode = aDoc.getParser();
+        NodeAndPosition<ParsedNode> nap = aNode.findNodeAt(0, 0);
+
+        assertNotNull(nap);
+        assertEquals(0, nap.getPosition());
+        assertEquals(40, nap.getSize());
+        
+        nap = nap.getNode().findNodeAt(9, nap.getPosition()); // class inner
+        assertNotNull(nap);
+        assertEquals(9, nap.getPosition());
+        assertEquals(30, nap.getSize());
+        
+        nap = nap.getNode().findNodeAt(19, nap.getPosition()); // method
+        assertNotNull(nap);
+        assertEquals(19, nap.getPosition());
+        assertEquals(19, nap.getSize());
+        
+        // Insert beginning of new method declaration:
+        aDoc.insertString(14, "<T> fff(List<", null);
+        
+        aNode = aDoc.getParser();
+        nap = aNode.findNodeAt(0, 0);
+        
+        assertNotNull(nap);
+        assertEquals(0, nap.getPosition());
+        assertEquals(53, nap.getSize());
+        
+        nap = nap.getNode().findNodeAt(9, nap.getPosition()); // class inner
+        assertNotNull(nap);
+        assertEquals(9, nap.getPosition());
+        assertEquals(43, nap.getSize());
+    }
     
     public void testChangeSuper() throws Exception
     {
@@ -1024,5 +1067,89 @@ public class IncrementalParseTest extends TestCase
         nap = nap.getNode().findNodeAt(41, nap.getPosition()); // constructor inner
         assertEquals(41, nap.getPosition());
         assertEquals(74 + 6, nap.getSize());
+    }
+    
+    public void testMultipleDeclaration() throws Exception
+    {
+        String aSrc = "class A {\n" +  // 0 - 10
+                "  public Runnable r, b = new Runnable() {\n" +  // 10 - 52 
+                "    public void run() {\n" +             // 52 - 76
+                "      c.run();\n"          +             // 76 - 81     
+                "    }\n" +                               // 81 - 97
+                "  };\n" +                                // 97 - 102
+                "}\n";                                    // 102 - 104
+        
+        MoeSyntaxDocument aDoc = docForSource(aSrc, "");
+        ParsedCUNode aNode = aDoc.getParser();
+        
+        NodeAndPosition<ParsedNode> classNap = aNode.findNodeAt(0, 0);  // class
+        assertEquals(0, classNap.getPosition());
+        assertEquals(103, classNap.getSize());
+        
+        ParsedTypeNode classNode = (ParsedTypeNode) classNap.getNode();
+        TypeInnerNode classInner = classNode.getInner();
+
+        // There should be two field nodes:
+        NodeAndPosition<ParsedNode> nap = classInner.findNodeAt(12, 9);
+        assertEquals(12, nap.getPosition());
+        assertEquals(29, nap.getEnd()); // *doesn't* include comma
+        
+        nap = classInner.findNodeAt(30, 9);
+        assertEquals(30, nap.getPosition());
+        assertEquals(101, nap.getEnd()); // includes semicolon
+        
+        JavaEntity rvar = classInner.getValueEntity("r", null);
+        assertNotNull(rvar);
+        ValueEntity rval = rvar.resolveAsValue();
+        assertNotNull(rval);
+        assertEquals("java.lang.Runnable", rval.getType().toString());
+        
+        JavaEntity bvar = classInner.getValueEntity("b", null);
+        assertNotNull(bvar);
+        ValueEntity bval = bvar.resolveAsValue();
+        assertNotNull(bval);
+        assertEquals(bval.getType().toString(), "java.lang.Runnable");
+
+        
+        
+        aDoc.insertString(100, ", c", null);
+        aNode = aDoc.getParser();
+        nap = aNode.findNodeAt(0, 0);        
+        classNode = (ParsedTypeNode) nap.getNode();
+        classInner = classNode.getInner();
+
+        // There should now be three field nodes:
+        nap = classInner.findNodeAt(12, 9);
+        assertEquals(12, nap.getPosition());
+        assertEquals(29, nap.getEnd()); // *doesn't* include comma
+        
+        nap = classInner.findNodeAt(30, 9);
+        assertEquals(30, nap.getPosition());
+        assertEquals(100, nap.getEnd()); // *doesn't* include comma
+        
+        nap = classInner.findNodeAt(101, 9);
+        assertEquals(101, nap.getPosition());
+        assertEquals(104, nap.getEnd()); // includes semicolon
+        
+        
+        
+        bvar = classInner.getValueEntity("b", null);
+        assertNotNull(bvar);
+        bval = bvar.resolveAsValue();
+        assertNotNull(bval);
+        assertNotNull(bval.getType());
+        assertEquals(bval.getType().toString(), "java.lang.Runnable");
+
+        JavaEntity cvar = classInner.getValueEntity("c", null);
+        assertNotNull(cvar);
+        ValueEntity cval = cvar.resolveAsValue();
+        assertNotNull(cval);
+        assertNotNull(cval.getType());
+        assertEquals(cval.getType().toString(), "java.lang.Runnable");
+        
+        
+        CodeSuggestions suggests = aNode.getExpressionType(84, aDoc);
+        assertNotNull(suggests);
+        assertEquals(suggests.getSuggestionType().toString(), "java.lang.Runnable");
     }
 }

@@ -1,4 +1,4 @@
-Greenfoot version: 2.4.2
+Greenfoot version: 3.0.0
 
 Information about Greenfoot
 -----------------------
@@ -17,6 +17,6 @@ greenfoot.properties file.
 The Greenfoot Team
 --------------
 Greenfoot is being developed by:
-University of Kent: Michael Kölling, Ian Utting, Davin McCall, Neil Brown, Phil Stevens
+University of Kent: Michael Kölling, Ian Utting, Davin McCall, Neil Brown, Amjad Altadmri, Fabio Hedayioglu
 
 The copyright (c) for Greenfoot is held by P. Henriksen and M. Kölling.

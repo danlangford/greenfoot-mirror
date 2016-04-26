@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2010,2011,2012,2013,2014,2015  Michael Kolling and John Rosenberg 
 
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -29,10 +29,8 @@ import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.FocusTraversalPolicy;
 import java.awt.Font;
-import java.awt.Frame;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
-import java.awt.Image;
 import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -40,8 +38,7 @@ import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.print.PageFormat;
 import java.awt.print.PrinterJob;
 import java.beans.PropertyChangeEvent;
@@ -61,8 +58,11 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.concurrent.ExecutionException;
 
 import javax.swing.AbstractAction;
@@ -83,7 +83,9 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.border.BevelBorder;
 import javax.swing.border.EmptyBorder;
@@ -102,29 +104,40 @@ import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.HTMLFrameHyperlinkEvent;
 
+import threadchecker.OnThread;
+import threadchecker.Tag;
 import bluej.BlueJEvent;
 import bluej.BlueJEventListener;
 import bluej.BlueJTheme;
 import bluej.Config;
 import bluej.compiler.Diagnostic;
 import bluej.editor.EditorWatcher;
+import bluej.editor.SwingTabbedEditor;
+import bluej.editor.moe.MoeErrorManager.ErrorDetails;
+import bluej.editor.stride.FrameEditor;
+import bluej.extensions.editor.Editor;
 import bluej.parser.AssistContent;
+import bluej.parser.AssistContent.CompletionKind;
 import bluej.parser.CodeSuggestions;
 import bluej.parser.ParseUtils;
 import bluej.parser.ParseUtils.AssistContentConsumer;
 import bluej.parser.SourceLocation;
 import bluej.parser.entity.EntityResolver;
 import bluej.parser.lexer.LocatableToken;
+import bluej.parser.nodes.NodeTree.NodeAndPosition;
 import bluej.parser.nodes.ParsedCUNode;
+import bluej.parser.nodes.ParsedNode;
 import bluej.pkgmgr.JavadocResolver;
 import bluej.pkgmgr.PkgMgrFrame;
 import bluej.prefmgr.PrefMgr;
+import bluej.stride.framedjava.elements.CallElement;
+import bluej.stride.framedjava.elements.CodeElement;
+import bluej.stride.framedjava.elements.NormalMethodElement;
 import bluej.utility.DBox;
 import bluej.utility.DBoxLayout;
 import bluej.utility.Debug;
 import bluej.utility.DialogManager;
 import bluej.utility.FileUtility;
-import bluej.utility.GradientFillPanel;
 import bluej.utility.Utility;
 
 /**
@@ -139,8 +152,8 @@ import bluej.utility.Utility;
  * @author Damiano Bolla
  */
 
-public final class MoeEditor extends JFrame
-    implements bluej.editor.Editor, BlueJEventListener, HyperlinkListener, DocumentListener, MouseListener
+public final class MoeEditor extends JPanel
+    implements bluej.editor.TextEditor, BlueJEventListener, HyperlinkListener, DocumentListener, MouseListener
 {
     // -------- CONSTANTS --------
 
@@ -155,94 +168,28 @@ public final class MoeEditor extends JFrame
     final static Color lightGrey = new Color(224, 224, 224);
     final static Color selectionColour = Config.getSelectionColour();
     final static Color envOpColour = Config.ENV_COLOUR;
-
-    // Fonts
-    public static int printFontSize = Config.getPropInteger("bluej.fontsize.printText", 10);
-    public static Font printFont = new Font("Monospaced", Font.PLAIN, printFontSize);
-
-    // Strings
-    private final String implementationString = Config.getString("editor.implementationLabel");
-    private final String interfaceString = Config.getString("editor.interfaceLabel");
-
     // suffixes for resources
     final static String LabelSuffix = "Label";
     final static String ActionSuffix = "Action";
     final static String TooltipSuffix = "Tooltip";
     final static String AcceleratorSuffix = "Accelerator";
-
+    // other
+    final static String COMPILED = "compiled";
     // file suffixes
     private final static String CRASHFILE_SUFFIX = "#";
     private final static String BACKUP_SUFFIX = "~";
-
-    // other
-    final static String COMPILED = "compiled";
     private final static int NAVIVIEW_WIDTH = 90;       // width of the "naviview" (min-source) box
-
-    // -------- CLASS VARIABLES --------
-
-    private static boolean matchBrackets = false;
-    
     private static final Color highlightBorderColor = new Color(212, 172,45);
-    
+    // Fonts
+    public static int printFontSize = Config.getPropInteger("bluej.fontsize.printText", 10);
+    public static Font printFont = new Font("Monospaced", Font.PLAIN, printFontSize);
     protected static AdvancedHighlightPainter searchHighlightPainter =
         new MoeBorderHighlighterPainter(highlightBorderColor, Config.getHighlightColour(),
                 Config.getHighlightColour2(), Config.getSelectionColour2(),
                 Config.getSelectionColour());
 
-    // -------- INSTANCE VARIABLES --------
-
-    private EditorWatcher watcher;
-    private Properties resources;
-
-    private AbstractDocument document;
-    private MoeSyntaxDocument sourceDocument;
-    private HTMLDocument htmlDocument;
-
-    private MoeActions actions;
-    public MoeUndoManager undoManager;
-
-    private JEditorPane currentTextPane;    // text component currently displayed
-    private JEditorPane sourcePane;         // the component holding the source text
-
-    private JEditorPane htmlPane;           // the component holding the javadoc html
-    private MoeCaret moeCaret;
-
-    private Info info;                      // the info number label
-    private JPanel statusArea;              // the status area
-    private StatusLabel saveState;          // the status label
-    private JComboBox interfaceToggle;
-    private GoToLineDialog goToLineDialog;
-
-    // find functionality
-    private FindPanel finder;
-    private ReplacePanel replacer;
-
-    private JScrollPane scrollPane;
-    private NaviView naviView;              // Navigation view (mini-source view)
-    private EditorDividerPanel dividerPanel;  // Divider Panel to indicate separation between the
-                                            // editor and navigation view
-    private JComponent toolbar;             // The toolbar
-    private JPopupMenu popup;               // Popup menu options
-
-    private String filename;                // name of file or null
-    private long lastModified;              // time of last modification of file
-    private String windowTitle;             // title of editor window
-    private String docFilename;             // path to javadoc html file
-    private Charset characterSet;           // character set of the file
-
-    private boolean sourceIsCode;           // true if current buffer is code
-    private boolean viewingHTML;
-
-    private int currentStepPos;             // position of step mark (or -1)
-    private boolean mayHaveBreakpoints;     // true if there were BP here
-    private boolean ignoreChanges = false;
-    private boolean tabsAreExpanded = false;
-
-    private MoePrinter printer;
-    private PrintDialog printDialog;
-
-    private TextInsertNotifier doTextInsert = new TextInsertNotifier();
-
+    // -------- CLASS VARIABLES --------
+    private static boolean matchBrackets = false;
     /**
      * list of actions that are dis/enabled depending on the selected view
      * (source/documentation)
@@ -253,33 +200,80 @@ public final class MoeEditor extends JFrame
      */
     private static ArrayList<String> readMeActions;
 
+    // -------- INSTANCE VARIABLES --------
+    // Strings
+    private final String implementationString = Config.getString("editor.implementationLabel");
+    private final String interfaceString = Config.getString("editor.interfaceLabel");
+    private final SwingTabbedEditor swingTabbedEditor;
+    //private StringProperty titleProperty;
+    private final AtomicBoolean panelOpen = new AtomicBoolean();
+    public MoeUndoManager undoManager;
+    private EditorWatcher watcher;
+    private Properties resources;
+    private AbstractDocument document;
+    private MoeSyntaxDocument sourceDocument;
+    private HTMLDocument htmlDocument;
+    private MoeActions actions;
+    private JEditorPane currentTextPane;    // text component currently displayed
+    private JEditorPane sourcePane;         // the component holding the source text
+    private JEditorPane htmlPane;           // the component holding the javadoc html
+    private MoeCaret moeCaret;
+    private Info info;                      // the info number label
+    private JPanel statusArea;              // the status area
+    private StatusLabel saveState;          // the status label
+    private JComboBox interfaceToggle;
+    private GoToLineDialog goToLineDialog;
+    // find functionality
+    private FindPanel finder;
+    private ReplacePanel replacer;
+    private JScrollPane scrollPane;
+    private NaviView naviView;              // Navigation view (mini-source view)
+    private EditorDividerPanel dividerPanel;  // Divider Panel to indicate separation between the
+                                            // editor and navigation view
+    private JComponent toolbar;             // The toolbar
+    private JPopupMenu popup;               // Popup menu options
+    private String filename;                // name of file or null
+    private long lastModified;              // time of last modification of file
+    private String windowTitle;             // title of editor window
+    private String docFilename;             // path to javadoc html file
+    private Charset characterSet;           // character set of the file
+    private boolean sourceIsCode;           // true if current buffer is code
+    private boolean viewingHTML;
+    private int currentStepPos;             // position of step mark (or -1)
+    private boolean mayHaveBreakpoints;     // true if there were BP here
+    private boolean ignoreChanges = false;
+    private boolean tabsAreExpanded = false;
+    private MoePrinter printer;
+    private PrintDialog printDialog;
+    private TextInsertNotifier doTextInsert = new TextInsertNotifier();
     /** Used to obtain javadoc for arbitrary methods */
     private JavadocResolver javadocResolver;
     private ReparseRunner reparseRunner;
-
     /** Search highlight tags for both text panes */
     private List<Object> sourceSearchHighlightTags = new ArrayList<Object>();
     private List<Object> htmlSearchHighlightTags = new ArrayList<Object>();
-    
-    /** Manages display of compiler and parse errors */
-    private MoeErrorManager errorManager = new MoeErrorManager(this);
-    
     /**
      * Property map, allows BlueJ extensions to associate property values with
      * this editor instance; otherwise unused.
      */
     private HashMap<String,Object> propertyMap = new HashMap<String,Object>();
-    
     // Blackbox data recording:
     private int oldCaretLineNumber = -1;
-
+    private ErrorDisplay errorDisplay;
+    private boolean madeChangeOnCurrentLine = false;
+    private AbstractButton nextErrorButton;
+    /** Manages display of compiler and parse errors */
+    private MoeErrorManager errorManager = new MoeErrorManager(this, enable -> {
+        setNextErrorEnabled(enable || madeChangeOnCurrentLine, madeChangeOnCurrentLine);
+    });
 
     /**
      * Constructor. Title may be null.
      */
-    public MoeEditor(MoeEditorParameters parameters)
+    public MoeEditor(MoeEditorParameters parameters, SwingTabbedEditor swingTabbedEditor)
     {
-        super("Moe");
+        super(new BorderLayout(6,6));
+        this.swingTabbedEditor = swingTabbedEditor;
         watcher = parameters.getWatcher();
         resources = parameters.getResources();
         javadocResolver = parameters.getJavadocResolver();
@@ -294,35 +288,303 @@ public final class MoeEditor extends JFrame
         undoManager = new MoeUndoManager(this);
 
         initWindow(parameters.getProjectResolver());
+        swingTabbedEditor.scheduleCompilation(false);
     }
 
     // --------------------------------------------------------------------
+
+    /**
+     * Return a validated version of the global PageFormat for BlueJ
+     */
+    @OnThread(Tag.Any)
+    public static PageFormat getPageFormat(PrinterJob job)
+    {
+        return job.validatePage(PkgMgrFrame.getPageFormat());
+    }
+
+    /**
+     * Implementation of the "page setup" user function. This provides a dialog
+     * for print page setup. PageSetup is global to BlueJ. Calling this from the 
+     * Editor is effectively the same as calling from PkgMgrFrame as this saves 
+     * back to PkgMgrFrame's global page format object.
+     */
+    public static void pageSetup()
+    {
+        PrinterJob job = PrinterJob.getPrinterJob();
+        PageFormat pageFormat = job.pageDialog(PkgMgrFrame.getPageFormat());
+        PkgMgrFrame.setPageFormat(pageFormat);
+    }
+
+    /**
+     * Find the position of a substring in a given string, 
+     * can specify direction and whether the search should ignore case
+     * Return the position of the substring or -1.
+     *
+     * @param  text        the full string to be searched
+     * @param  sub         the substring that we're looking for
+     * @param  ignoreCase  if true, case is ignored
+     * @param  backwards   Description of the Parameter
+     * @return             Description of the Return Value
+     * @returns            the index of the substring, or -1 if not found
+     */
+    private static int findSubstring(String text, String sub, boolean ignoreCase, boolean backwards)
+    {
+        int strlen = text.length();
+        int sublen = sub.length();
+
+        if (sublen == 0) {
+            return -1;
+        }
+
+        boolean found = false;
+        int pos = (backwards ? strlen - sublen : 0);
+        boolean itsOver = (backwards ? (pos < 0) : (pos + sublen > strlen));
+
+        while (!found && !itsOver) {
+            found = text.regionMatches(ignoreCase, pos, sub, 0, sublen);
+            if (found) {
+                return pos;
+            }
+            if (!found) {
+                pos = (backwards ? pos - 1 : pos + 1);
+                itsOver = (backwards ? (pos < 0) : (pos + sublen > strlen));
+            }
+        }       
+        return -1;
+    }
+
+    /**
+     * Find the position of a substring in a given string, 
+     * can specify direction and whether the search should ignoring case
+     * Return the position of the substring or -1.
+     *
+     * @param  text        the full string to be searched
+     * @param  sub         the substring that we're looking for
+     * @param  ignoreCase  if true, case is ignored
+     * @param  backwards   Description of the Parameter
+     * @param  foundPos   Offset for the string search
+     * @return             Description of the Return Value
+     * @returns            the index of the substring, or -1 if not found
+     */
+    private static int findSubstring(String text, String sub, boolean ignoreCase, boolean backwards, int foundPos)
+    {
+        int strlen = text.length();
+        int sublen = sub.length();
+
+        if (sublen == 0) {
+            return -1;
+        }
+
+        boolean found = false;
+        int pos = foundPos;
+        boolean itsOver = (backwards ? (pos < 0) : (pos + sublen > strlen));
+        while (!found && !itsOver) {
+            found = text.regionMatches(ignoreCase, pos, sub, 0, sublen);                
+            if (found) {
+                return pos;
+            }
+            if (!found) {
+                pos = (backwards ? pos - 1 : pos + 1);
+                itsOver = (backwards ? (pos < 0) : (pos + sublen > strlen));
+            }
+        }      
+        return -1;
+    }
+
+    /**
+     * Check if an item is in the reserved list for disabled interface options
+     *  
+     * @return boolean reflects if it is enabled ie false=disabled
+     * @param buttonText  String with button text name
+     */
+    private static boolean isEditAction(String text)
+    {       
+        ArrayList<String> editActions = getEditActions();
+        if (editActions!=null && editActions.contains(text)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Check whether an action is not valid for the project "readme" (i.e. if it is only
+     * valid for source files).
+     * 
+     * @param actionName String representing the action name
+     * @return true if it is an action that should be disabled while editing the readme file,
+     *         or false otherwise
+     */
+    @OnThread(Tag.Any)
+    private static boolean isNonReadmeAction(String actionName)
+    {
+        ArrayList<String> flaggedActions = getNonReadmeActions();
+        if (flaggedActions!=null && flaggedActions.contains(actionName)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Get a list of actions not applicable in the readme.txt file
+     */
+    @OnThread(Tag.Any)
+    private static ArrayList<String> getNonReadmeActions ()
+    {
+        if (readMeActions==null) {
+            readMeActions=new ArrayList<String>();
+            readMeActions.add("next-error");
+            readMeActions.add("autoindent");
+            readMeActions.add("insert-method");
+            readMeActions.add("toggle-interface-view");
+        }
+        return readMeActions;
+    }
+
+    /**
+     * Returns a list of names for the actions which are only valid in an editing
+     * context, that is, when the display shows the source and not the documentation.
+     *  
+     * @return list of editing action names
+     */
+    private static ArrayList<String> getEditActions()
+    {
+        if (editActions == null) {
+            editActions=new ArrayList<String>();
+            editActions.add("save");
+            editActions.add("reload");
+            editActions.add("print");
+            editActions.add("page-setup");
+            editActions.add("next-error");
+            editActions.add("cut-to-clipboard");
+            editActions.add("indent-block");
+            editActions.add("deindent-block");
+            editActions.add("comment-block");
+            editActions.add("uncomment-block");
+            editActions.add("insert-method");
+            editActions.add("replace");
+            editActions.add("go-to-line");
+            editActions.add("paste-from-clipboard");
+            editActions.add("toggle-breakpoint");
+            editActions.add("autoindent");
+        }
+
+        return editActions;
+    }
+
+    /**
+     * Tell whether we are currently matching brackets.
+     * 
+     * @return True, if we are matching brackets, otherwise false.
+     */
+    public static boolean matchBrackets()
+    {
+        return matchBrackets;
+    }
+
+    /**
+     * Choose a key to use in the menu from all defined keys.
+     */
+    private static KeyStroke chooseKey(KeyStroke[] keys)
+    {
+        if (keys.length == 1) {
+            return keys[0];
+        }
+        KeyStroke key = keys[0];
+        // give preference to shortcuts using letter keys (CTRL-V, rather than F2)
+        for (int i = 1; i < keys.length; i++) {
+            if (keys[i].getKeyCode() >= 'A' && keys[i].getKeyCode() <= 'Z') {
+                key = keys[i];
+            }
+        }
+        return key;
+    }
+    
+    /**
+     * Removes the selection in the textpane specified
+     * @param textPane specified textpane (source/html)
+     */
+    private static void removeSelection(JEditorPane textPane)
+    {
+        if (textPane != null) {
+            textPane.setSelectionEnd(textPane.getSelectionStart());
+        }
+    }
+    
+    /**
+     * Does some clever formatting to ensure that the replacement matches
+     * the original on the formatting eg upper/lower case
+     */
+    private static String smartFormat(String original, String replacement)
+    {
+        if(original == null || replacement == null) {
+            return replacement;
+        }
+
+        // only do smart stuff if search and replace strings were entered in lowercase.
+        // check here. if not lowercase, just return.
+
+        if( !isLowerCase(replacement) || !isLowerCase(original)) {
+            return replacement;
+        }
+        if(isUpperCase(original)) {
+            return replacement.toUpperCase();
+        }
+        if(isTitleCase(original)) {
+            return Character.toTitleCase(replacement.charAt(0)) + 
+                replacement.substring(1);
+        }
+        
+        return replacement;
+    }
+
+    /**
+     * True if the string is in lower case.
+     */
+    public static boolean isLowerCase(String s)
+    {
+        for(int i=0; i<s.length(); i++) {
+            if(! Character.isLowerCase(s.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * True if the string is in Upper case.
+     */
+    public static boolean isUpperCase(String s)
+    {
+        for(int i=0; i<s.length(); i++) {
+            if(! Character.isUpperCase(s.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * True if the string is in title case.
+     */
+    public static boolean isTitleCase(String s)
+    {
+        if(s.length() < 2) {
+            return false;
+        }
+        return Character.isUpperCase(s.charAt(0)) &&
+                Character.isLowerCase(s.charAt(1));
+    }
 
     /*
      * Load the file "filename" and show the editor window.
      */
     @Override
     public boolean showFile(String filename, Charset charset, boolean compiled,
-            String docFilename, Rectangle bounds)
+            String docFilename)
     {
         this.filename = filename;
         this.docFilename = docFilename;
         this.characterSet = charset;
-
-        if (bounds != null) {
-            if (bounds.x > (Config.screenBounds.width - 80))
-                bounds.x = Config.screenBounds.width - 80;
-            
-            if (bounds.y > (Config.screenBounds.height - 80))
-                bounds.y = Config.screenBounds.height - 80;
-            
-            if (bounds.width > 0 && bounds.height > 0) {
-                setBounds(bounds);
-            }
-            else {
-                setLocation(bounds.x, bounds.y);
-            }
-        }
 
         boolean loaded = false;
 
@@ -387,7 +649,6 @@ public final class MoeEditor extends JFrame
 
         info.message(Config.getString("editor.info.version") + " " + versionString);
 
-        setWindowTitle();
         sourcePane.setFont(PrefMgr.getStandardEditorFont());
 
         setCompileStatus(compiled);
@@ -404,7 +665,7 @@ public final class MoeEditor extends JFrame
     {
         doReload();
     }
-
+    
     /*
      * Wipe out contents of the editor.
      */
@@ -448,12 +709,11 @@ public final class MoeEditor extends JFrame
             checkBracketStatus();
         }
 
-        super.setVisible(vis);              // show the window
-
-        if(vis) {
-            setState(Frame.NORMAL);         // de-iconify
-            toFront();                      // window to front  
-            Utility.bringToFront(this);        
+        
+        swingTabbedEditor.setEditorVisible(vis, this);
+        if (vis)
+        {
+            swingTabbedEditor.bringToFront();
         }
     }
 
@@ -465,6 +725,8 @@ public final class MoeEditor extends JFrame
     {
         sourcePane.setFont(PrefMgr.getStandardEditorFont());
         checkBracketStatus();
+        scheduleReparseRunner(); //whenever we change the scope highlighter, call scheduleReparseRunner to create a reparser to that file: if the scope highlighter is 0, it will do nothing. However, if it is not zero, it will ensure the editor is updated accordingly.
+        
         currentTextPane.repaint();
         
         Info.resetFont();
@@ -600,10 +862,13 @@ public final class MoeEditor extends JFrame
             info.setHelp(help);
         }
     }
-    
+
     @Override
-    public void displayDiagnostic(Diagnostic diagnostic)
+    public boolean displayDiagnostic(Diagnostic diagnostic, int errorIndex)
     {
+//        if (errorIndex != 0)
+//            return false; // We only show the first error
+        
         switchToSourceView();
         
         Element line = getSourceLine((int) diagnostic.getStartLine());
@@ -621,22 +886,22 @@ public final class MoeEditor extends JFrame
             }
 
             // highlight the error and the line on which it occurs
-
-            errorManager.removeErrorHighlight();
-            errorManager.addErrorHighlight(startPos, endPos);
-
-            sourcePane.setCaretPosition(pos);
-            sourcePane.moveCaretPosition(line.getEndOffset() - 1); // w/o line break
-            moeCaret.setPersistentHighlight();
+//            errorManager.removeErrorHighlight();
+//            checkIfFreshLine();
+            // If error is zero-width, make it one character wide:
+            if (endPos == startPos && endPos < getTextLength() - 1)
+                endPos += 1;
+            errorManager.addErrorHighlight(startPos, endPos, diagnostic.getMessage());
         }
 
         // display the message
 
-        info.messageImportant(diagnostic.getMessage());
+        //info.messageImportant(diagnostic.getMessage());
         info.setHelp("javac"); // TODO the compiler name, or the additional help text,
                                // should really be a property of the diagnostic object.
+        return true;
     }
-    
+
     /**
      * Get a position in a line from a column number, where the column number assumes
      * tab stops are every 8 spaces.
@@ -749,7 +1014,7 @@ public final class MoeEditor extends JFrame
      * @param filename  new file name
      */
     @Override
-    public void changeName(String title, String filename, String docFilename)
+    public void changeName(String title, String filename, String javaFilename, String docFilename)
     {
         this.filename = filename;
         this.docFilename = docFilename;
@@ -767,10 +1032,10 @@ public final class MoeEditor extends JFrame
     {
         setCompileStatus(compiled);
         if (compiled) {
-            errorManager.removeErrorHighlight();
+            errorManager.removeAllErrorHighlights();
         }
     }
-    
+
     @Override
     public void compileFinished(boolean successful)
     {
@@ -830,6 +1095,18 @@ public final class MoeEditor extends JFrame
     }
 
     /**
+     * Returns if this editor is read-only. Accessor for the setReadOnly
+     * property.
+     * 
+     * @return a boolean indicating whether the editor is read-only.
+     */
+    @Override
+    public boolean isReadOnly()
+    {
+        return !sourcePane.isEditable();
+    }
+
+    /**
      * Set this editor to read-only.
      * 
      * @param readOnly  The new readOnly value
@@ -843,18 +1120,6 @@ public final class MoeEditor extends JFrame
             updateRedoControls();
         }
         sourcePane.setEditable(!readOnly);
-    }
-
-    /**
-     * Returns if this editor is read-only. Accessor for the setReadOnly
-     * property.
-     * 
-     * @return a boolean indicating whether the editor is read-only.
-     */
-    @Override
-    public boolean isReadOnly()
-    {
-        return !sourcePane.isEditable();
     }
 
     /**
@@ -880,6 +1145,10 @@ public final class MoeEditor extends JFrame
     {
         return viewingHTML;
     }
+    
+    // --------------------------------------------------------------------
+    // ------------ end of interface inherited from Editor ----------------
+    // --------------------------------------------------------------------
 
     /**
      * Returns the current caret location within the edited text.
@@ -893,6 +1162,20 @@ public final class MoeEditor extends JFrame
         return getLineColumnFromOffset(caretOffset);
     }
 
+    /**
+     * Sets the current Caret location within the edited text (source pane).
+     * 
+     * @param location  The location in the text to set the Caret to.
+     * @throws IllegalArgumentException
+     *             if the specified TextLocation represents a position which
+     *             does not exist in the text.
+     */
+    @Override
+    public void setCaretLocation(SourceLocation location)
+    {
+        sourcePane.setCaretPosition(getOffsetFromLineColumn(location));
+    }
+    
     /**
      * Returns the SourceLocation object corresponding to the given offset in the
      * source text.
@@ -921,21 +1204,7 @@ public final class MoeEditor extends JFrame
 
         return new SourceLocation(lineNumber+1, column+1);
     }
-
-    /**
-     * Sets the current Caret location within the edited text (source pane).
-     * 
-     * @param location  The location in the text to set the Caret to.
-     * @throws IllegalArgumentException
-     *             if the specified TextLocation represents a position which
-     *             does not exist in the text.
-     */
-    @Override
-    public void setCaretLocation(SourceLocation location)
-    {
-        sourcePane.setCaretPosition(getOffsetFromLineColumn(location));
-    }
-
+    
     /**
      * Returns the location where the current selection (in the source pane)
      * begins.
@@ -978,6 +1247,8 @@ public final class MoeEditor extends JFrame
 
         return getLineColumnFromOffset(endOffset);
     }
+    
+    // ---- BlueJEventListener interface ----
 
     /**
      * Returns the source text between two locations as a string.
@@ -1004,6 +1275,8 @@ public final class MoeEditor extends JFrame
             throw new IllegalArgumentException(exc.getMessage());
         }
     }
+
+    // -------- DocumentListener interface --------
 
     /**
      * Request to the editor to replace the text between 'begin' and 'end' with
@@ -1095,6 +1368,8 @@ public final class MoeEditor extends JFrame
 
         return lineOffset + col;
     }
+    
+    // --------------------------------------------------------------------
 
     /**
      * Returns a property of the current editor.
@@ -1107,7 +1382,6 @@ public final class MoeEditor extends JFrame
     {
         return propertyMap.get(propertyKey);
     }
-
 
     /**
      * Set a property for the current editor. Any existing property with
@@ -1150,6 +1424,10 @@ public final class MoeEditor extends JFrame
         return lineElement.getEndOffset() - startOffset;
     }
 
+    // ==================== USER ACTION IMPLEMENTATIONS ===================
+
+    // --------------------------------------------------------------------
+    
     /**
      * Returns the length of the source document.
      *
@@ -1164,6 +1442,8 @@ public final class MoeEditor extends JFrame
         return sourceDocument.getLength();
     }
 
+    // --------------------------------------------------------------------
+    
     /**
      * Return the number of lines in the source document.
      */
@@ -1173,6 +1453,8 @@ public final class MoeEditor extends JFrame
         return sourceDocument.getDefaultRootElement().getElementCount();
     }
 
+    // --------------------------------------------------------------------
+
     /*
      * @see bluej.editor.Editor#getParsedNode()
      */
@@ -1181,10 +1463,6 @@ public final class MoeEditor extends JFrame
     {
         return sourceDocument.getParser();
     }
-    
-    // --------------------------------------------------------------------
-    // ------------ end of interface inherited from Editor ----------------
-    // --------------------------------------------------------------------
 
     /**
      * Update the state of controls bound to "undo".
@@ -1205,7 +1483,7 @@ public final class MoeEditor extends JFrame
         displayMenuItem("redo", canRedo);
         displayToolbarItem("redo", canRedo);
     }
-    
+
     /**
      * Check whether the source file has changed on disk. If it has, reload.
      */
@@ -1229,6 +1507,8 @@ public final class MoeEditor extends JFrame
             }
         }
     }
+
+    // --------------------------------------------------------------------
     
     /**
      * Schedule the ReparseRunner on the AWT event queue, if it is not already scheduled.
@@ -1239,6 +1519,9 @@ public final class MoeEditor extends JFrame
             EventQueue.invokeLater(reparseRunner);
         }
     }
+
+    // --------------------------------------------------------------------
+    
     /**
      * Informs the editor that the re-parse runner has de-scheduled itself due to lack
      * of work.
@@ -1247,8 +1530,8 @@ public final class MoeEditor extends JFrame
     {
         reparseRunner = null;
     }
-    
-    // ---- BlueJEventListener interface ----
+
+    // --------------------------------------------------------------------
 
     /**
      * A BlueJEvent was raised. Check whether it is one that we're interested in.
@@ -1268,18 +1551,32 @@ public final class MoeEditor extends JFrame
         }
     }
 
-    // -------- DocumentListener interface --------
-
     /**
      * A text insertion has taken place.
      */
     @Override
     public void insertUpdate(DocumentEvent e)
     {
+        DocumentEvent.ElementChange ec = e.getChange(sourceDocument.getDefaultRootElement());
+        // The change to the root element is null if they only changed a singe line.
+        // We only recompile if they inserted across multiple lines, so we 
+        // just need to check if the change to the root is not null:
+        if (ec != null) // For a multi-line change, always compile:
+        {
+            saveState.setState(StatusLabel.CHANGED);
+            setChanged();
+            swingTabbedEditor.scheduleCompilation(true);
+            madeChangeOnCurrentLine = false; // Not since last compilation
+        }
+        else
+        {
+            madeChangeOnCurrentLine = true; // We've changed this line, but don't recompile yet
+        }
+        
         //errorManager.insertUpdate(e);
         clearMessage();
         removeSearchHighlights();
-        errorManager.removeErrorHighlight();
+        errorManager.removeAllErrorHighlights();
         if (!saveState.isChanged()) {
             saveState.setState(StatusLabel.CHANGED);
             setChanged();
@@ -1289,12 +1586,17 @@ public final class MoeEditor extends JFrame
         
         // This may handle re-indentation; as this mutates the
         // document, it must be done outside the notification.
-        ((MoeSyntaxDocument) e.getDocument()).scheduleUpdate(doTextInsert);
+        MoeSyntaxDocument msd = (MoeSyntaxDocument) e.getDocument();
+        if (! msd.isRunningScheduledUpdates()) {
+            msd.scheduleUpdate(doTextInsert);
+        }
         
         recordEdit(false);        
         
         scheduleReparseRunner();
     }
+
+    // --------------------------------------------------------------------
 
     /**
      * A text removal has taken place.
@@ -1302,10 +1604,26 @@ public final class MoeEditor extends JFrame
     @Override
     public void removeUpdate(DocumentEvent e)
     {
+        DocumentEvent.ElementChange ec = e.getChange(sourceDocument.getDefaultRootElement());
+        // The change to the root element is null if they only changed a singe line.
+        // We only recompile if they removed across multiple lines, so we 
+        // just need to check if the change to the root is not null:
+        if (ec != null)  // For a multi-line change, always compile:
+        {
+            saveState.setState(StatusLabel.CHANGED);
+            setChanged();
+            swingTabbedEditor.scheduleCompilation(true);
+            madeChangeOnCurrentLine = false; // Not since last compilation
+        }
+        else
+        {
+            madeChangeOnCurrentLine = true; // We've changed this line, but don't recompile yet
+        }
+        
         //errorManager.removeUpdate(e);
         clearMessage();
         removeSearchHighlights();
-        errorManager.removeErrorHighlight();
+        errorManager.removeAllErrorHighlights();
         if (!saveState.isChanged()) {
             saveState.setState(StatusLabel.CHANGED);
             setChanged();
@@ -1317,13 +1635,16 @@ public final class MoeEditor extends JFrame
         scheduleReparseRunner();
     }
 
+    // --------------------------------------------------------------------
+    
     /**
      * Document properties have changed
      */
     @Override
     public void changedUpdate(DocumentEvent e) { }
-    
-    // --------------------------------------------------------------------
+
+    // --------------------------------------------------------------------    
+
     /**
      * Clear the message in the info area.
      */
@@ -1331,6 +1652,8 @@ public final class MoeEditor extends JFrame
     {
         info.clear();
     }
+
+    // --------------------------------------------------------------------
 
     /**
      * Display a message into the info area.
@@ -1354,10 +1677,6 @@ public final class MoeEditor extends JFrame
         info.warning(msg);
     }
 
-    // ==================== USER ACTION IMPLEMENTATIONS ===================
-
-    // --------------------------------------------------------------------
-    
     /**
      * User requests "save"
      */
@@ -1374,8 +1693,6 @@ public final class MoeEditor extends JFrame
             // already been displayed in the editor status bar
         }
     }
-
-    // --------------------------------------------------------------------
     
     /**
      * User requests "reload"
@@ -1396,32 +1713,17 @@ public final class MoeEditor extends JFrame
         }
     }
 
-    // --------------------------------------------------------------------
-
     /**
      * Prints source code from Editor
      * 
      * @param printerJob  A PrinterJob to print to.
      */
     @Override
-    public void print(PrinterJob printerJob)
+    @OnThread(Tag.Any)
+    public void printTo(PrinterJob printerJob, boolean printLineNumbers, boolean printBackground)
     {
-        if (printDialog == null) {
-            printDialog = new PrintDialog(this);
-        }
-
-        if (printDialog.display()) {
-            PrintHandler pt = new PrintHandler(printerJob, getPageFormat(printerJob), printDialog.printLineNumbers(), printDialog.printHighlighting());
-            pt.print();
-        }
-    }
-
-    /**
-     * Return a validated version of the global PageFormat for BlueJ
-     */
-    public static PageFormat getPageFormat(PrinterJob job)
-    {
-        return job.validatePage(PkgMgrFrame.getPageFormat());
+        PrintHandler pt = new PrintHandler(printerJob, getPageFormat(printerJob), printLineNumbers, printBackground);
+        pt.print();
     }
 
     /**
@@ -1432,7 +1734,7 @@ public final class MoeEditor extends JFrame
     public void print()
     {
         if (printDialog == null)
-            printDialog = new PrintDialog(this);
+            printDialog = new PrintDialog(null);
 
         if (printDialog.display()) {
             // create a printjob
@@ -1447,21 +1749,6 @@ public final class MoeEditor extends JFrame
     }
 
     /**
-     * Implementation of the "page setup" user function. This provides a dialog
-     * for print page setup. PageSetup is global to BlueJ. Calling this from the 
-     * Editor is effectively the same as calling from PkgMgrFrame as this saves 
-     * back to PkgMgrFrame's global page format object.
-     */
-    public static void pageSetup()
-    {
-        PrinterJob job = PrinterJob.getPrinterJob();
-        PageFormat pageFormat = job.pageDialog(PkgMgrFrame.getPageFormat());
-        PkgMgrFrame.setPageFormat(pageFormat);
-    }
-
-    // --------------------------------------------------------------------
-    
-    /**
      * The editor has been closed. Hide the editor window now.
      */
     public void doClose()
@@ -1473,6 +1760,7 @@ public final class MoeEditor extends JFrame
             watcher.closeEvent(this);
         }
     }
+    // --------------------------------------------------------------------
 
     // --------------------------------------------------------------------
     
@@ -1491,7 +1779,7 @@ public final class MoeEditor extends JFrame
     }
 
     // --------------------------------------------------------------------
-
+    
     /**
      * toggleReplacePanelVisible sets the replace panel editor in/visible
      * if visible sets the necessary other values
@@ -1526,8 +1814,6 @@ public final class MoeEditor extends JFrame
         }
     }
 
-    // --------------------------------------------------------------------
-
     /**
      * Replaces the selected text with the replaceString; moves the caret to the 
      * position it was in before the replace was requested and writes a message
@@ -1554,8 +1840,6 @@ public final class MoeEditor extends JFrame
         writeMessage("Replaced an instance of " + 
                 searchString);
     }
-
-    // --------------------------------------------------------------------
     
     /**
      * Implementation of "find-next" user function.
@@ -1584,7 +1868,6 @@ public final class MoeEditor extends JFrame
         }
     }
 
-    // --------------------------------------------------------------------    
     /**
      * Do a find with info in the info area.
      */
@@ -1633,8 +1916,6 @@ public final class MoeEditor extends JFrame
 
         return found;
     }
-
-    // --------------------------------------------------------------------
 
     /**
      * Search for and select the given search string forwards from
@@ -1694,7 +1975,7 @@ public final class MoeEditor extends JFrame
         }
         return found;
     }
-
+    
     /**
      * Do a find backwards without visible feedback. Returns
      * false if not found.
@@ -1750,7 +2031,9 @@ public final class MoeEditor extends JFrame
         }
         return found;
     }
-
+    
+    // --------------------------------------------------------------------
+    
     /**
      * doFindSelect - finds all the instances in the document from where the 
      * caret position is, optionally selects the first one and highlights all others
@@ -1821,6 +2104,8 @@ public final class MoeEditor extends JFrame
         }
         return highlightCount;
     }
+
+    // --------------------------------------------------------------------
     
     /**
      * Add a search highlight to the currently displayed pane.
@@ -1842,13 +2127,15 @@ public final class MoeEditor extends JFrame
         }
     }
 
+    // --------------------------------------------------------------------
+    
     /**
      * Transfers caret to user specified line number location.
      */
     public void goToLine()
     {
         if (goToLineDialog == null) {
-            goToLineDialog = new GoToLineDialog(this);
+            goToLineDialog = new GoToLineDialog(null);
         }
 
         DialogManager.centreDialog(goToLineDialog);
@@ -1857,100 +2144,6 @@ public final class MoeEditor extends JFrame
         if (newPosition > 0) {
             setSelection(newPosition, 1, 0);
         }
-    }
-
-    /**
-     * Find the position of a substring in a given string, 
-     * can specify direction and whether the search should ignore case
-     * Return the position of the substring or -1.
-     *
-     * @param  text        the full string to be searched
-     * @param  sub         the substring that we're looking for
-     * @param  ignoreCase  if true, case is ignored
-     * @param  backwards   Description of the Parameter
-     * @return             Description of the Return Value
-     * @returns            the index of the substring, or -1 if not found
-     */
-    private static int findSubstring(String text, String sub, boolean ignoreCase, boolean backwards)
-    {
-        int strlen = text.length();
-        int sublen = sub.length();
-
-        if (sublen == 0) {
-            return -1;
-        }
-
-        boolean found = false;
-        int pos = (backwards ? strlen - sublen : 0);
-        boolean itsOver = (backwards ? (pos < 0) : (pos + sublen > strlen));
-
-        while (!found && !itsOver) {
-            found = text.regionMatches(ignoreCase, pos, sub, 0, sublen);
-            if (found) {
-                return pos;
-            }
-            if (!found) {
-                pos = (backwards ? pos - 1 : pos + 1);
-                itsOver = (backwards ? (pos < 0) : (pos + sublen > strlen));
-            }
-        }       
-        return -1;
-    }
-
-    /**
-     * Find the position of a substring in a given string, 
-     * can specify direction and whether the search should ignoring case
-     * Return the position of the substring or -1.
-     *
-     * @param  text        the full string to be searched
-     * @param  sub         the substring that we're looking for
-     * @param  ignoreCase  if true, case is ignored
-     * @param  backwards   Description of the Parameter
-     * @param  foundPos   Offset for the string search
-     * @return             Description of the Return Value
-     * @returns            the index of the substring, or -1 if not found
-     */
-    private static int findSubstring(String text, String sub, boolean ignoreCase, boolean backwards, int foundPos)
-    {
-        int strlen = text.length();
-        int sublen = sub.length();
-
-        if (sublen == 0) {
-            return -1;
-        }
-
-        boolean found = false;
-        int pos = foundPos;
-        boolean itsOver = (backwards ? (pos < 0) : (pos + sublen > strlen));
-        while (!found && !itsOver) {
-            found = text.regionMatches(ignoreCase, pos, sub, 0, sublen);                
-            if (found) {
-                return pos;
-            }
-            if (!found) {
-                pos = (backwards ? pos - 1 : pos + 1);
-                itsOver = (backwards ? (pos < 0) : (pos + sublen > strlen));
-            }
-        }      
-        return -1;
-    }
-    // --------------------------------------------------------------------
-    
-    /**
-     * Implementation of "compile" user function.
-     */
-    public void compile()
-    {
-        if (watcher == null) {
-            return;
-        }
-        if (!viewingCode()) {
-            info.warning(" ");
-            return;
-        }
-
-        info.message(Config.getString("editor.info.compiling"));
-        watcher.compile(this);
     }
 
     // --------------------------------------------------------------------
@@ -2015,83 +2208,6 @@ public final class MoeEditor extends JFrame
     }   
 
     /**
-     * Check if an item is in the reserved list for disabled interface options
-     *  
-     * @return boolean reflects if it is enabled ie false=disabled
-     * @param buttonText  String with button text name
-     */
-    private static boolean isEditAction(String text)
-    {       
-        ArrayList<String> editActions = getEditActions();
-        if (editActions!=null && editActions.contains(text)) {
-            return true;
-        }
-        return false;
-    }
-    
-    /**
-     * Check whether an action is not valid for the project "readme" (i.e. if it is only
-     * valid for source files).
-     * 
-     * @param actionName String representing the action name
-     * @return true if it is an action that should be disabled while editing the readme file,
-     *         or false otherwise
-     */
-    private static boolean isNonReadmeAction(String actionName)
-    {
-        ArrayList<String> flaggedActions = getNonReadmeActions();
-        if (flaggedActions!=null && flaggedActions.contains(actionName)) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Get a list of actions not applicable in the readme.txt file
-     */
-    private static ArrayList<String> getNonReadmeActions ()
-    {
-        if (readMeActions==null) {
-            readMeActions=new ArrayList<String>();
-            readMeActions.add("compile");
-            readMeActions.add("autoindent");
-            readMeActions.add("insert-method");
-            readMeActions.add("toggle-interface-view");
-        }
-        return readMeActions;
-    }
-    /**
-     * Returns a list of names for the actions which are only valid in an editing
-     * context, that is, when the display shows the source and not the documentation.
-     *  
-     * @return list of editing action names
-     */
-    private static ArrayList<String> getEditActions()
-    {
-        if (editActions == null) {
-            editActions=new ArrayList<String>();
-            editActions.add("save");
-            editActions.add("reload");
-            editActions.add("print");
-            editActions.add("page-setup");
-            editActions.add("compile");
-            editActions.add("cut-to-clipboard");
-            editActions.add("indent-block");
-            editActions.add("deindent-block");
-            editActions.add("comment-block");
-            editActions.add("uncomment-block");
-            editActions.add("insert-method");
-            editActions.add("replace");
-            editActions.add("go-to-line");
-            editActions.add("paste-from-clipboard");
-            editActions.add("toggle-breakpoint");
-            editActions.add("autoindent");
-        }
-
-        return editActions;
-    }
-    
-    /**
      * Sets the search start to the beginning of the document/current pos in the
      * sourcepane; removes all the selections and highlights; resets search string 
      * and initiates a search (if the find panel is visible)
@@ -2120,9 +2236,7 @@ public final class MoeEditor extends JFrame
             initFindPanel();
         }
     }
-    
-    // --------------------------------------------------------------------
-    
+
     /**
      * Switch on the source view (if it isn't showing already).
      */
@@ -2141,8 +2255,6 @@ public final class MoeEditor extends JFrame
         initSearch();
     }
 
-    // --------------------------------------------------------------------
-    
     /**
      * Switch on the javadoc interface view (it it isn't showing already). If
      * necessary, generate it first.
@@ -2165,8 +2277,6 @@ public final class MoeEditor extends JFrame
         }
     }
 
-    // --------------------------------------------------------------------
-    
     /**
      * Refresh the HTML display.
      */
@@ -2210,7 +2320,7 @@ public final class MoeEditor extends JFrame
     }
 
     // --------------------------------------------------------------------
-    
+
     /**
      * Check whether javadoc file is up to date.
      * 
@@ -2237,7 +2347,7 @@ public final class MoeEditor extends JFrame
     }
 
     // --------------------------------------------------------------------
-    
+
     /**
      * This method resets the value of the menu and toolbar according to the view
      * 
@@ -2264,6 +2374,8 @@ public final class MoeEditor extends JFrame
         displayToolbarItem("redo", canRedo);
     }
 
+    // --------------------------------------------------------------------
+    
     /**
      * This method changes the display of the menubar based on the
      * view (source/documentation) that is selected.
@@ -2272,7 +2384,7 @@ public final class MoeEditor extends JFrame
      */
     private void displayMenubar(boolean sourceView)
     {
-        JMenuBar menuBar = getJMenuBar(); 
+        JMenuBar menuBar = swingTabbedEditor.getJMenuBar(this); 
         JMenu menu=null;
         Component[] menubarComponent = menuBar.getComponents();
         for (int i=0;i<menubarComponent.length; i++ ){
@@ -2300,7 +2412,7 @@ public final class MoeEditor extends JFrame
         JPanel toolbar=null;
         Component contentPaneItem;
         JButton actionButton;
-        Component[] c = getContentPane().getComponents();
+        Component[] c = this.getComponents();
         for (int i=0;i<c.length; i++ ){
             contentPaneItem=c[i];
             if(contentPaneItem.getName()!=null && contentPaneItem.getName().equals("toolbar")) {
@@ -2330,7 +2442,7 @@ public final class MoeEditor extends JFrame
      */
     private void displayMenuItem(String itemName, boolean sourceView)
     {
-        JMenuBar menuBar = getJMenuBar(); 
+        JMenuBar menuBar = swingTabbedEditor.getJMenuBar(this); 
         JMenu menu=null;
         JMenuItem menuItem;
         Component[] menubarComponent = menuBar.getComponents();
@@ -2359,7 +2471,7 @@ public final class MoeEditor extends JFrame
     {
         JPanel toolbar=null;
         Component contentPaneItem;
-        Component[] c = getContentPane().getComponents();
+        Component[] c = this.getComponents();
         for (int i=0;i<c.length; i++ ){
             contentPaneItem=c[i];
             if(contentPaneItem.getName()!=null && contentPaneItem.getName().equals("toolbar")) { 
@@ -2382,7 +2494,7 @@ public final class MoeEditor extends JFrame
             }
         }
     }
-
+    
     /**
      * We want to display the interface view. This will generate the
      * documentation if necessary.
@@ -2428,8 +2540,6 @@ public final class MoeEditor extends JFrame
         initSearch();
     }
 
-    // --------------------------------------------------------------------
-
     /**
      * Create the HTML plane used to display javadoc.
      */
@@ -2455,8 +2565,6 @@ public final class MoeEditor extends JFrame
             }
         });
     }
-
-    // --------------------------------------------------------------------
 
     /**
      * A hyperlink was activated in the document. Do something appropriate.
@@ -2485,7 +2593,7 @@ public final class MoeEditor extends JFrame
     }
 
     // --------------------------------------------------------------------
-    
+
     /**
      * Implementation of "toggle-breakpoint" user function.
      */
@@ -2497,6 +2605,10 @@ public final class MoeEditor extends JFrame
         }
         toggleBreakpoint(sourcePane.getCaretPosition());
     }
+
+    // ========================= SUPPORT ROUTINES ==========================
+
+    // --------------------------------------------------------------------
 
     /**
      * Toggle a breakpoint at a given position.
@@ -2510,6 +2622,8 @@ public final class MoeEditor extends JFrame
             setUnsetBreakpoint(pos, true);         // set
         }
     }
+
+    // --------------------------------------------------------------------
 
     /**
      * Clear all known breakpoints.
@@ -2527,6 +2641,8 @@ public final class MoeEditor extends JFrame
         }
     }
 
+    // --------------------------------------------------------------------
+
     /**
      * Check whether a position in the current document has a breakpoint set
      * (should only be called after a check that the current document is the source doc)
@@ -2536,7 +2652,9 @@ public final class MoeEditor extends JFrame
         Element line = getSourceLine(getLineNumberAt(pos));
         return Boolean.TRUE.equals(line.getAttributes().getAttribute(MoeSyntaxView.BREAKPOINT));
     }
-    
+
+    // --------------------------------------------------------------------
+
     /**
      * Check whether a line in the source document has a breakpoint set
      */
@@ -2545,6 +2663,8 @@ public final class MoeEditor extends JFrame
         Element line = getSourceLine(lineNo);
         return (Boolean.TRUE.equals(line.getAttributes().getAttribute(MoeSyntaxView.BREAKPOINT)));
     }
+
+    // --------------------------------------------------------------------
 
     /**
      * Try to set or remove a breakpoint (depending on the parameter) at the
@@ -2581,6 +2701,8 @@ public final class MoeEditor extends JFrame
         }
     }
 
+    // --------------------------------------------------------------------
+    
     /**
      * Remove a breakpoint without question.
      */
@@ -2611,9 +2733,6 @@ public final class MoeEditor extends JFrame
         repaint();
     }
 
-    // ========================= SUPPORT ROUTINES ==========================
-
-    // --------------------------------------------------------------------
     /**
      * Return a boolean representing whether in source editing view
      */
@@ -2621,8 +2740,7 @@ public final class MoeEditor extends JFrame
     {
         return sourceIsCode && (!viewingHTML);
     }
-
-    // --------------------------------------------------------------------
+    
     /**
      * Find and return a line (by line number) in the source document
      */
@@ -2638,6 +2756,7 @@ public final class MoeEditor extends JFrame
     }
 
     // --------------------------------------------------------------------
+
     /**
      * Find and return a line by text position in the current document
      */
@@ -2647,6 +2766,7 @@ public final class MoeEditor extends JFrame
     }
 
     // --------------------------------------------------------------------
+
     /**
      * Find and return a position in the source document.
      */
@@ -2656,6 +2776,7 @@ public final class MoeEditor extends JFrame
     }
 
     // --------------------------------------------------------------------
+
     /**
      * Return the number of the line containing position 'pos' in the source document.
      */
@@ -2664,8 +2785,6 @@ public final class MoeEditor extends JFrame
         return sourceDocument.getDefaultRootElement().getElementIndex(pos) + 1;
     }
 
-    // --------------------------------------------------------------------
-    
     /**
      * Revert the buffer contents to the last saved version. Do not ask any
      * question - just do it. Must have a file name.
@@ -2705,6 +2824,7 @@ public final class MoeEditor extends JFrame
             setSaved();  // notify watcher that we are saved
             
             scheduleReparseRunner();
+            swingTabbedEditor.scheduleCompilation(false);
         }
         catch (FileNotFoundException ex) {
             info.warning(Config.getString("editor.info.fileDisappeared"));
@@ -2731,8 +2851,6 @@ public final class MoeEditor extends JFrame
         }
     }
 
-    // --------------------------------------------------------------------
-
     /**
      * Checks that current status of syntax highlighting option is consistent
      * with desired option eg off/on. Called when refreshing or making visible
@@ -2750,16 +2868,6 @@ public final class MoeEditor extends JFrame
         else {
             moeCaret.removeBracket();
         }
-    }
-
-    /**
-     * Tell whether we are currently matching brackets.
-     * 
-     * @return True, if we are matching brackets, otherwise false.
-     */
-    public static boolean matchBrackets()
-    {
-        return matchBrackets;
     }
     
     /**
@@ -2789,7 +2897,6 @@ public final class MoeEditor extends JFrame
         }
     }
 
-    // --------------------------------------------------------------------
     /**
      * Toggle the editor's 'compiled' status. If compiled, enable the breakpoint
      * function.
@@ -2807,7 +2914,6 @@ public final class MoeEditor extends JFrame
         currentTextPane.repaint();
     }
 
-    // --------------------------------------------------------------------
     /**
      * Set the saved/changed status of this buffer to SAVED.
      */
@@ -2820,7 +2926,6 @@ public final class MoeEditor extends JFrame
         }
     }
 
-    // --------------------------------------------------------------------
     /**
      * Buffer just went from saved to changed state (called by StatusLabel)
      */
@@ -2841,9 +2946,14 @@ public final class MoeEditor extends JFrame
     public void caretMoved()
     {
         int caretPos = sourcePane.getCaretPosition();
-        String errCode = errorManager.getErrorAtPosition(caretPos);
-        if (errCode != null) {
-            info.message(ParserMessageHandler.getMessageForCode(errCode));
+        ErrorDetails err = errorManager.getErrorAtPosition(caretPos);
+        if (err != null)
+        {
+            showErrorOverlay(ParserMessageHandler.getMessageForCode(err.message), err.startPos);
+        }
+        else
+        {
+            showErrorOverlay(null, -1);
         }
         
         // the selection may have changed and therefore need to determine
@@ -2857,9 +2967,65 @@ public final class MoeEditor extends JFrame
         if (oldCaretLineNumber != getLineNumberAt(caretPos))
         {
             recordEdit(true);
+
+            if (madeChangeOnCurrentLine)
+            {
+                swingTabbedEditor.scheduleCompilation(true);
+            }
+            madeChangeOnCurrentLine = false;
         }
         oldCaretLineNumber = getLineNumberAt(caretPos);
     }
+
+    // --------------------------------------------------------------------
+
+    @Override
+    public void cancelFreshState()
+    {
+        if (madeChangeOnCurrentLine)
+        {
+            swingTabbedEditor.scheduleCompilation(true);
+            madeChangeOnCurrentLine = false;
+        }
+    }
+
+    // --------------------------------------------------------------------
+
+    private void showErrorOverlay(String message, int startPos)
+    {
+        if (message != null)
+        {
+            if (errorDisplay == null || !errorDisplay.isShowing(message, startPos))
+            {
+                // First, hide existing display:
+                showErrorOverlay(null, -1);
+                errorDisplay = new ErrorDisplay(message, startPos);
+                
+                int cpos = sourcePane.getCaretPosition();
+                try {
+                    Rectangle pos = sourcePane.modelToView(cpos);
+                    Point spLoc = sourcePane.getLocationOnScreen();
+                    int xpos = pos.x + spLoc.x;
+                    int ypos = pos.y + (3*pos.height/2) + spLoc.y;
+                    errorDisplay.setLocation(xpos, ypos);
+                    errorDisplay.setVisible(true);
+                }
+                catch (BadLocationException ble)
+                {
+                    Debug.reportError(ble);
+                }
+            }
+        }
+        else if (errorDisplay != null)
+        {
+            errorDisplay.setVisible(false);
+            errorDisplay = null;
+        }
+    }
+
+
+
+    // ======================= WINDOW INITIALISATION =======================
 
     /**
      * Returns the position of the matching bracket for the source pane's
@@ -2879,9 +3045,16 @@ public final class MoeEditor extends JFrame
         }
         catch (BadLocationException ble) {
             Debug.reportError("Bad document location reached while trying to match brackets");
+            Debug.log("Caret position: " + sourcePane.getCaretPosition());
+            Debug.log("Document length: " + sourcePane.getText().length());
+            Debug.log("Source code: ---begin---");
+            Debug.log(sourcePane.getText());
+            Debug.log("---end---");
         }
         return pos;
     }
+
+    // --------------------------------------------------------------------
 
     /**
      * delegates bracket matching to the source pane's caret
@@ -2891,6 +3064,8 @@ public final class MoeEditor extends JFrame
         moeCaret.paintMatchingBracket();
     }
 
+    // --------------------------------------------------------------------
+    
     /**
      * Set the window title to show the defined title, or else the file name.
      */
@@ -2906,9 +3081,9 @@ public final class MoeEditor extends JFrame
                 title = "Moe:  " + filename;
             }
         }
-        setTitle(title);
+        swingTabbedEditor.setTitle(this, title);
     }
-
+    
     // --------------------------------------------------------------------
 
     /**
@@ -2919,19 +3094,14 @@ public final class MoeEditor extends JFrame
         return docFilename;
     }
 
-    // --------------------------------------------------------------------
-
     /**
      * Gets the resource attribute of the MoeEditor object
      */
+    @OnThread(Tag.Any)
     private String getResource(String name)
     {
         return Config.getPropString(name, null, resources);
     }
-
-
-
-    // ======================= WINDOW INITIALISATION =======================
 
     /**
      * Create all the Window components.
@@ -2941,22 +3111,11 @@ public final class MoeEditor extends JFrame
      */
     private void initWindow(EntityResolver projectResolver)
     {
-        Image icon = BlueJTheme.getIconImage();
-        if (icon != null) {
-            setIconImage(icon);
-        }
-
-        // prepare the content pane
-
-        JPanel contentPane;
-        if (!Config.isRaspberryPi()){
-            contentPane = new GradientFillPanel(new BorderLayout(6,6));
-        }else{
-            contentPane = new JPanel(new BorderLayout(6,6));
-        }
         
-        contentPane.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        setContentPane(contentPane);
+        // prepare the content pane (us)
+
+        this.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+
 
         // create and add info and status areas
 
@@ -3008,7 +3167,7 @@ public final class MoeEditor extends JFrame
 
         bottomArea.add(commentsPanel, BorderLayout.SOUTH);
 
-        contentPane.add(bottomArea, BorderLayout.SOUTH);
+        this.add(bottomArea, BorderLayout.SOUTH);
 
         // create the text document
 
@@ -3025,7 +3184,7 @@ public final class MoeEditor extends JFrame
 
         EditorKit kit;
         if (projectResolver != null) {
-            kit = new MoeSyntaxEditorKit(projectResolver, errorManager);
+            kit = new MoeSyntaxEditorKit(projectResolver, errorManager, errorManager);
         }
         else {
             kit = new ReadmeEditorKit();
@@ -3064,7 +3223,7 @@ public final class MoeEditor extends JFrame
         scrollPane = new JScrollPane(currentTextPane);
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         
-        naviView = new NaviView(sourceDocument, scrollPane.getVerticalScrollBar());
+        naviView = new NaviView(sourceDocument, errorManager, scrollPane.getVerticalScrollBar());
         naviView.setPreferredSize(new Dimension(NAVIVIEW_WIDTH, 0));
         naviView.setMaximumSize(new Dimension(NAVIVIEW_WIDTH, Integer.MAX_VALUE));
         naviView.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED));
@@ -3076,11 +3235,11 @@ public final class MoeEditor extends JFrame
         editorPane.add(dividerPanel);
         editorPane.add(naviView);
 
-        contentPane.add(editorPane, BorderLayout.CENTER);
+        this.add(editorPane, BorderLayout.CENTER);
 
         // get table of edit actions
 
-        actions = MoeActions.getActions(sourcePane);
+        actions = MoeActions.getActions(this, sourcePane);
         actions.setUndoEnabled(false);
         actions.setRedoEnabled(false);
 
@@ -3088,14 +3247,14 @@ public final class MoeEditor extends JFrame
 
         JMenuBar menubar = createMenuBar();
         menubar.setName("menubar");
-        setJMenuBar(menubar);
+        swingTabbedEditor.setJMenuBar(this, menubar);
 
         // create toolbar
 
         toolbar = createToolbar();
         toolbar.setName("toolbar");
         if (!Config.isRaspberryPi()) toolbar.setOpaque(false);
-        contentPane.add(toolbar, BorderLayout.NORTH);
+        this.add(toolbar, BorderLayout.NORTH);
         
         //add popup menu
         
@@ -3103,6 +3262,7 @@ public final class MoeEditor extends JFrame
 
         // add event listener to handle the window close requests
 
+        /*
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -3113,11 +3273,9 @@ public final class MoeEditor extends JFrame
                 checkForChangeOnDisk();
             }
         });
+        */
 
         setFocusTraversalPolicy(new MoeFocusTraversalPolicy());
-
-        setWindowTitle();
-        pack();
         
         // Set the size, respecting the current environment maximums.
         GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
@@ -3126,6 +3284,8 @@ public final class MoeEditor extends JFrame
         int myHeight = Math.min(700, (int) maxBounds.getHeight());
         setSize(myWidth, myHeight);
     }
+
+
 
     // --------------------------------------------------------------------
 
@@ -3147,8 +3307,10 @@ public final class MoeEditor extends JFrame
         return menubar;
     }
 
+
+
     // --------------------------------------------------------------------
-    
+
     /**
      * Create the pop up menu bar
      */
@@ -3176,7 +3338,10 @@ public final class MoeEditor extends JFrame
         return popup;
 
     }
-    
+
+
+
+
     // --------------------------------------------------------------------
 
     /**
@@ -3233,24 +3398,7 @@ public final class MoeEditor extends JFrame
         return menu;
     }
 
-    /**
-     * Choose a key to use in the menu from all defined keys.
-     */
-    private static KeyStroke chooseKey(KeyStroke[] keys)
-    {
-        if (keys.length == 1) {
-            return keys[0];
-        }
-        KeyStroke key = keys[0];
-        // give preference to shortcuts using letter keys (CTRL-V, rather than F2)
-        for (int i = 1; i < keys.length; i++) {
-            if (keys[i].getKeyCode() >= 'A' && keys[i].getKeyCode() <= 'Z') {
-                key = keys[i];
-            }
-        }
-        return key;
-    }
-
+    // --------------------------------------------------------------------
 
     /**
      * Create the toolbar.
@@ -3274,8 +3422,6 @@ public final class MoeEditor extends JFrame
         return toolbar;
     }
 
-
-
     // --------------------------------------------------------------------
 
     /**
@@ -3291,10 +3437,6 @@ public final class MoeEditor extends JFrame
             if(!Config.isMacOSLeopard()) toolbar.add(Box.createHorizontalStrut(3));
         }
     }
-
-
-
-    // --------------------------------------------------------------------
 
     /**
      * Create a button on the toolbar.
@@ -3317,6 +3459,8 @@ public final class MoeEditor extends JFrame
         if (action != null) {
             Action tbAction = new ToolbarAction(action, label);
             button = new JButton(tbAction);
+            if (key.equals("next-error"))
+                nextErrorButton = button;
         }
         else {
             button = new JButton("Unknown");
@@ -3349,11 +3493,6 @@ public final class MoeEditor extends JFrame
         return button;
     }
 
-
-
-
-    // --------------------------------------------------------------------
-
     /**
      * Create a combo box for the toolbar
      */
@@ -3381,178 +3520,6 @@ public final class MoeEditor extends JFrame
             interfaceToggle.setEnabled(false);
         }
         return interfaceToggle;
-    }
-
-    // --------------------------------------------------------------------
-
-    /**
-     * Inner class for printing thread to allow printing to occur as a
-     * background operation.
-     * 
-     * @author Bruce Quig
-     */
-    class PrintHandler
-    implements Runnable
-    {
-        PrinterJob printJob;
-        PageFormat pageFormat;
-        boolean lineNumbers;
-        boolean syntaxHighlighting;
-
-        /**
-         * Construct the PrintHandler.
-         */
-        public PrintHandler(PrinterJob pj, PageFormat format, boolean lineNumbers, boolean syntaxHighlighting)
-        {
-            super();
-            printJob = pj;
-            pageFormat = format;
-            this.lineNumbers = lineNumbers;
-            this.syntaxHighlighting = syntaxHighlighting;
-        }
-
-        /**
-         * Implementation of Runnable interface
-         */
-        @Override
-        public void run()
-        {
-            print();
-        }
-
-        /**
-         * Create MoePrinter and then invoke print method
-         */
-        public void print()
-        {
-            if (printer == null) {
-                printer = new MoePrinter();
-            }
-
-            // print document, using new pageformat object at present
-            info.message(Config.getString("editor.info.printing"));
-            if (printer.printDocument(printJob, sourceDocument, lineNumbers, syntaxHighlighting, windowTitle, printFont, pageFormat)) {
-                info.message(Config.getString("editor.info.printed"));
-            }
-            else {
-                info.message(Config.getString("editor.info.cancelled"));
-            }
-        }
-    }
-
-    // --------------------------------------------------------------------
-
-    /**
-     * Class for thread listening to edit changes.
-     */
-    class TextInsertNotifier
-    implements Runnable
-    {
-        private DocumentEvent evt;
-        private JEditorPane editorPane;
-
-        /**
-         * Sets the event attribute of the TextInsertNotifier object
-         */
-        public void setEvent(DocumentEvent e, JEditorPane editorPane)
-        {
-            evt = e;
-            this.editorPane = editorPane;
-        }
-
-        /**
-         * Main processing method for the TextInsertNotifier object
-         */
-        @Override
-        public void run()
-        {
-            actions.textInsertAction(evt, editorPane);
-        }
-    }
-
-    /**
-     * Custom focus traversal implementation to make sure that the text area
-     * gets and never loses focus.
-     */
-    class MoeFocusTraversalPolicy extends FocusTraversalPolicy
-    {
-        @Override
-        public Component getComponentAfter(Container focusCycleRoot,  Component aComponent) {
-            if (aComponent.equals(finder.getFindTField())) {
-                if (replacer.isVisible()){
-                    return replacer.getReplaceText();
-                }
-            } 
-            return currentTextPane;
-        }
-
-        @Override
-        public Component getComponentBefore(Container focusCycleRoot,  Component aComponent) {
-            if (aComponent.equals(replacer.getReplaceText())) {
-                return finder.getFindTField();
-            } 
-            return currentTextPane;
-        }
-
-        @Override
-        public Component getDefaultComponent(Container focusCycleRoot) {
-            return currentTextPane;
-        }
-
-        @Override
-        public Component getFirstComponent(Container focusCycleRoot) {
-            return currentTextPane;
-        }
-
-        @Override
-        public Component getInitialComponent(Window window) {
-            return currentTextPane;
-        }
-
-        @Override
-        public Component getLastComponent(Container focusCycleRoot) {
-            return currentTextPane;
-        }
-    }
-
-    /**
-     * An abstract action which delegates to a sub-action, and which
-     * mirrors the "enabled" state of the sub-action. This allows having
-     * actions with alternative labels.
-     * 
-     * @author Davin McCall
-     */
-    class ToolbarAction extends AbstractAction implements PropertyChangeListener
-    {
-        private Action subAction;
-
-        public ToolbarAction(Action subAction, String label)
-        {
-            super(label);
-            this.subAction = subAction;
-            subAction.addPropertyChangeListener(this);
-            setEnabled(subAction.isEnabled());
-        }
-
-        @Override
-        public void actionPerformed(ActionEvent e)
-        {
-            subAction.actionPerformed(e);
-        }
-
-        @Override
-        public void propertyChange(PropertyChangeEvent evt)
-        {
-            // If the enabled state of the sub-action changed,
-            // then we should change our own state.
-            if (evt.getPropertyName().equals("enabled")) {
-                Object newVal = evt.getNewValue();
-                if (newVal instanceof Boolean) {
-                    boolean state = ((Boolean) newVal).booleanValue();
-                    setEnabled(state);
-                }
-            }
-        }
     }
 
     /**
@@ -3633,17 +3600,6 @@ public final class MoeEditor extends JFrame
     }
     
     /**
-     * Removes the selection in the textpane specified
-     * @param textPane specified textpane (source/html)
-     */
-    private static void removeSelection(JEditorPane textPane)
-    {
-        if (textPane != null) {
-            textPane.setSelectionEnd(textPane.getSelectionStart());
-        }
-    }
-    
-    /**
      * Removes the selections 
      */
     public void removeSelections()
@@ -3651,88 +3607,6 @@ public final class MoeEditor extends JFrame
         removeSelection(sourcePane);
         removeSelection(htmlPane);
     }
- 
-    /**
-     * PopulateCompletionsWorker creates a thread that searches for code completion suggestions and populate 
-     * the JList incrementally.
-     */
-    class PopulateCompletionsWorker extends SwingWorker<AssistContent[], AssistContent>
-    {
-
-        CodeCompletionDisplay codeCompletionDlg;
-        MoeEditor moe;
-        CodeSuggestions suggests;
-        LocatableToken suggestToken;
-        int xpos = 0, ypos = 0;
-
-        public PopulateCompletionsWorker(MoeEditor m, CodeSuggestions sug, LocatableToken sugT, int x, int y)
-        {
-            this.moe = m;
-            this.suggests = sug;
-            this.suggestToken = sugT;
-            this.xpos = x;
-            this.ypos = y;
-        }
-
-        /*
-         * Calculate the available completions. 
-         */
-        @Override
-        protected AssistContent[] doInBackground() throws Exception
-        {
-            AssistContent[] completions = ParseUtils.getPossibleCompletions(suggests, javadocResolver, new AssistContentConsumer() {
-                @Override
-                public void consume(AssistContent ac) {
-                    publish(ac);
-                }
-            });
-            
-            return completions;
-        }
-
-        /*
-         * Add published content (completions) to the dialog.
-         */
-        @Override
-        protected void process(List<AssistContent> chunks)
-        {
-            if (chunks != null && !chunks.isEmpty()) {
-                //there are elements to show
-                if (codeCompletionDlg == null) {
-                    AssistContent[] initialElements = chunks.toArray(new AssistContent[chunks.size()]);
-                    codeCompletionDlg = new CodeCompletionDisplay(this.moe,
-                            suggests.getSuggestionType().toString(false),
-                            initialElements, suggestToken);
-                    codeCompletionDlg.setLocation(xpos, ypos);
-                    codeCompletionDlg.setVisible(true);
-                    codeCompletionDlg.requestFocus();
-                } else {
-                    //component was already created. update it.
-                    codeCompletionDlg.addElements(chunks);
-                }
-            }
-        }
-
-        @Override
-        protected void done()
-        {
-            try {
-                AssistContent[] result = get();
-                if (result != null && result.length == 0) {
-                    //set message on status bar
-                    info.warning("No completions available.");
-                } else {
-                    // No need to update the JList, as all results have been
-                    // published already.
-                }
-            }
-            catch (InterruptedException ie) {}
-            catch (ExecutionException ee) {
-                Debug.reportError(ee);
-            }
-        }
-        
-    };
     
     /**
      * Create and pop up the content assist (code completion) dialog.
@@ -3771,80 +3645,15 @@ public final class MoeEditor extends JFrame
             codeCompletionDlg.requestFocus();
         }
     }
-
-    /**
-     * Does some clever formatting to ensure that the replacement matches
-     * the original on the formatting eg upper/lower case
-     */
-    private static String smartFormat(String original, String replacement)
-    {
-        if(original == null || replacement == null) {
-            return replacement;
-        }
-
-        // only do smart stuff if search and replace strings were entered in lowercase.
-        // check here. if not lowercase, just return.
-
-        if( !isLowerCase(replacement) || !isLowerCase(original)) {
-            return replacement;
-        }
-        if(isUpperCase(original)) {
-            return replacement.toUpperCase();
-        }
-        if(isTitleCase(original)) {
-            return Character.toTitleCase(replacement.charAt(0)) + 
-                replacement.substring(1);
-        }
-        
-        return replacement;
-    }
-
-    /**
-     * True if the string is in lower case.
-     */
-    public static boolean isLowerCase(String s)
-    {
-        for(int i=0; i<s.length(); i++) {
-            if(! Character.isLowerCase(s.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * True if the string is in Upper case.
-     */
-    public static boolean isUpperCase(String s)
-    {
-        for(int i=0; i<s.length(); i++) {
-            if(! Character.isUpperCase(s.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * True if the string is in title case.
-     */
-    public static boolean isTitleCase(String s)
-    {
-        if(s.length() < 2) {
-            return false;
-        }
-        return Character.isUpperCase(s.charAt(0)) &&
-                Character.isLowerCase(s.charAt(1));
-    }
-
-    /**
+ 
+        /**
      * Sets the find panel to be visible
      */
     public void setFindPanelVisible()
     {
         finder.setVisible(true);
-    }
-
+    };
+    
     /**
      * Replace all instances of the search String with a replacement.
      * -check for valid search criteria
@@ -3919,7 +3728,7 @@ public final class MoeEditor extends JFrame
     {
         replacer.enableButtons(enable);
     }
-    
+
     /**
      * Enables/disables the once and all buttons on the replace panel
      */
@@ -3962,7 +3771,7 @@ public final class MoeEditor extends JFrame
             popup.show(e.getComponent(), e.getX(), e.getY());
         }
     }
- 
+
     /**
      * Populates the find field and requests focus
      */
@@ -3970,7 +3779,7 @@ public final class MoeEditor extends JFrame
     {
         finder.populateFindTextfield(text);
     }
-    
+
     /**
      * Determines whether the Naviview should initially be expanded or not.
      */
@@ -3982,7 +3791,7 @@ public final class MoeEditor extends JFrame
         }
         return PrefMgr.getNaviviewExpanded();
     }
-    
+
     /**
      * Returns whether the editor text represents source code, or something else
      * (such as the README.txt file).
@@ -3994,7 +3803,7 @@ public final class MoeEditor extends JFrame
     {
         return sourceIsCode;
     }
-    
+
     /**
      * Notify the editor watcher of an edit (or save).
      * @param includeOneLineEdits - will be true if it is considered unlikely that further edits will
@@ -4011,5 +3820,507 @@ public final class MoeEditor extends JFrame
                 e.printStackTrace();
             }
         }
+    }
+
+    public bluej.editor.TextEditor assumeText()
+    {
+        return this;
+    }
+    
+    @Override
+    public void insertAppendMethod(bluej.extensions.editor.Editor e, NormalMethodElement method, Consumer<Boolean> after)
+    {
+        NodeAndPosition<ParsedNode> classNode = findClassNode();
+        if (classNode != null) {
+            NodeAndPosition<ParsedNode> existingMethodNode = findMethodNode(method.getName(), classNode);
+
+            if (existingMethodNode != null) {
+                //Append to existing method:
+                String text = ""; 
+                for (CodeElement codeElement : method.getContents()) {
+                    text += codeElement.toJavaSource().toTemporaryJavaCodeString();
+                }
+                appendTextToNode(e, existingMethodNode, text);
+                after.accept(true);
+                return;
+            }
+            
+            //Make a new method:
+            appendTextToNode(e, classNode, method.toJavaSource().toTemporaryJavaCodeString());
+        }
+        after.accept(false);
+    }
+ 
+    @Override
+    public void insertMethodCallInConstructor(bluej.extensions.editor.Editor e, String className, CallElement callElement, Consumer<Boolean> after)
+    {
+        NodeAndPosition<ParsedNode> classNode = findClassNode();
+        if (classNode != null) {
+            NodeAndPosition<ParsedNode> constructor = findMethodNode(className, classNode);
+            if (constructor == null) {
+                addDefaultConstructor(e, className, callElement);
+            }
+            else {
+                String methodName = callElement.toJavaSource().toTemporaryJavaCodeString();
+                methodName = methodName.substring(0, methodName.indexOf('('));
+                if (!hasMethodCall(methodName, constructor, true)) {
+                    //Add at the end of the constructor:
+                    appendTextToNode(e, constructor, callElement.toJavaSource().toTemporaryJavaCodeString());
+                    after.accept(true);
+                    return;
+                }
+            }
+        }
+        after.accept(false);
+    }
+    
+    private void addDefaultConstructor(Editor e, String className, CallElement callElement)
+    {
+        NodeAndPosition<ParsedNode> classNode = findClassNode();
+        if (classNode != null) {
+            //Make a new method:
+            appendTextToNode(e, classNode, "public " + className + "()\n{\n" + callElement.toJavaSource().toTemporaryJavaCodeString() + "}\n");
+        }
+    }
+    
+    /**
+     * Appends text to a node that ends in a curly bracket
+     */
+    private void appendTextToNode(Editor e, NodeAndPosition<ParsedNode> node, String text)
+    {
+        //The node may have whitespace at the end, so we look for the last closing brace and
+        //insert before that:
+        for (int pos = node.getEnd() - 1; pos >= 0; pos--) {
+            if ("}".equals(e.getText(e.getTextLocationFromOffset(pos), e.getTextLocationFromOffset(pos+1)))) {
+                undoManager.beginCompoundEdit();
+                int originalLength = node.getSize();
+                // First insert the text:
+                e.setText(e.getTextLocationFromOffset(pos), e.getTextLocationFromOffset(pos), text);
+                // Then auto-indent the method to make sure our indents were correct:
+                int oldPos = getSourcePane().getCaretPosition();
+                MoeIndent.calculateIndentsAndApply(sourceDocument, node.getPosition(), 
+                        node.getPosition() + originalLength + text.length(), oldPos);
+                undoManager.endCompoundEdit();
+                e.setCaretLocation(e.getTextLocationFromOffset(pos));
+                return;
+            }
+        }
+        Debug.message("Could not find end of node to append to: \"" + e.getText(e.getTextLocationFromOffset(
+                node.getPosition()), e.getTextLocationFromOffset(node.getEnd())) + "\"");
+    }
+    
+    private NodeAndPosition<ParsedNode> findClassNode()
+    {
+        NodeAndPosition<ParsedNode> root = new NodeAndPosition<ParsedNode>(sourceDocument.getParser(), 0, 
+                sourceDocument.getParser().getSize());
+        for (NodeAndPosition<ParsedNode> nap : iterable(root)) {
+            if (nap.getNode().getNodeType() == ParsedNode.NODETYPE_TYPEDEF)
+                return nap;
+        }
+        return null;
+    }
+    
+    private NodeAndPosition<ParsedNode> findMethodNode(String methodName, NodeAndPosition<ParsedNode> start)
+    {
+        for (NodeAndPosition<ParsedNode> nap : iterable(start)) {
+            if (nap.getNode().getNodeType() == ParsedNode.NODETYPE_NONE) {
+                NodeAndPosition<ParsedNode> r = findMethodNode(methodName, nap);
+                if (r != null)
+                    return r;
+            }
+            if (nap.getNode().getNodeType() == ParsedNode.NODETYPE_METHODDEF && nap.getNode().getName().equals(methodName)) {
+                return nap;
+            }
+        }
+        
+        return null;
+    }
+
+    private boolean hasMethodCall(String methodName, NodeAndPosition<ParsedNode> methodNode, boolean root)
+    {
+        for (NodeAndPosition<ParsedNode> nap : iterable(methodNode)) {
+            // Method nodes have comments as children, and the body:
+            if (nap.getNode().getNodeType() == ParsedNode.NODETYPE_NONE && root) {
+                return hasMethodCall(methodName, nap, false);
+            }
+            
+            try {
+                if (nap.getNode().getNodeType() == ParsedNode.NODETYPE_EXPRESSION && sourceDocument.getText(
+                        nap.getPosition(), nap.getSize()).startsWith(methodName)) {
+                    return true;
+                }
+            }
+            catch (BadLocationException e) {
+            }            
+        }
+        
+        return false;
+    }
+
+    private Iterable<NodeAndPosition<ParsedNode>> iterable(final NodeAndPosition<ParsedNode> parent)
+    {
+      return new Iterable<NodeAndPosition<ParsedNode>>()
+      {
+          public Iterator<NodeAndPosition<ParsedNode>> iterator()
+          {
+              return parent.getNode().getChildren(parent.getPosition());
+          }
+      };
+  }
+
+    @Override
+    @OnThread(Tag.FX)
+    public FrameEditor assumeFrame()
+    {
+        return null;
+    }
+
+    @Override
+    public boolean compileStarted()
+    {
+        madeChangeOnCurrentLine = false;
+        errorManager.removeAllErrorHighlights();
+        return false;
+    }
+    
+/*
+    @OnThread(Tag.FX)
+    public void setTab(Tab panel)
+    {
+        ObservableList<Tab> tabs = fXTabbedEditor.tabsProperty();
+        tabs.addListener((ListChangeListener<Tab>)c -> panelOpen.set(Boolean.valueOf(tabs.contains(panel))));
+    }
+    */
+    @Override
+    public boolean isOpen()
+    {
+        return panelOpen.get();
+    }
+    
+    public String getTitle()
+    {
+        return windowTitle;
+    }
+    
+    @Override
+    public void showNextError()
+    {
+        if (madeChangeOnCurrentLine)
+        {
+            swingTabbedEditor.scheduleCompilation(true);
+            madeChangeOnCurrentLine = false;
+        }
+        
+        int pos = errorManager.getNextErrorPos(sourcePane.getCaretPosition());
+        if (pos >= 0)
+            sourcePane.setCaretPosition(pos);
+    }
+    
+    private void setNextErrorEnabled(boolean enabled, boolean compile)
+    {
+        if (actions != null)
+        {
+            actions.setNextErrorEnabled(enabled);
+            nextErrorButton.setText(Config.getString(compile ? "editor.compileLabel" : "editor.next-errorLabel"));
+        }
+    }
+
+    public void notifyVisibleTab(boolean visible)
+    {
+        if (!visible)
+        {
+            // Hide any error tooltip:
+            showErrorOverlay(null, -1);
+        }
+        
+    }
+
+    private static class ErrorDisplay extends JFrame
+    {
+        private final String message;
+        private final int startPos;
+        
+        public ErrorDisplay(String message, int startPos)
+        {
+            this.message = message;
+            this.startPos = startPos;
+            
+            setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            setUndecorated(true);
+            setFocusableWindowState(false);
+            setAlwaysOnTop(true);
+            
+            JTextArea err = new JTextArea(message);
+            err.setOpaque(false);
+            err.setBackground(new Color(0, 0, 0, 0));
+            err.setForeground(Color.WHITE);
+            err.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+            err.setFont(PrefMgr.getStandardFont());
+            add(err);
+            err.setMaximumSize(new Dimension(600, 300));
+            err.setWrapStyleWord(true);
+            getContentPane().setBackground(Color.BLACK);
+            pack();
+            setShape(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 5, 5));
+            setOpacity(1.0f);
+        }
+
+        public boolean isShowing(String message, int startPos)
+        {
+            return this.message.equals(message) && this.startPos == startPos;
+        }
+    }
+
+    /**
+     * Inner class for printing thread to allow printing to occur as a
+     * background operation.
+     * 
+     * @author Bruce Quig
+     */
+    @OnThread(Tag.Any)
+    class PrintHandler
+    implements Runnable
+    {
+        PrinterJob printJob;
+        PageFormat pageFormat;
+        boolean lineNumbers;
+        boolean syntaxHighlighting;
+
+        /**
+         * Construct the PrintHandler.
+         */
+        public PrintHandler(PrinterJob pj, PageFormat format, boolean lineNumbers, boolean syntaxHighlighting)
+        {
+            super();
+            printJob = pj;
+            pageFormat = format;
+            this.lineNumbers = lineNumbers;
+            this.syntaxHighlighting = syntaxHighlighting;
+        }
+
+        /**
+         * Implementation of Runnable interface
+         */
+        @Override
+        public void run()
+        {
+            print();
+        }
+
+        /**
+         * Create MoePrinter and then invoke print method
+         */
+        public void print()
+        {
+            if (printer == null) {
+                printer = new MoePrinter();
+            }
+
+            // print document, using new pageformat object at present
+            SwingUtilities.invokeLater(() -> info.message(Config.getString("editor.info.printing")));
+            if (printer.printDocument(printJob, sourceDocument, lineNumbers, syntaxHighlighting, windowTitle, printFont, pageFormat)) {
+                SwingUtilities.invokeLater(() -> info.message(Config.getString("editor.info.printed")));
+            }
+            else {
+                SwingUtilities.invokeLater(() -> info.message(Config.getString("editor.info.cancelled")));
+            }
+        }
+    }
+
+    /**
+     * Class for thread listening to edit changes.
+     */
+    class TextInsertNotifier
+    implements Runnable
+    {
+        private DocumentEvent evt;
+        private JEditorPane editorPane;
+
+        /**
+         * Sets the event attribute of the TextInsertNotifier object
+         */
+        public void setEvent(DocumentEvent e, JEditorPane editorPane)
+        {
+            evt = e;
+            this.editorPane = editorPane;
+        }
+
+        /**
+         * Main processing method for the TextInsertNotifier object
+         */
+        @Override
+        @OnThread(value = Tag.Swing, ignoreParent = true)
+        public void run()
+        {
+            actions.textInsertAction(evt, editorPane);
+        }
+    }
+    
+    /**
+     * Custom focus traversal implementation to make sure that the text area
+     * gets and never loses focus.
+     */
+    class MoeFocusTraversalPolicy extends FocusTraversalPolicy
+    {
+        @Override
+        public Component getComponentAfter(Container focusCycleRoot,  Component aComponent) {
+            if (aComponent.equals(finder.getFindTField())) {
+                if (replacer.isVisible()){
+                    return replacer.getReplaceText();
+                }
+            } 
+            return currentTextPane;
+        }
+
+        @Override
+        public Component getComponentBefore(Container focusCycleRoot,  Component aComponent) {
+            if (aComponent.equals(replacer.getReplaceText())) {
+                return finder.getFindTField();
+            } 
+            return currentTextPane;
+        }
+
+        @Override
+        public Component getDefaultComponent(Container focusCycleRoot) {
+            return currentTextPane;
+        }
+
+        @Override
+        public Component getFirstComponent(Container focusCycleRoot) {
+            return currentTextPane;
+        }
+
+        @Override
+        public Component getInitialComponent(Window window) {
+            return currentTextPane;
+        }
+
+        @Override
+        public Component getLastComponent(Container focusCycleRoot) {
+            return currentTextPane;
+        }
+    }
+    
+    /**
+     * An abstract action which delegates to a sub-action, and which
+     * mirrors the "enabled" state of the sub-action. This allows having
+     * actions with alternative labels.
+     * 
+     * @author Davin McCall
+     */
+    class ToolbarAction extends AbstractAction implements PropertyChangeListener
+    {
+        private Action subAction;
+
+        public ToolbarAction(Action subAction, String label)
+        {
+            super(label);
+            this.subAction = subAction;
+            subAction.addPropertyChangeListener(this);
+            setEnabled(subAction.isEnabled());
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e)
+        {
+            subAction.actionPerformed(e);
+        }
+
+        @Override
+        public void propertyChange(PropertyChangeEvent evt)
+        {
+            // If the enabled state of the sub-action changed,
+            // then we should change our own state.
+            if (evt.getPropertyName().equals("enabled")) {
+                Object newVal = evt.getNewValue();
+                if (newVal instanceof Boolean) {
+                    boolean state = ((Boolean) newVal).booleanValue();
+                    setEnabled(state);
+                }
+            }
+        }
+    }
+
+/**
+     * PopulateCompletionsWorker creates a thread that searches for code completion suggestions and populate 
+     * the JList incrementally.
+     */
+    class PopulateCompletionsWorker extends SwingWorker<AssistContent[], AssistContent>
+    {
+
+        CodeCompletionDisplay codeCompletionDlg;
+        MoeEditor moe;
+        CodeSuggestions suggests;
+        LocatableToken suggestToken;
+        int xpos = 0, ypos = 0;
+
+        public PopulateCompletionsWorker(MoeEditor m, CodeSuggestions sug, LocatableToken sugT, int x, int y)
+        {
+            this.moe = m;
+            this.suggests = sug;
+            this.suggestToken = sugT;
+            this.xpos = x;
+            this.ypos = y;
+        }
+
+        /*
+         * Calculate the available completions. 
+         */
+        @Override
+        protected AssistContent[] doInBackground() throws Exception
+        {
+            AssistContent[] completions = ParseUtils.getPossibleCompletions(suggests, javadocResolver, new AssistContentConsumer() {
+                @Override
+                public void consume(AssistContent ac, boolean overridden) {
+                    if (!overridden && ac.getKind() == CompletionKind.METHOD)
+                        publish(ac);
+                }
+            });
+            
+            return completions;
+        }
+
+        /*
+         * Add published content (completions) to the dialog.
+         */
+        @Override
+        protected void process(List<AssistContent> chunks)
+        {
+            if (chunks != null && !chunks.isEmpty()) {
+                //there are elements to show
+                if (codeCompletionDlg == null) {
+                    AssistContent[] initialElements = chunks.toArray(new AssistContent[chunks.size()]);
+                    codeCompletionDlg = new CodeCompletionDisplay(this.moe,
+                            suggests.getSuggestionType().toString(false),
+                            initialElements, suggestToken);
+                    codeCompletionDlg.setLocation(xpos, ypos);
+                    codeCompletionDlg.setVisible(true);
+                    codeCompletionDlg.requestFocus();
+                } else {
+                    //component was already created. update it.
+                    codeCompletionDlg.addElements(chunks);
+                }
+            }
+        }
+
+        @Override
+        protected void done()
+        {
+            try {
+                AssistContent[] result = get();
+                if (result != null && result.length == 0) {
+                    //set message on status bar
+                    info.warning("No completions available.");
+                } else {
+                    // No need to update the JList, as all results have been
+                    // published already.
+                }
+            }
+            catch (InterruptedException ie) {}
+            catch (ExecutionException ee) {
+                Debug.reportError(ee);
+            }
+        }
+        
     }
 }

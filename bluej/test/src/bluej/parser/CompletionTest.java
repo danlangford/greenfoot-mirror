@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2014  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2014,2015  Michael Kolling and John Rosenberg
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -24,6 +24,7 @@ package bluej.parser;
 import java.io.Reader;
 import java.io.StringReader;
 import java.lang.reflect.Modifier;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -39,6 +40,7 @@ import bluej.debugger.gentype.JavaType;
 import bluej.debugger.gentype.MethodReflective;
 import bluej.debugger.gentype.Reflective;
 import bluej.editor.moe.MoeSyntaxDocument;
+import bluej.parser.AssistContent.CompletionKind;
 import bluej.parser.entity.ClassLoaderResolver;
 import bluej.parser.entity.EntityResolver;
 import bluej.parser.entity.JavaEntity;
@@ -811,18 +813,21 @@ public class CompletionTest extends TestCase
         assertEquals("java.util.List<?>", suggests.getSuggestionType().toString());
         
         AssistContent [] assists = ParseUtils.getPossibleCompletions(suggests, new JavadocResolver() {
-            public void getJavadoc(MethodReflective method)
+            public String getJavadoc(String name) { throw new IllegalStateException(); }
+            
+            public void getJavadoc(ConstructorOrMethodReflective method)
             {
                 // We want to check that the return type has an erased type.
-                assertNotNull(method.getReturnType().getErasedType());
+                assertNotNull(((MethodReflective)method).getReturnType().getErasedType());
             }
-            
+
             @Override
-            public boolean getJavadocAsync(MethodReflective method,
+            public boolean getJavadocAsync(ConstructorOrMethodReflective method,
                     AsyncCallback callback, Executor executor)
             {
                 throw new RuntimeException("Not implemented in test stub.");
             }
+            
         }, null);
         
         for (AssistContent assist : assists) {
@@ -889,12 +894,20 @@ public class CompletionTest extends TestCase
         
         AssistContent[] acontent = ParseUtils.getPossibleCompletions(suggests, new JavadocResolver() {
             @Override
-            public void getJavadoc(MethodReflective method)
+            public void getJavadoc(ConstructorOrMethodReflective method)
             {
             }
             
+            
+
             @Override
-            public boolean getJavadocAsync(MethodReflective method,
+            public String getJavadoc(String typeName)
+            {
+                throw new RuntimeException("Not implemented in test stub.");
+            }
+
+            @Override
+            public boolean getJavadocAsync(ConstructorOrMethodReflective method,
                     AsyncCallback callback, Executor executor)
             {
                 throw new RuntimeException("Not implemented in test stub.");

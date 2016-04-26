@@ -7,9 +7,6 @@ main.invalidPackage=Package not found
 
 compileException=Exception during compilation
 compiler.thread.title=BlueJ compiler thread
-compiler.warningDialog.title=Compiler Warnings
-compiler.warningDialog.label=Warnings from last compilation 
-compiler.warningDialog.noWarnings=No warnings
 
 debugger.assert.assertThat=Assert that:
 debugger.assert.resultIs=result is
@@ -64,6 +61,11 @@ debugger.jdiDebugger.noBreakpointMsg=Clear breakpoint: no breakpoint found in th
 debugger.jdiDebugger.noLineNumberMsg=This class has been compiled without line number\ninformation. You cannot set breakpoints.
 debugger.jdiDebugger.noCodeMsg=Cannot set breakpoint: no code in this line
 debugger.jdiDebugger.internalErrorMsg=There was an internal error while attempting to\nset this breakpoint
+
+#Debugger Accessibility messages
+debugger.accessibility.breakpoint=Thread "$" reached a breakpoint.
+debugger.accessibility.paused=Thread "$" paused.
+
 
 # Class Manager panel user interface elements and error messages
 classmgr.prefpaneltitle=Libraries
@@ -159,12 +161,21 @@ extmgr.error.nomain=Manifest does not contain Main-Class attribute
 extmgr.error.notsubclass=Main class is not a subclass of Extension
 extmgr.error.cannotload=Extension could not be loaded
 
+# Rasperry Pi preferences panel
+extmgr.raspberryPi.rpiPanelTitle=Rasbperry Pi
+extmgr.raspberryPi.title=JVM settings
+extmgr.raspberryPi.superUser=Run user code as root.
+prefmgr.raspberryPi.NoteLine1=Root access is required to access Gpio and hardware in the Raspberry Pi.
+prefmgr.raspberryPi.NoteLine2=To allow BlueJ to run as root, sudo must be allowed without password.
+prefmgr.raspberryPi.NoteLine3=For more information, please see faq at: http://bluej.org/faq.html#rasppi_hardware
+
 #---------------
 #Editor labels
 #---------------
 editor.title=BlueJ: Editor
 
 #button lables for toolbar commands
+editor.next-errorLabel = Next Error
 editor.compileLabel = Compile
 editor.undoLabel = Undo
 editor.cutLabel = Cut
@@ -205,7 +216,6 @@ editor.find-nextLabel = Find Next
 editor.find-next-backwardLabel = Find Next Backward
 editor.go-to-lineLabel = Go to line...
 editor.replaceLabel = Replace...
-editor.compileLabel = Compile
 editor.toggle-breakpointLabel = Set/Clear Breakpoint
 editor.toggle-interface-viewLabel = Toggle Documentation View
 
@@ -785,7 +795,7 @@ graph.tooltip.classBroken=This class cannot currently be parsed
 #Copyright
 
 menu.help.copyright.title=BlueJ Copyright, Licensing and Redistribution
-menu.help.copyright.line0=BlueJ \u00a9 2000-2014 Michael K\u00F6lling, John Rosenberg.
+menu.help.copyright.line0=BlueJ \u00a9 2000-2015 Michael K\u00F6lling, John Rosenberg.
 menu.help.copyright.line1=BlueJ is available under the GNU General Public License  
 menu.help.copyright.line2=version 2 with Classpath exception.
 menu.help.copyright.line3=For more information please see the files LICENSE.txt 
@@ -810,6 +820,10 @@ collect.dialog.ethics2=If you change your mind about helping us with this work, 
 collect.status.optedin=You are currently allowing anonymous research data collection
 collect.status.nextsession=You will allow anonymous data collection research next time BlueJ is started
 collect.status.optedout=You are currently not participating in the anonymous research data collection
+
+#Raspberry Pi
+raspberrypi.error.sudo=Sudo access without password not available. Continuing without hardware access.\nFor more information, please see: http://bluej.org/faq.html#rasppi_hardware
+raspberrypi.error.sudo.title=No hardware access
 
 # About
 

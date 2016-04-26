@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2013,2014  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2013,2014,2015  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -58,6 +58,8 @@ import javax.swing.JSeparator;
 import javax.swing.JSplitPane;
 import javax.swing.KeyStroke;
 
+import threadchecker.OnThread;
+import threadchecker.Tag;
 import bluej.BlueJEvent;
 import bluej.BlueJEventListener;
 import bluej.BlueJTheme;
@@ -93,7 +95,7 @@ public final class Terminal extends JFrame
     //        SHORTCUT_MASK == Event.CTRL_MASK ? Event.CTRL_MASK : Event.META_MASK;
 
     private static final String TERMINALFONTPROPNAME = "bluej.terminal.font";
-    private static final String TERMINALFONTSIZEPROPNAME = "bluej.terminal.fontsize";
+    private static final String TERMINALFONTSIZEPROPNAME = "bluej.editor.fontsize";
     
     private static final String RECORDMETHODCALLSPROPNAME = "bluej.terminal.recordcalls";
     private static final String CLEARONMETHODCALLSPROPNAME = "bluej.terminal.clearscreen";
@@ -102,6 +104,8 @@ public final class Terminal extends JFrame
     // initialise to config value or zero.
     private static int terminalFontSize = Config.getPropInteger(
             TERMINALFONTSIZEPROPNAME, PrefMgr.getEditorFontSize());
+    
+    private static boolean isMacOs = Config.isMacOS();
 
     // -- instance --
 
@@ -141,14 +145,18 @@ public final class Terminal extends JFrame
     {
         super(WINDOWTITLE + " - " + project.getProjectName());
         this.project = project;
+        initialise();
         BlueJEvent.addListener(this);
     }
 
     /**
      * Get the terminal font
      */
-    private static Font getTerminalFont()
-    {
+    private static Font getTerminalFont() {
+        //reload terminal fontsize from configurations.
+
+        terminalFontSize = Config.getPropInteger(
+                TERMINALFONTSIZEPROPNAME, PrefMgr.getEditorFontSize());
         return Config.getFont(
                 TERMINALFONTPROPNAME, "Monospaced", terminalFontSize);
     }
@@ -158,10 +166,10 @@ public final class Terminal extends JFrame
      * editor font size if the passed parameter is too low. Place the updated
      * value into the configuration.
      */
-    private static void setTerminalFontSize(int size)
+    public static void setTerminalFontSize(int size)
     {
         if (size <= 6) {
-            terminalFontSize = PrefMgr.getEditorFontSize();
+            return;
         } else {
             terminalFontSize = size;
         }
@@ -191,7 +199,6 @@ public final class Terminal extends JFrame
     {
         DataCollector.showHideTerminal(project, show);
         
-        initialise();
         setVisible(show);
         if(show) {
             text.requestFocus();
@@ -202,8 +209,7 @@ public final class Terminal extends JFrame
      * Return true if the window is currently displayed.
      */
     public boolean isShown()
-    {       
-        initialise();
+    {
         return isShowing();
     }
 
@@ -213,7 +219,6 @@ public final class Terminal extends JFrame
     public void activate(boolean active)
     {
         if(active != isActive) {
-            initialise();
             text.setEditable(active);
             if (!active) {
                 text.getCaret().setVisible(false);
@@ -235,7 +240,6 @@ public final class Terminal extends JFrame
      */
     public void resetFont()
     {
-        initialise();
         Font terminalFont = getTerminalFont();
         text.setFont(terminalFont);
         if (errorText != null) {
@@ -248,7 +252,6 @@ public final class Terminal extends JFrame
      */
     public void clear()
     {
-        initialise();
         text.setText("");
         if(errorText!=null) {
             errorText.setText("");
@@ -262,7 +265,6 @@ public final class Terminal extends JFrame
      */
     public void save()
     {
-        initialise();
         String fileName = FileUtility.getFileName(this,
                 Config.getString("terminal.save.title"),
                 Config.getString("terminal.save.buttonText"),
@@ -341,14 +343,13 @@ public final class Terminal extends JFrame
     /**
      * An interactive method call has been made by a user.
      */
-    private void methodCall(String callString, boolean isVoid)
+    private void methodCall(String callString)
     {
         newMethodCall = false;
         if(clearOnMethodCall) {
             clear();
         }
         if(recordMethodCalls) {
-            // If isVoid, it will have a ';' anyway.
             text.appendMethodCall(callString + "\n");
         }
         newMethodCall = true;
@@ -412,6 +413,7 @@ public final class Terminal extends JFrame
     /**
      * Return the input stream that can be used to read from this terminal.
      */
+    @OnThread(value = Tag.Any, ignoreParent = true)
     public Reader getReader()
     {
         return in;
@@ -421,6 +423,7 @@ public final class Terminal extends JFrame
     /**
      * Return the output stream that can be used to write to this terminal
      */
+    @OnThread(value = Tag.Any, ignoreParent = true)
     public Writer getWriter()
     {
         return out;
@@ -430,6 +433,7 @@ public final class Terminal extends JFrame
     /**
      * Return the output stream that can be used to write error output to this terminal
      */
+    @OnThread(value = Tag.Any, ignoreParent = true)
     public Writer getErrorWriter()
     {
         return err;
@@ -438,91 +442,110 @@ public final class Terminal extends JFrame
     // ---- KeyListener interface ----
 
     @Override
-    public void keyPressed(KeyEvent event) { }
+    public void keyPressed(KeyEvent event)
+    {
+        if (isMacOs) {
+            handleFontsizeKeys(event, event.getKeyCode());
+        }        
+    }
     
     @Override
     public void keyReleased(KeyEvent event) { }
+    
+    /**
+     * Handle the keys which change the terminal font size.
+     * 
+     * @param event   The key event (key pressed/released/typed)
+     * @param ch      The key code (for pressed/release events) or character (for key typed events)
+     */
+    private boolean handleFontsizeKeys(KeyEvent event, int ch)
+    {
+        boolean handled = false;
+        
+        // Note the following works because VK_EQUALS, VK_PLUS and VK_MINUS
+        // are actually defined as their ASCII (and thus unicode) equivalent.
+        // Since they are final constants this cannot become untrue in the
+        // future.
+        
+        switch (ch) {
+        case KeyEvent.VK_EQUALS: // increase the font size
+        case KeyEvent.VK_PLUS: // increase the font size (non-uk keyboards)
+            if (event.getModifiers() == SHORTCUT_MASK) {
+                PrefMgr.setEditorFontSize(terminalFontSize + 1);
+                event.consume();
+                handled = true;
+                break;
+            }
+
+        case KeyEvent.VK_MINUS: // decrease the font size
+            if (event.getModifiers() == SHORTCUT_MASK) {
+                PrefMgr.setEditorFontSize(terminalFontSize - 1);
+                event.consume();
+                handled = true;
+                break;
+            }
+        }
+
+        return handled;
+    }
 
     @Override
     public void keyTyped(KeyEvent event)
     {
         // We handle most things we are interested in here. The InputMap filters out
         // most other unwanted actions (but allows copy/paste).
-        
+
         char ch = event.getKeyChar();
-        switch (ch) {
-        case KeyEvent.VK_UP:
-        case KeyEvent.VK_DOWN:
-        case KeyEvent.VK_LEFT:
-        case KeyEvent.VK_RIGHT:
-            if (PrefMgr.getFlag(PrefMgr.ACCESSIBILITY_SUPPORT))
-                return; // Let the arrow keys take effect
         
+        if ((! isMacOs) && handleFontsizeKeys(event, ch)) {
+            // Note: On Mac OS with Java 7+, we don't see command+= / command+- as a
+            // key-typed event and so we handle it in keyReleased instead.
+            return;
+        }
         
-        case KeyEvent.VK_EQUALS: // increase the font size
-        case KeyEvent.VK_PLUS: // increase the font size (non-uk keyboards)
-            if (event.getModifiers() == SHORTCUT_MASK) {
-                setTerminalFontSize(terminalFontSize + 1);
-                project.getTerminal().resetFont();
+        if ((event.getModifiers() & Event.META_MASK) != 0) {
+            return; // return without consuming the event
+        }
+        if (isActive) {
+            switch (ch) {
+
+            case 4:   // CTRL-D (unix/Mac EOF)
+            case 26:  // CTRL-Z (DOS/Windows EOF)
+                buffer.signalEOF();
+                writeToTerminal("\n");
                 event.consume();
                 break;
-            }
 
-        case KeyEvent.VK_MINUS: // decrease the font size
-            if (event.getModifiers() == SHORTCUT_MASK) {
-                setTerminalFontSize(terminalFontSize - 1);
-                project.getTerminal().resetFont();
-                event.consume();
-                break;
-            }
-
-        // VK_(EQUALS|PLUS|MINUS) all fall through to here if no shortcut mask.
-        default:
-            if ((event.getModifiers() & Event.META_MASK) != 0) {
-                return; // return without consuming the event
-            }
-            if (isActive) {
-                switch (ch) {
-
-                case 4:   // CTRL-D (unix/Mac EOF)
-                case 26:  // CTRL-Z (DOS/Windows EOF)
-                    buffer.signalEOF();
-                    writeToTerminal("\n");
-                    event.consume();
-                    break;
-
-                case '\b':  // backspace
-                    if (buffer.backSpace()) {
-                        try {
-                            int length = text.getDocument().getLength();
-                            text.replaceRange("", length - 1, length);
-                        } catch (Exception exc) {
-                            Debug.reportError("bad location " + exc);
-                        }
+            case '\b':  // backspace
+                if (buffer.backSpace()) {
+                    try {
+                        int length = text.getDocument().getLength();
+                        text.replaceRange("", length - 1, length);
+                    } catch (Exception exc) {
+                        Debug.reportError("bad location " + exc);
                     }
-                    event.consume();
-                    break;
-
-                case '\r':  // carriage return
-                case '\n':  // newline
-                    if (buffer.putChar('\n')) {
-                        writeToTerminal(String.valueOf(ch));
-                        buffer.notifyReaders();
-                    }
-                    event.consume();
-                    break;
-
-                default:
-                    if (ch >= 32) {
-                        if (buffer.putChar(ch)) {
-                            writeToTerminal(String.valueOf(ch));
-                        }
-                        event.consume();
-                    }
-                    break;
                 }
+                event.consume();
+                break;
+
+            case '\r':  // carriage return
+            case '\n':  // newline
+                if (buffer.putChar('\n')) {
+                    writeToTerminal(String.valueOf(ch));
+                    buffer.notifyReaders();
+                }
+                event.consume();
+                break;
+
+            default:
+                if (ch >= 32) {
+                    if (buffer.putChar(ch)) {
+                        writeToTerminal(String.valueOf(ch));
+                    }
+                    event.consume();
+                }
+                break;
             }
-            break;
         }
     }
 
@@ -542,14 +565,19 @@ public final class Terminal extends JFrame
     @Override
     public void blueJEvent(int eventId, Object arg)
     {
-        initialise();
         if(eventId == BlueJEvent.METHOD_CALL) {
             InvokerRecord ir = (InvokerRecord) arg;
             if (ir.getResultName() != null) {
                 constructorCall(ir);
             }
             else {
-                methodCall(ir.toExpression(), ir.hasVoidResult());
+                boolean isVoid = ir.hasVoidResult();
+                if (isVoid) {
+                    methodCall(ir.toStatement());
+                }
+                else {
+                    methodCall(ir.toExpression());
+                }
             }
         }
         else if (eventId == BlueJEvent.EXECUTION_RESULT) {
@@ -869,11 +897,11 @@ public final class Terminal extends JFrame
     /**
      * A Reader which reads from the terminal.
      */
+    @OnThread(Tag.Any)
     private class TerminalReader extends Reader
     {
         public int read(char[] cbuf, int off, int len)
         {
-            initialise();
             int charsRead = 0;
 
             while(charsRead < len) {
@@ -899,6 +927,7 @@ public final class Terminal extends JFrame
      * The idea is that error output could be presented differently from standard
      * output.
      */
+    @OnThread(Tag.Any)
     private class TerminalWriter extends Writer
     {
         private boolean isErrorOut;
@@ -919,7 +948,6 @@ public final class Terminal extends JFrame
                 EventQueue.invokeAndWait(new Runnable() {
                     public void run()
                     {
-                        initialise();
                         writeToPane(!isErrorOut, new String(cbuf, off, len));
                     }
                 });

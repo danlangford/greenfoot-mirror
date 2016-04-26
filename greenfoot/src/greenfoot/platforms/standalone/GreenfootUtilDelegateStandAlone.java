@@ -279,7 +279,7 @@ public class GreenfootUtilDelegateStandAlone implements GreenfootUtilDelegate
             if (bytesRead > 0)
                 totalBytes += bytesRead;
             else
-                throw new IOException("Zero or negative bytes read from socket");
+                throw new IOException("Connection unexpectedly closed by remote end");
         }
         buf.flip();
     }

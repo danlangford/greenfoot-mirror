@@ -15,7 +15,7 @@
      After changing the version number the target "update-version-number" should be run -->
     <property name="bluej.version.major" value="3" />
     <property name="bluej.version.minor" value="1" />
-    <property name="bluej.version.release" value="1" />
+    <property name="bluej.version.release" value="6" />
     <property name="bluej.version.suffix" value="" />
 	<!-- suffix with no spaces, eg "pre2" -->
 	<property name="bluej.version.nonspace.suffix" value="" />
@@ -35,6 +35,8 @@
     <property name="core.build" value="classes"/>
     <property name="boot.src" value="boot/src"/>
     <property name="boot.build" value="boot/classes"/>
+	<property name="threadchecker.src" value="threadchecker/src"/>
+	<property name="threadchecker.build" value="threadchecker/classes"/>
     <property name="test.src" value="test/src"/>
     <property name="test.build" value="test/classes"/>
     <property name="test.report" value="test/report"/>
@@ -49,15 +51,24 @@
     <!-- Set up classpath (does not include jar files built by us) -->
     <path id="bluej.class.path">
         <pathelement location="${bluej_home}/lib/AppleJavaExtensions.jar"/>
-        <pathelement location="${bluej_home}/lib/junit-4.8.2.jar"/>
+        <pathelement location="${bluej_home}/lib/junit-4.11.jar"/>
+        <pathelement location="${bluej_home}/lib/hamcrest-core-1.3.jar"/>
         <pathelement location="${bluej_home}/lib/org-netbeans-lib-cvsclient.jar"/>
         <pathelement location="${bluej_home}/lib/svnkit-javahl.jar"/>
         <pathelement location="${bluej_home}/lib/trilead.jar"/>
+        <pathelement location="${bluej_home}/lib/antlr-runtime-3.4.jar"/>
+        <pathelement location="${bluej_home}/lib/sequence-library-1.0.3.jar"/>
+        <pathelement location="${bluej_home}/lib/sqljet-1.1.10.jar"/>
         <pathelement location="${bluej_home}/lib/httpclient-4.1.1.jar"/>
         <pathelement location="${bluej_home}/lib/httpcore-4.1.jar"/>
         <pathelement location="${bluej_home}/lib/httpmime-4.1.1.jar"/>
         <pathelement location="${bluej_home}/lib/commons-logging-api-1.1.2.jar"/>
         <pathelement location="${bluej_home}/lib/diffutils-1.2.1.jar"/>
+        <pathelement location="${bluej_home}/lib/xom-1.2.9.jar"/>
+    	<pathelement location="${bluej_home}/lib/guava-17.0.jar"/>
+    	<pathelement location="${bluej_home}/lib/javassist-3.18.0.jar"/>
+    	<pathelement location="${bluej_home}/lib/commons-vfs2-2.0.jar"/>
+    	<pathelement location="${build_java_home}/jre/lib/jfxrt.jar"/>
     </path>
 
     <!-- taskdef name="jarbundler"
@@ -75,27 +86,56 @@
                 fork="yes"
                 srcdir="${boot.src}"
                 destdir="${boot.build}"
-                source="1.6"
-                target="1.6"
+                source="1.8"
+                target="1.8"
                 deprecation="yes"
                 includeantruntime="false"
                 encoding="utf-8"
         >
+            <classpath>
+                <pathelement location="${bluej_home}/lib/AppleJavaExtensions.jar"/>
+            </classpath>
         </javac>
 
     </target>
 
+	<target name="compile-threadchecker">
+	        <mkdir dir="${threadchecker.build}"/>
+	        <!-- Compile the java code from ${boot.src} into ${boot.build} -->
+	        <!-- Boot should not need any other jars or classes other than standard JDK -->
+	        <javac
+	                executable="${build_java_home}/${java_command_dir_name}/javac"
+	                fork="yes"
+	                srcdir="${threadchecker.src}"
+	                destdir="${threadchecker.build}"
+	                source="1.8"
+	                target="1.8"
+	                deprecation="yes"
+	                includeantruntime="false"
+	                encoding="utf-8"
+	        	    debug="true"
+	        >
+	        	<classpath>
+	        		<pathelement location="${build_java_home}/lib/tools.jar"/>
+	            </classpath>
+	        </javac>
+            <copy todir="${threadchecker.build}/META-INF">
+		       <fileset dir="${threadchecker.src}/META-INF"/>
+            </copy>
+	    </target>
+
+	
     <!--
       -  Compile the core classes (includes extension and editor classes)
      -->
-    <target name="compile-core">
+    <target name="compile-core" depends="compile-threadchecker">
         <mkdir dir="${core.build}"/>
-        <!-- Compile the java code from ${core.src} into ${core.build} -->
+    	<!-- Compile the java code from ${core.src} into ${core.build} -->
         <javac
                 executable="${build_java_home}/${java_command_dir_name}/javac"
                 fork="yes"
-                source="1.6"
-                target="1.6"
+                source="1.8"
+                target="1.8"
                 srcdir="${core.src}"
                 destdir="${core.build}"
                 debug="on"
@@ -106,9 +146,15 @@
 
             <classpath>
                 <path refid="bluej.class.path"/>
+            	<pathelement location="${threadchecker.build}"/>
                 <pathelement location="${boot.jar}"/>
                 <pathelement location="${build_java_home}/lib/tools.jar"/>
             </classpath>
+        	<compilerarg value="-Xmaxerrs"/><compilerarg value="1000"/>
+        	<compilerarg value="-Xplugin:threadchecker.TCPlugin org.reflections"/>
+        	<!-- <compilerarg value="-J-XX:+UnlockCommercialFeatures"/>
+        	<compilerarg value="-J-XX:+FlightRecorder"/>
+        	<compilerarg value="-J-XX:StartFlightRecording=filename=nccb-without.jfr,duration=120s,settings=/Users/neil/workspace/BlueJ/nccb.jfc"/> -->
         </javac>
     </target>
 
@@ -120,8 +166,8 @@
                 executable="${build_java_home}/${java_command_dir_name}/javac"
                 fork="yes"
                 srcdir="${test.src}"
-                source="1.6"
-                target="1.6"
+                source="1.8"
+                target="1.8"
                 destdir="${test.build}"
                 deprecation="yes"
                 >
@@ -147,7 +193,7 @@
             </fileset>
             <fileset dir="${boot.src}">
                 <include name="bluej/splash.jpg"/>
-                <include name="bluej/greenfootsplash.jpg"/>
+                <include name="bluej/greenfoot-3-splash.png"/>
             </fileset>
             <manifest>
                 <attribute name="Main-Class" value="bluej.Boot"/>
@@ -164,6 +210,9 @@
                 <exclude name="bluej/editor/**" />
                 <exclude name="org/**" />
             </fileset>
+        	<fileset dir="lib">
+        	    <include name="stylesheets/**"/>
+        	</fileset>
         </jar>
     </target>
 
@@ -252,7 +301,7 @@
         <ant dir="package" antfile="greenfoot-build.xml" target="dist"/>
     </target>
 
-    <target name="windows-dist">
+    <target name="windows-dist" depends="dist">
         <ant dir="package" target="windows-dist"/>
     </target>
 	
@@ -264,12 +313,12 @@
 	    <ant dir="package" target="windows-msi-bundled-dist"/>
 	</target>
 
-    <target name="mac-dist" description="build Mac distributable bundles">
+    <target name="mac-dist" description="build Mac distributable bundles" depends="dist">
         <ant dir="package" target="mac-dist"/>
     </target>
 	
 	<!-- build *.deb package -->
-	<target name="debian-dist" description="build Debian package">
+	<target name="debian-dist" description="build Debian package" depends="dist">
         <ant dir="package" target="debian-dist"/>
 	</target>
 
@@ -382,12 +431,13 @@
         <delete file="package/greenfoot-install.bmp" />
         <!-- Installer image jar: greenfoot-install.png -->
         <delete file="package/greenfoot-install.png" />
-        <delete file="boot/src/bluej/greenfootsplash.jpg" />
+        <delete file="boot/src/bluej/greenfoot-3-splash.png" />
         <delete dir="lib/greenfoot" />
         <!-- Commons libraries -->
      	<delete >
             <fileset dir="lib">
-                <include name="commons*.jar"/>
+                <include name="commons-codec-*.jar"/>
+            	<include name="commons-codec-httpclient-*.jar"/>
                 <exclude name="commons-logging-api-1.1.2.jar"/>
             </fileset>
         </delete>
@@ -413,9 +463,29 @@
 
     <target name="clean" depends="clean-boot, clean-core, clean-greenfoot">
         <ant dir="package" target="clean"/>
+    	<delete quiet="true" dir="${threadchecker.build}" />
     </target>
 
     <target name="editor-clean">
         <ant antfile="editor.xml" dir="src/bluej/editor" target="clean"/>
+    </target>
+    
+    <target name="pi4j-compile">
+        <exec dir="${bluej_home}/pi4j" executable="mvn">
+            <arg line="package" />
+        </exec>
+    </target>
+    
+    <target name="clean-pi4j">
+        <exec dir="${bluej_home}/pi4j" executable="mvn">
+            <arg line="clean" />
+        </exec>
+    </target>
+    
+    <target name="pi4j-move-to-lib" depends="pi4j-compile">
+        <move file="${bluej_home}/pi4j/pi4j-distribution/target/distro-contents/lib/pi4j-device.jar" todir="${bluej_home}/lib/userlib" />
+        <move file="${bluej_home}/pi4j/pi4j-distribution/target/distro-contents/lib/pi4j-gpio-extension.jar" todir="${bluej_home}/lib/userlib" />
+        <move file="${bluej_home}/pi4j/pi4j-distribution/target/distro-contents/lib/pi4j-service.jar" todir="${bluej_home}/lib/userlib" />
+        <move file="${bluej_home}/pi4j/pi4j-distribution/target/distro-contents/lib/pi4j-core.jar" todir="${bluej_home}/lib/userlib" />
     </target>
 </project>

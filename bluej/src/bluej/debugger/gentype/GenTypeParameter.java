@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2011  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2011,2014  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -89,7 +89,7 @@ public abstract class GenTypeParameter
         
         // Calculate new upper bounds
         GenTypeSolid newUpper = null;
-        GenTypeSolid otherUpper = IntersectionType.getIntersection(other.getUpperBounds());
+        GenTypeSolid otherUpper = other.getUpperBound().asSolid();
         if (otherUpper == null) {
             newUpper = upperBound;
         }
@@ -120,14 +120,7 @@ public abstract class GenTypeParameter
     }
 
     /**
-     * Get the upper bounds of this type. For a solid type the upper bounds are the
-     * type itself, except for an intersection type, where the bounds are the aggregated
-     * bounds of the components of the intersection.
-     */
-    abstract public GenTypeSolid [] getUpperBounds();
-    
-    /**
-     * Get the upper bounds (possibly as an intersection).
+     * Get the upper bound of this type parameter (possibly as an intersection).
      */
     abstract public JavaType getUpperBound();
 
@@ -240,7 +233,10 @@ public abstract class GenTypeParameter
      */
     abstract public JavaType getErasedType();
     
-    abstract public JavaType getCapture();
+    /**
+     * Capture this type parameter and return the result.
+     */
+    abstract public JavaType getTparCapture();
     
     /**
      * Check whether this represents a primitive type.
@@ -253,6 +249,22 @@ public abstract class GenTypeParameter
     public abstract boolean isWildcard();
     
     public GenTypeParameter getArrayComponent()
+    {
+        return null;
+    }
+    
+    /**
+     * If this type parameter represents a "solid" (reference) type, get it. Otherwise return null.
+     */
+    public GenTypeSolid asSolid()
+    {
+        return null;
+    }
+    
+    /**
+     * If this type parameter is a type, get it. Otherwise return null.
+     */
+    public JavaType asType()
     {
         return null;
     }
