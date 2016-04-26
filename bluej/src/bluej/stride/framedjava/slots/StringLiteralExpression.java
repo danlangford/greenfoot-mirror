@@ -35,6 +35,7 @@ import javafx.scene.layout.Region;
 import bluej.stride.framedjava.slots.InfixExpression.CaretPosMap;
 import bluej.stride.framedjava.slots.InfixExpression.IntCounter;
 import bluej.stride.generic.Frame.View;
+import bluej.utility.javafx.HangingFlowPane;
 import bluej.utility.javafx.JavaFXUtil;
 import bluej.utility.javafx.SharedTransition;
 
@@ -55,6 +56,10 @@ class StringLiteralExpression implements ExpressionSlotComponent
         components.add(openingQuote);
         components.addAll(field.getComponents());
         components.add(closingQuote);
+        // All components should stick together, so we set no-break-before on
+        // all except first:
+        for (int i = 1; i < components.size(); i++)
+            HangingFlowPane.setBreakBefore(components.get(i), false);
 
         JavaFXUtil.addStyleClass(openingQuote, "expression-string-literal-quote");
         JavaFXUtil.addStyleClass(closingQuote, "expression-string-literal-quote");
@@ -197,12 +202,6 @@ class StringLiteralExpression implements ExpressionSlotComponent
             throw new IllegalArgumentException();
         getField().setText(name);
         getField().focusAtPos(new CaretPos(name.length(), null));
-    }
-
-    @Override
-    public void updatePrompts()
-    {
-        // Nothing to do        
     }
 
     @Override

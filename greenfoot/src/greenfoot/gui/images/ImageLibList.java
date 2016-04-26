@@ -129,26 +129,20 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
     {
         this(editable, imageLibFrame);
         this.defaultImage = defaultImage;
-        setDirectory(directory, false);
+        setDirectory(directory);
     }
 
     /**
-     * Clear the list and re-populate it with images from the given
-     * directory.
+     * Clear the list and re-populate it with images from the given directory.
      * 
      * @param directory   The directory to retrieve images from
      */
-    public void setDirectory(File directory, boolean includeNoImageOption)
+    public void setDirectory(File directory)
     {
         this.directory = directory;
-        
-        FilenameFilter filter = new FilenameFilter() {
-            public boolean accept(File dir, String name)
-            {
-                // We can accept all files. We try to load them all as an image.
-                return true;
-            }
-        };
+
+        // We can accept all files. We try to load them all as an image.
+        FilenameFilter filter = (dir, name) -> true;
         
         File [] imageFiles = directory.listFiles(filter);
         if (imageFiles == null) {
@@ -156,10 +150,10 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
         }
         
         Arrays.sort(imageFiles);
-                
-        data = new LinkedList<ImageListEntry>();
-        if (includeNoImageOption)
-            data.add(new ImageListEntry(defaultImage));
+
+        data = new LinkedList<>();
+        // Adds a 'No image' option to enable user removing class images.
+        data.add(new ImageListEntry(defaultImage));
         
         for (int i = 0; i < imageFiles.length; i++) {
             ImageListEntry entry = new ImageListEntry(imageFiles[i], true);
@@ -189,7 +183,7 @@ public class ImageLibList extends EditableList<ImageLibList.ImageListEntry> impl
     public void refresh()
     {
         if(getDirectory()!=null) {
-            setDirectory(getDirectory(), false);
+            setDirectory(getDirectory());
         }
     }
     

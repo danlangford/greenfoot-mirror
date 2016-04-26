@@ -274,9 +274,11 @@ public class NormalMethodFrame extends MethodFrameWithBody<NormalMethodElement> 
     }
     
     @Override
-    public List<FrameOperation> getContextOperations(InteractionManager editor)
+    public List<FrameOperation> getContextOperations()
     {
-        List<FrameOperation> r = new ArrayList<>(super.getContextOperations(editor));
+        List<FrameOperation> r = new ArrayList<>(super.getContextOperations());
+        
+        InteractionManager editor = getEditor();
         
         r.add(new CustomFrameOperation(editor, "method->constructor",
                 Arrays.asList("Change", "to constructor"), MenuItemOrder.TRANSFORM, this, () -> {
@@ -371,34 +373,18 @@ public class NormalMethodFrame extends MethodFrameWithBody<NormalMethodElement> 
     @Override
     protected FrameContentRow makeHeader(String stylePrefix)
     {
-        return new FrameContentRow(this, stylePrefix)
+        return new MethodHeaderRow(this, stylePrefix)
         {
             @Override
-            public void focusRight(HeaderItem src)
+            protected EditableSlot getSlotAfterParams()
             {
-                if (src == methodName)
-                {
-                    paramsPane.ensureAtLeastOneParameter();
-                }
-                super.focusRight(src);
+                return throwsPane.getTypeSlots().findFirst().orElse(null);
             }
 
             @Override
-            public boolean focusRightEndFromNext()
+            protected EditableSlot getSlotBeforeParams()
             {
-                paramsPane.ensureAtLeastOneParameter();
-                return super.focusRightEndFromNext();
-            }
-
-            @Override
-            public void escape(HeaderItem src)
-            {
-                if (paramsPane.findFormal(src) != null){
-                    paramsPane.escape(src);
-                }
-                else {
-                    super.escape(src);
-                }
+                return methodName;
             }
         };
     }

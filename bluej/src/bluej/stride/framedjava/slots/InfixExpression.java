@@ -24,6 +24,7 @@ package bluej.stride.framedjava.slots;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +33,6 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import bluej.stride.framedjava.ast.JavaFragment;
@@ -56,7 +56,6 @@ import javafx.scene.input.DataFormat;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Region;
 
-import bluej.stride.framedjava.ast.SuperThis;
 import bluej.stride.framedjava.ast.links.PossibleLink;
 import bluej.stride.framedjava.ast.links.PossibleMethodUseLink;
 import bluej.stride.framedjava.ast.links.PossibleTypeLink;
@@ -409,11 +408,34 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
         // - We find the lowest precedence operator (preferring leftmost).
         //   - We recursively traverse the LHS and RHS of this operator with same algorithm.
         // - On return, if lowest operator in LHS or RHS is identical to outer, we take
-        components.addListener((ListChangeListener)c ->
+        components.addListener((ListChangeListener)c -> 
             calculatePrecedences(operators, fields.stream().map(ExpressionSlotComponent::isFieldAndEmpty).limit(operators.size()).collect(Collectors.toList()))
         );
+        
+        updateBreaks();
+        JavaFXUtil.addChangeListener(textProperty, value -> updateBreaks());
     }
-    
+
+    private void updateBreaks()
+    {
+        // Update possible breaks.
+        // Breaks are not allowed between a method name and the opening bracket:
+        
+        // Spot the method calls and inform the brackets:
+        // Start at second item because first can't be a bracket:
+        for (int i = 1; i < fields.size(); i++)
+        {
+            if (fields.get(i) instanceof BracketedExpression)
+            {
+                // A method call is a bracketed expression with non-empty
+                // field directly before it:
+                ((BracketedExpression)fields.get(i)).notifyIsMethodParams(
+                    fields.get(i-1) instanceof ExpressionSlotField
+                        && !fields.get(i-1).isFieldAndEmpty());
+            }
+        }
+    }
+
     // package-visible and static for testing
     static Operator.OpPrec calculatePrecedences(List<Operator> ops, List<Boolean> isUnary)
     {   
@@ -2398,8 +2420,6 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
         {
             f.insertSuggestion(p.subPos, name, params);
         }
-        
-        updatePromptsInMethodCalls();
     }
 
     public void withTooltipFor(ExpressionSlotField expressionSlotField, FXConsumer<String> handler)
@@ -2509,10 +2529,21 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
     }
 
     //package-visible
-    void updatePromptsInMethodCalls()
+    void updatePromptsInMethodCalls(ExpressionSlotField from)
     {
-        // We look for empty parameter slots, which means we need to look for brackets preceded by non-empty fields
-        for (int i = 0; i < fields.size(); i++)
+        int index = findField(from);
+        if (index < 0)
+        {
+            Debug.printCallStack("Asking to update prompts for non-existing field");
+            return;
+        }
+        // We look for method calls, which means we need to look for brackets preceded by non-empty fields:
+        // We look at the given field onwards, because e.g. getWorl().addObject() should update
+        // the addObject call if "getWorl" gets editing to "getWorld".
+        // However, we only check at the current level; a method can't affect the prompts
+        // for further calls inside its parameters.
+        // TODO: updating later calls doesn't seem to work right, for some reason?
+        for (int i = index; i < fields.size(); i++)
         {
             if (i < fields.size() - 1 && 
                     fields.get(i) instanceof ExpressionSlotField &&
@@ -2524,7 +2555,6 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
                 CaretPos absPos = absolutePos(new CaretPos(i, new CaretPos(0, null)));
                 bracketedParams.getContent().treatAsParams_updatePrompts(fields.get(i).getCopyText(null, null), absPos);
             }
-            fields.get(i).updatePrompts();
         }
         
     }
@@ -2534,17 +2564,15 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
     void treatAsParams_updatePrompts(String methodName, CaretPos absPosOfMethodName)
     {
         List<ExpressionSlotField> params = getSimpleParameters();
-        /* Gets list of indexes for parameters (assuming this bracket is method call parameters)
-         *  that would need a prompt, because they are empty */
-        List<Integer> needPrompts = IntStream.range(0, params.size()).filter(i -> params.get(i) != null && params.get(i).isEmpty()).boxed().collect(Collectors.toList());
-        int callArity = params.size();
+        
+        if (params.stream().allMatch(p -> p == null))
+            return; // Nothing needs prompts
 
-        if (!needPrompts.isEmpty())
-        {
-            // Match the arity that we are calling:
-            slot.withParamNamesForPos(absPosOfMethodName, methodName,
-                x -> handleParamNames(needPrompts, callArity, x));
-        }
+        if (slot == null) // Can happen during testing
+            return;
+
+        slot.withParamNamesForPos(absPosOfMethodName, methodName,
+            poss -> setPromptsFromParamNames(poss));
     }
 
     // package-visible
@@ -2552,55 +2580,75 @@ class InfixExpression implements TextFieldDelegate<ExpressionSlotField>
     void treatAsConstructorParams_updatePrompts()
     {
         List<ExpressionSlotField> params = getSimpleParameters();
-        /* Gets list of indexes for parameters (assuming this bracket is method call parameters)
-         *  that would need a prompt, because they are empty */
-        List<Integer> needPrompts = IntStream.range(0, params.size()).filter(i -> params.get(i) != null && params.get(i).isEmpty()).boxed().collect(Collectors.toList());
-        int callArity = params.size();
 
-        if (!needPrompts.isEmpty())
-        {
-            // Match the arity that we are calling:
-            slot.withParamNamesForConstructor(x -> handleParamNames(needPrompts, callArity, x));
-        }
+        if (params.stream().allMatch(p -> p == null))
+            return; // Nothing needs prompts
+        
+        slot.withParamNamesForConstructor(
+            poss -> setPromptsFromParamNames(poss));
     }
 
-    private void handleParamNames(List<Integer> needPrompts, int callArity, List<List<String>> x)
+    /**
+     * A callback called when we have fetched information on parameter names, and want
+     * to use it to update the prompts for method parameters.
+     *
+     * @param possibilities  This is the list of possible parameters.  If there is a single
+     *                       method of that name, possibilities will be a singleton list, with
+     *                       the content being parameter names, e.g.
+     *                       Arrays.asList(Arrays.asList("x", "y")) for setLocation(int x, int y)
+     *                       If possibilities is empty, there are no methods found.
+     *                       If possibilities is not size 1, there are multiple overloads for that name.
+     */
+    private void setPromptsFromParamNames(List<List<String>> possibilities)
     {
-        List<List<String>> paramNames = x.stream()
-            .filter(ps -> ps.size() == callArity)
+        List<ExpressionSlotField> curParams = getSimpleParameters();
+        int curArity = curParams.size();
+        // Arity is fixed if any params are non-empty (i.e. null or !isEmpty())
+        boolean arityFlexible = curParams.stream().allMatch(f -> f != null && f.isEmpty());
+        
+        List<List<String>> matchedPoss = possibilities.stream()
+            .filter(ps -> arityFlexible || ps.size() == curArity)
+            .sorted(Comparator.comparing(List::size)) // Put shortest ones first
             .collect(Collectors.toList());
-        // There is a special case; if there is a completion for 1 parameter, but also
-        // a completion for zero parameters, we don't show autocomplete for the 1 parameter
-        // version, because it will look like the code is incomplete, even if the user
-        // did want to call the zero parameter version
-        if (paramNames.size() == 1 && !(callArity == 1 && x.contains(Collections.emptyList())))
+        
+        if (matchedPoss.size() != 1)
         {
-            // Only give prompts if method is not overloaded/ambiguous:
-            for (Integer param : needPrompts)
+            // No possibilities, remove all commas if empty:
+            if (arityFlexible && !isEmpty())
             {
-                String prompt = param < paramNames.get(0).size() ? paramNames.get(0).get(param) : "";
-                if (prompt == null || Parser.isDummyName(prompt))
-                    prompt = "";
-                setPrompt(param, prompt);
+                blank();
             }
+            curParams.stream().filter(f -> f != null).forEach(f -> f.setPromptText(""));
         }
         else
         {
-            // Delete old prompts
-            for (Integer param : needPrompts)
+            // Exactly one option; give prompts:
+            List<String> match = matchedPoss.get(0);
+            
+            if (arityFlexible && match.size() != curArity)
             {
-                setPrompt(param, "");
+                // No fixed arity; we know field must be near-blank, so just
+                // replace it with the right number of commas (may be zero):
+                blank();
+                for (int i = 0; i < match.size() - 1; i++)
+                {
+                    // We add at end to avoid the overtyping logic:
+                    insertChar(getEndPos(), ',', false);
+                }
+                curParams = getSimpleParameters();
+            }
+            
+            for (int i = 0; i < match.size(); i++)
+            {
+                String prompt = match.get(i);
+                if (prompt == null || Parser.isDummyName(prompt))
+                    prompt = "";
+                // Due to the delay in calculating prompts, we may be trying to set a parameter
+                // at an outdated index, so protect against that:
+                if (i < curParams.size() && curParams.get(i) != null)
+                    curParams.get(i).setPromptText(prompt);
             }
         }
-    }
-
-    private void setPrompt(Integer paramIndex, String prompt)
-    {
-        List<ExpressionSlotField> params = getSimpleParameters();
-        // Due to the delay in calculating prompts, we may be trying to set a parameter
-        // at an outdated index, so protect against that:
-        if (paramIndex < params.size())
-            params.get(paramIndex).setPromptText(prompt);
     }
 
     // List is as long as there are parameters, but returns null if the parameter is non-simple,

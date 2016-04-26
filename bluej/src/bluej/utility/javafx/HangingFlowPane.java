@@ -208,6 +208,11 @@ public class HangingFlowPane extends Pane {
 
     private SimpleStyleableDoubleProperty hangingIndentProperty = new SimpleStyleableDoubleProperty(StyleableProperties.HANGING_INDENT, 0.0);
 
+    public SimpleStyleableDoubleProperty hangingIndentProperty()
+    {
+        return hangingIndentProperty;
+    }
+    
     public void setHangingIndent(double pixels)
     {
         hangingIndentProperty.set(pixels);
@@ -403,6 +408,8 @@ public class HangingFlowPane extends Pane {
             double hgap = 0;
 
             final List<Node> children = getChildren();
+            boolean goingBackwards = false;
+            int furthestReached = 0;
             for (int i=0, size=children.size(); i<size; i++) {
                 Node child = children.get(i);
                 if (child.isManaged()) {
@@ -413,15 +420,47 @@ public class HangingFlowPane extends Pane {
                     nodeRect.height = computeChildPrefAreaHeight(child, margin);
                     nodeRect.alignment = getAlignment(child);
                     double nodeLength = nodeRect.width;
-                    if (runLength + nodeLength > maxRunLength && runLength > 0) {
-                        // wrap to next run *unless* its the only node in the run
-                        normalizeRun(run, runOffset);
-                        // horizontal
-                        runOffset += run.height + vgap;
-                        runs.add(run);
-                        runLength = hangingIndentProperty.get();
-                        run = new Run();
+                    // We only need to do something special if either:
+                    //  - our run is too long (thus needs breaking), and the run has multiple items (this one, plus at least one already)
+                    //  - we are going backwards removing items to find a suitable break point
+                    if (goingBackwards || (runLength + nodeLength > maxRunLength && run.rects.size() >= 1))
+                    {
+                        // If we are already going backwards, remove from current run:
+                        if (goingBackwards)
+                        {
+                            runLength -= run.rects.get(run.rects.size() - 1).width + hgap;
+                            run.rects.remove(run.rects.size() - 1);
+                        }
+                        
+                        // Make sure we can break here.  If not, and the run is not empty,
+                        // go backwards (or keep going backwards)
+                        // until we find a suitable break point.  However, if we have been
+                        // here before (i <= furthestReached), we're not going to manage to find a
+                        // good break point
+                        // so we need to not try, to avoid going into an infinite loop.
+                        if (!canBreakBefore(child) && run.rects.size() > 0 && (goingBackwards || i > furthestReached))
+                        {
+                            furthestReached = Math.max(i, furthestReached);
+                            goingBackwards = true;
+                            i -= 2; // We only really want to subtract one, but continue
+                                    // still executes the i++ at the end of the loop.
+                            continue;
+                        }
+                        // If we reach here, we will perform a break, even if it is not allowed here.
+                        // It may be that the break is redundant (the run is now empty), because
+                        // we were going backwards, removed whole run, and are now going to start forwards again.
+                        if (run.rects.size() > 0)
+                        {
+                            normalizeRun(run, runOffset);
+                            // horizontal
+                            runOffset += run.height + vgap;
+                            runs.add(run);
+                            runLength = hangingIndentProperty.get();
+                            run = new Run();
+                        }
                     }
+                    // If we reach here, we're no longer going backwards:
+                    goingBackwards = false;
                     // horizontal
                     nodeRect.x = runLength;
                     runLength += nodeRect.width + hgap;
@@ -923,6 +962,22 @@ public class HangingFlowPane extends Pane {
             return a;
         else
             return FlowAlignment.LEFT;
+    }
+    
+    private static final String BREAK_BEFORE = "hangingflowpane-breakbefore";
+    
+    public static void setBreakBefore(Node child, Boolean canBreakBefore)
+    {
+        setConstraint(child, BREAK_BEFORE, canBreakBefore);
+    }
+    
+    private static boolean canBreakBefore(Node child)
+    {
+        Boolean b = (Boolean)getConstraint(child, BREAK_BEFORE);
+        if (b == null)
+            return true; // Default is true
+        else
+            return b;
     }
 
     // From Pane:

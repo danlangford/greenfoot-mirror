@@ -85,7 +85,7 @@ public class MethodProtoFrame extends DocumentedSingleLineFrame implements CodeF
             TypeTextSlot s = new TypeTextSlot(editor, this, getHeaderRow(), new TypeCompletionCalculator(editor, Throwable.class), "method-");
             s.setPromptText("thrown type");
             return s;
-        }, () -> getCursorAfter().requestFocus());
+        }, () -> getCursorAfter().requestFocus(), editor);
         
         bindHeader();
     }
@@ -131,13 +131,13 @@ public class MethodProtoFrame extends DocumentedSingleLineFrame implements CodeF
     }    
 
     @Override
-    public List<FrameOperation> getContextOperations(InteractionManager editor)
+    public List<FrameOperation> getContextOperations()
     {
-        List<FrameOperation> r = new ArrayList<>(super.getContextOperations(editor));
+        List<FrameOperation> r = new ArrayList<>(super.getContextOperations());
         
         if (parentIsClass.get()) 
         {
-            r.add(new CustomFrameOperation(editor, "abstract->concrete",
+            r.add(new CustomFrameOperation(getEditor(), "abstract->concrete",
                     Arrays.asList("Change", "to Concrete"), MenuItemOrder.TRANSFORM, this, () -> {
                         FrameCursor c = getCursorBefore();
 

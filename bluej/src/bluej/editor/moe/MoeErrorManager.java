@@ -193,7 +193,7 @@ public class MoeErrorManager implements MoeDocumentListener
     public ErrorDetails getErrorAtPosition(int pos)
     {
         return errorInfos.stream()
-                .filter(e -> e.startPos <= pos && pos <= e.endPos)
+                .filter(e -> e.containsPosition(pos))
                 .findFirst()
                 .orElse(null);
     }
@@ -280,6 +280,11 @@ public class MoeErrorManager implements MoeDocumentListener
             this.startPos = startPos;
             this.endPos = endPos;
             this.message = message;
+        }
+        
+        public boolean containsPosition(int pos)
+        {
+            return startPos <= pos && pos <= endPos;
         }
     }
     

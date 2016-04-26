@@ -265,6 +265,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         this.editor = editor;
         this.projectResolver = projectResolver;
         this.abstractModifier.set(abstractModifierParam);
+        JavaFXUtil.addChangeListener(this.abstractModifier, abs -> editor.modifiedFrame(this));
 
         // Spacer to make the class have a bit of space after last canvas;
         endSpacer = new FrameContentItem()
@@ -366,7 +367,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
             TypeTextSlot s = new TypeTextSlot(editor, this, getHeaderRow(), new TypeCompletionCalculator(editor, Kind.INTERFACE), "class-");
             s.setPromptText("interface type");
             return s;
-        }, () -> fieldsCanvas.getFirstCursor().requestFocus());
+        }, () -> fieldsCanvas.getFirstCursor().requestFocus(), editor);
         implementsList.forEach(t -> implementsSlot.addTypeSlotAtEnd(t.getContent()));
 
         inheritedLabel = new TriangleLabel(editor, t -> extendsInheritedCanvases.forEach(c -> c.grow(t)),
@@ -379,8 +380,8 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
         JavaFXUtil.addChangeListener(inheritedLabel.expandedProperty(), b -> editor.updateErrorOverviewBar());
 
         getHeaderRow().bindContentsConcat(FXCollections.<ObservableList<HeaderItem>>observableArrayList(
-                FXCollections.observableArrayList(headerCaptionLabel),
                 JavaFXUtil.listBool(abstractModifier, abstractLabel),
+                FXCollections.observableArrayList(headerCaptionLabel),
                 FXCollections.observableArrayList(paramClassName),
                 JavaFXUtil.listBool(showingExtends, extendsLabel, extendsSlot, inheritedLabel),
                 implementsSlot.getHeaderItems()
@@ -497,9 +498,9 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
     }
 
     @Override
-    public List<FrameOperation> getContextOperations(InteractionManager editor)
+    public List<FrameOperation> getContextOperations()
     {
-        return Arrays.asList(new CustomFrameOperation(editor, "addRemoveAbstract", Arrays.asList("Toggle abstract"), MenuItemOrder.TOGGLE_ABSTRACT, this, () ->  abstractModifier.set(!abstractModifier.get())));
+        return Arrays.asList(new CustomFrameOperation(getEditor(), "addRemoveAbstract", Arrays.asList("Toggle abstract"), MenuItemOrder.TOGGLE_ABSTRACT, this, () ->  abstractModifier.set(!abstractModifier.get())));
     }
     
     @Override
@@ -540,6 +541,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
     private void removeExtends()
     {
         showingExtends.set(false);
+        paramClassName.requestFocus(Focus.RIGHT);
         extendsSlot.setText("");
         editor.modifiedFrame(this);
     }
@@ -983,7 +985,7 @@ public class ClassFrame extends DocumentedMultiCanvasFrame
     public Stream<RecallableFocus> getFocusables()
     {
         // All slots, and all cursors:
-        return getFocusablesInclContained(this);
+        return getFocusablesInclContained();
     }
     
     @Override

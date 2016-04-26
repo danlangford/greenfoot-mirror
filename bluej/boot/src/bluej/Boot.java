@@ -98,7 +98,7 @@ public class Boot
         "guava-17.0.jar", "javassist-3.18.0.jar", "commons-vfs2-2.0.jar",
         "httpclient-4.1.1.jar", "httpcore-4.1.jar", "httpmime-4.1.1.jar"};
     private static final int greenfootUserBuildJars = 4;
-    public static String GREENFOOT_VERSION = "3.0.0";
+    public static String GREENFOOT_VERSION = "3.0.1";
     public static String GREENFOOT_API_VERSION = "2.8.0";
     // A singleton boot object so the rest of BlueJ can pick up args etc.
     private static Boot instance;
@@ -110,12 +110,16 @@ public class Boot
         "commons-logging-api-1.1.2.jar", "diffutils-1.2.1.jar",
         "svnkit-javahl.jar", "svnkit.jar", "trilead.jar",
         "antlr-runtime-3.4.jar", "sequence-library-1.0.3.jar",
-        "sqljet-1.1.10.jar"};
+        "sqljet-1.1.10.jar", "jsch-0.1.53.jar", "org.eclipse.jgit-4.1.0.jar", 
+        "slf4j-api-1.7.2.jar", "slf4j-jdk14-1.7.2.jar"};
     // The variable form of the above
     private static String [] runtimeJars = bluejJars;
     private static String [] userJars = bluejUserJars;
     private static int numBuildJars = bluejBuildJars;
     private static int numUserBuildJars = bluejUserBuildJars;
+    
+    /** path of the JavaFX runtime Jar, if needed */
+    private static String jfxrtJar;
     
     private static boolean isGreenfoot = false;
     private static File bluejLibDir;
@@ -163,16 +167,6 @@ public class Boot
      */
     public static void main(String[] args)
     {
-        Application.launch(App.class, args);
-    }
-  
-    public static List<File> getMacInitialProjects()
-    {
-        return macInitialProjects;
-    }
-
-    public static void subMain(String[] args)
-    {
         if((args.length >= 1) && "-version".equals(args[0])) {
             System.out.println("BlueJ version " + BLUEJ_VERSION
                                + " (Java version "
@@ -197,7 +191,17 @@ public class Boot
                                + ")");
             System.exit(-1);
         }
+        
+        Application.launch(App.class, args);
+    }
+  
+    public static List<File> getMacInitialProjects()
+    {
+        return macInitialProjects;
+    }
 
+    public static void subMain(String[] args)
+    {
         Properties commandLineProps = processCommandLineProperties(args);
         isGreenfoot = commandLineProps.getProperty("greenfoot", "false").equals("true");
         
@@ -207,11 +211,13 @@ public class Boot
             runtimeJars = greenfootUserJars;
             userJars = greenfootUserJars;
             numBuildJars = greenfootUserBuildJars;
-            numUserBuildJars = greenfootUserBuildJars;
+            numUserBuildJars = greenfootUserBuildJars;            
         } else {
             image = new BlueJLabel();
         }
 
+        jfxrtJar = commandLineProps.getProperty("jfxrt.jarpath");
+        
         try {
             instance = new Boot(args, commandLineProps, image);
             instance.bootBluej();
@@ -544,11 +550,8 @@ public class Boot
         }
         if (isGreenfoot)
         {
-            // Add JavaFX, for new editor.  Only needed in Java 7; on classpath by default in Java 8:
-            if (System.getProperty("java.specification.version").compareTo("1.7") >= 0
-             && System.getProperty("java.specification.version").compareTo("1.8") < 0)
-            {
-                urlList.add(getJREJar("jfxrt.jar"));
+            if (jfxrtJar != null && jfxrtJar.length() != 0) {
+                urlList.add(new File(jfxrtJar).toURI().toURL());
             }
         }
         return (URL[]) urlList.toArray(new URL[0]);
@@ -569,8 +572,6 @@ public class Boot
     private URL getToolsURL() 
         throws MalformedURLException
     {
-        String osname = System.getProperty("os.name", "");
-
         File toolsFile = new File(javaHomeDir, "lib/tools.jar");
         if (toolsFile.canRead())
             return toolsFile.toURI().toURL();
@@ -630,6 +631,13 @@ public class Boot
                         }
                         super.handleOpenFilesAction(app, time, files);
                     }
+
+                    @Override
+                    public void handleQuitAction(com.sun.glass.ui.Application app, long time)
+                    {
+                        getInstance().quitAction.run();
+                        super.handleQuitAction(app, time);
+                    }
                 });
             }
         }
@@ -644,4 +652,23 @@ public class Boot
         }
         
     }
+
+    /**
+     * We don't want this Boot class to depend on further BlueJ classes, so although
+     * Boot needs to know how to quit, we don't want to introduce a compile-time
+     * dependency on the classes needed to quit.  So this lamba/Runnable is a late
+     * binding for the same purpose
+     */
+    private Runnable quitAction;
+
+    /**
+     * Sets the code to be run (on an arbitrary thread; caller's responsibility to
+     * switch threads/avoid deadlocks if needed) once the user triggers the Quit
+     * menu command in the editors.
+     */
+    public void setQuitHandler(Runnable quitAction)
+    {
+        this.quitAction = quitAction;
+    }
+
 }

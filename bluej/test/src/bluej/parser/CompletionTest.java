@@ -24,7 +24,6 @@ package bluej.parser;
 import java.io.Reader;
 import java.io.StringReader;
 import java.lang.reflect.Modifier;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -40,7 +39,6 @@ import bluej.debugger.gentype.JavaType;
 import bluej.debugger.gentype.MethodReflective;
 import bluej.debugger.gentype.Reflective;
 import bluej.editor.moe.MoeSyntaxDocument;
-import bluej.parser.AssistContent.CompletionKind;
 import bluej.parser.entity.ClassLoaderResolver;
 import bluej.parser.entity.EntityResolver;
 import bluej.parser.entity.JavaEntity;
@@ -1061,5 +1059,19 @@ public class CompletionTest extends TestCase
         assertEquals("java.lang.Runnable", suggests.getSuggestionType().toString());
     }
 
+    public void testRegression573() throws BadLocationException
+    {
+        // Exception when completing on invalid code:
+        
+        String aClassSrc =
+                "static int count = 0;\n";
 
+        PlainDocument doc = new PlainDocument();
+        doc.insertString(0, aClassSrc, null);
+        ParsedCUNode aNode = cuForSource(aClassSrc, "");
+        resolver.addCompilationUnit("", aNode);
+            
+        // In BlueJ 3.1.6 this throws a NullPointerException:
+        aNode.getExpressionType(13, doc);
+    }
 }

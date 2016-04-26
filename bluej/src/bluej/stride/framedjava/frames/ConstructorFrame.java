@@ -219,10 +219,11 @@ public class ConstructorFrame extends MethodFrameWithBody<ConstructorElement> {
     }
 
     @Override
-    public List<FrameOperation> getContextOperations(InteractionManager editor) {
-        List<FrameOperation> r = new ArrayList<>(super.getContextOperations(editor));
+    public List<FrameOperation> getContextOperations()
+    {
+        List<FrameOperation> r = new ArrayList<>(super.getContextOperations());
 
-        r.add(new CustomFrameOperation(editor, "constructor->method",
+        r.add(new CustomFrameOperation(getEditor(), "constructor->method",
                 Arrays.asList("Change", "to normal method"), MenuItemOrder.TRANSFORM, this, () -> {
 
                     // TODO AA enhance the code
@@ -249,34 +250,18 @@ public class ConstructorFrame extends MethodFrameWithBody<ConstructorElement> {
     @Override
     protected FrameContentRow makeHeader(String stylePrefix)
     {
-        return new FrameContentRow(this, stylePrefix)
+        return new MethodHeaderRow(this, stylePrefix)
         {
             @Override
-            public void focusRight(HeaderItem src)
+            protected EditableSlot getSlotAfterParams()
             {
-                if (src == access)
-                {
-                    paramsPane.ensureAtLeastOneParameter();
-                }
-                super.focusRight(src);
+                return throwsPane.getTypeSlots().findFirst().orElse(null);
             }
 
             @Override
-            public boolean focusRightEndFromNext()
+            protected EditableSlot getSlotBeforeParams()
             {
-                paramsPane.ensureAtLeastOneParameter();
-                return super.focusRightEndFromNext();
-            }
-
-            @Override
-            public void escape(HeaderItem src)
-            {
-                if (paramsPane.findFormal(src) != null){
-                    paramsPane.escape(src);
-                }
-                else {
-                    super.escape(src);
-                }
+                return access;
             }
         };
     }

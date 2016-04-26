@@ -63,7 +63,6 @@ import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -155,7 +154,7 @@ import bluej.stride.generic.SuggestedFollowUpDisplay;
 import bluej.stride.operations.UndoRedoManager;
 import bluej.stride.slots.EditableSlot;
 import bluej.utility.Debug;
-import bluej.utility.ImportHelper;
+import bluej.utility.ImportScanner;
 import bluej.utility.Utility;
 import bluej.utility.javafx.FXConsumer;
 import bluej.utility.javafx.FXRunnable;
@@ -298,7 +297,7 @@ public @OnThread(Tag.FX) class FrameEditorTab extends Tab implements Interaction
         Utility.runBackground(() -> {
             try
             {
-                f.complete(ImportHelper.getImportedTypes(x, javadocResolver));
+                f.complete(parent.getProject().getImportScanner().getImportedTypes(x, javadocResolver));
             }
             catch (Throwable t)
             {
@@ -535,7 +534,12 @@ public @OnThread(Tag.FX) class FrameEditorTab extends Tab implements Interaction
 
         errorOverviewBar = new ErrorOverviewBar(this, scrollContent, this::nextError);
         JavaFXUtil.addChangeListener(errorOverviewBar.showingCount(), count -> {
-            JavaFXUtil.setStyleClass(this, count.intValue() > 0, "bj-tab-error");
+            // We can't use pseudoclasses because Tab doesn't allow them to be changed,
+            // so we must use full classes:
+            if (count.intValue() > 0)
+                JavaFXUtil.addStyleClass(this, "bj-tab-error");
+            else
+                getStyleClass().removeAll("bj-tab-error");
         });
         contentRoot.setRight(errorOverviewBar);
 
@@ -747,7 +751,7 @@ public @OnThread(Tag.FX) class FrameEditorTab extends Tab implements Interaction
             PossibleKnownMethodLink pml = (PossibleKnownMethodLink) link;
             final String qualClassName = pml.getQualClassName();
             final String urlSuffix = pml.getURLMethodSuffix();
-            SwingUtilities.invokeLater(() -> searchMethodLink(link, qualClassName, pml.getDisplayName(), urlSuffix, callback));
+            SwingUtilities.invokeLater(() -> searchMethodLink(link, qualClassName, pml.getDisplayName(), pml.getDisplayName(), urlSuffix, callback));
         }
         else if (link instanceof PossibleMethodUseLink)
         {
@@ -773,7 +777,7 @@ public @OnThread(Tag.FX) class FrameEditorTab extends Tab implements Interaction
                 {
                     AssistContent ac = candidates.get(0);
                     String displayName = ac.getName() + "(" + ac.getParams().stream().map(ParamInfo::getUnqualifiedType).collect(Collectors.joining(", ")) + ")";
-                    searchMethodLink(link, ac.getDeclaringClass(), displayName, PossibleKnownMethodLink.encodeSuffix(ac.getName(), Utility.mapList(ac.getParams(), ParamInfo::getQualifiedType)), callback);
+                    searchMethodLink(link, ac.getDeclaringClass(), ac.getName(), displayName, PossibleKnownMethodLink.encodeSuffix(ac.getName(), Utility.mapList(ac.getParams(), ParamInfo::getQualifiedType)), callback);
                 }
                 else
                 {
@@ -801,16 +805,20 @@ public @OnThread(Tag.FX) class FrameEditorTab extends Tab implements Interaction
     }
 
     @OnThread(Tag.Swing)
-    private void searchMethodLink(PossibleLink link, String qualClassName, String methodDisplayName, String urlSuffix, Consumer<Optional<LinkedIdentifier>> callback)
+    private void searchMethodLink(PossibleLink link, String qualClassName, String methodName, String methodDisplayName, String urlSuffix, Consumer<Optional<LinkedIdentifier>> callback)
     {
         Project project = parent.getProject();
         bluej.pkgmgr.Package pkg = project.getPackage("");
         if (pkg.getAllClassnamesWithSource().contains(qualClassName)) {
             Target t = pkg.getTarget(qualClassName);
             if (t instanceof ClassTarget) {
+                ClassTarget classTarget = (ClassTarget) t;
                 callback.accept(Optional.of(new LinkedIdentifier(methodDisplayName, link.getStartPosition(), link.getEndPosition(), link.getSlot(), () -> {
                     link.getSlot().removeAllUnderlines();
-                    SwingUtilities.invokeLater(() -> ((ClassTarget) t).open());
+                    SwingUtilities.invokeLater(() -> {
+                        classTarget.open();
+                        classTarget.getEditor().focusMethod(methodName);
+                    });
                 })));
                 return;
             }
@@ -1424,7 +1432,7 @@ public @OnThread(Tag.FX) class FrameEditorTab extends Tab implements Interaction
     {
         // Add ourselves, in case we were closed previously (no harm in calling twice)
         if (vis)
-            parent.addFrameEditor(this, menuManager::getMenus, vis, bringToFront);
+            parent.addFrameEditor(this, vis, bringToFront);
         parent.setWindowVisible(vis, this);
         if (bringToFront)
             parent.bringToFront(this);
@@ -1620,8 +1628,9 @@ public @OnThread(Tag.FX) class FrameEditorTab extends Tab implements Interaction
         if (topLevelFrame != null && (el = topLevelFrame.getCode()) != null)
         {
             topLevelFrame.getAllFrames().forEach(f -> {
-                if (f instanceof NormalMethodFrame)
-                    SwingUtilities.invokeLater(() -> ((NormalMethodFrame)f).updateOverrideDisplay((ClassElement)el));
+                if (f instanceof NormalMethodFrame) {
+                    SwingUtilities.invokeLater(() -> ((NormalMethodFrame) f).updateOverrideDisplay((ClassElement) el));
+                }
             });
         }
     }
@@ -2225,6 +2234,21 @@ public @OnThread(Tag.FX) class FrameEditorTab extends Tab implements Interaction
     public FXTabbedEditor getFXTabbedEditor()
     {
         return parent;
+    }
+
+    public void focusMethod(String methodName)
+    {
+        if (topLevelFrame != null) {
+            for (NormalMethodFrame normalMethodFrame : topLevelFrame.getMethods()) {
+                // TODO include the params no etc to increase accuracy
+                if (normalMethodFrame.getName().equals(methodName)) {
+                    normalMethodFrame.focusName();
+                }
+            }
+        }
+        else {
+            Debug.message("focusMethod @ FrameEditorTab: " + "class frame is null!" );
+        }
     }
 
     private class ContentBorderPane extends BorderPane

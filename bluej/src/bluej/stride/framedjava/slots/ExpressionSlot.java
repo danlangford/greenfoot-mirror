@@ -921,7 +921,6 @@ public abstract class ExpressionSlot<SLOT_FRAGMENT extends ExpressionSlotFragmen
     {
         if (getParentFrame().isFrameEnabled())
         {
-            topLevel.updatePromptsInMethodCalls();
             if (paramsToConstructor != null)
             {
                 topLevel.treatAsConstructorParams_updatePrompts();

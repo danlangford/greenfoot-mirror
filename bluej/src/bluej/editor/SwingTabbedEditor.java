@@ -1,22 +1,28 @@
 package bluej.editor;
 
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.InputEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
 import java.util.IdentityHashMap;
 
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenuBar;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
+import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
+import bluej.Config;
 import bluej.utility.Utility;
 import threadchecker.OnThread;
 import threadchecker.Tag;
@@ -40,6 +46,20 @@ public class SwingTabbedEditor
     {
         window = new JFrame(project.getProjectName() + " - Java");
         tabPane = new JTabbedPane();
+        for (int i = 1; i <= 9; i++)
+        {
+            tabPane.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(Character.forDigit(i, 10), Config.isMacOS() ? InputEvent.META_DOWN_MASK : InputEvent.CTRL_DOWN_MASK), "selectTab" + i);
+            final int tabIndex = i - 1;
+            tabPane.getActionMap().put("selectTab" + i, new AbstractAction()
+            {
+                @Override
+                public void actionPerformed(ActionEvent e)
+                {
+                    if (tabPane.getTabCount() > tabIndex)
+                        tabPane.setSelectedIndex(tabIndex);
+                }
+            });
+        }
         
         window.add(tabPane);
         

@@ -40,6 +40,7 @@ import bluej.stride.framedjava.slots.InfixExpression.IntCounter;
 import bluej.stride.generic.InteractionManager;
 import bluej.stride.generic.Frame.View;
 import bluej.utility.javafx.FXConsumer;
+import bluej.utility.javafx.HangingFlowPane;
 import bluej.utility.javafx.JavaFXUtil;
 import bluej.utility.javafx.SharedTransition;
 import bluej.utility.javafx.binding.ConcatListBinding;
@@ -70,6 +71,7 @@ class BracketedExpression implements ExpressionSlotComponent
         content = new InfixExpression(editor, slot, initialContent, this, closing);
         openingLabel = ExpressionSlot.makeBracket("" + opening, true, content);
         closingLabel = ExpressionSlot.makeBracket("" + closing, false, content);
+        HangingFlowPane.setBreakBefore(closingLabel, false);
         ConcatListBinding.bind(components, FXCollections.observableArrayList(FXCollections.observableArrayList(openingLabel), content.getComponents(), FXCollections.observableArrayList(closingLabel)));
         
         textProperty = new ReadOnlyStringWrapper("" + opening).concat(content.textProperty()).concat("" + closing);
@@ -237,12 +239,6 @@ class BracketedExpression implements ExpressionSlotComponent
         return opening;
     }
 
-    @Override
-    public void updatePrompts()
-    {
-        content.updatePromptsInMethodCalls();
-    }
-
     public void focusBefore()
     {
         parent.backwardAtStart(this);        
@@ -318,5 +314,12 @@ class BracketedExpression implements ExpressionSlotComponent
     public boolean isNumericLiteral()
     {
         return content.isNumericLiteral();
+    }
+
+    // package-visible
+    void notifyIsMethodParams(boolean isMethodParams)
+    {
+        // We don't allow breaks before opening bracket of method params:
+        HangingFlowPane.setBreakBefore(openingLabel, !isMethodParams);
     }
 }

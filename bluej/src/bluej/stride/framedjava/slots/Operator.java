@@ -33,6 +33,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.input.MouseEvent;
 import bluej.stride.generic.Frame.View;
+import bluej.utility.javafx.HangingFlowPane;
 import bluej.utility.javafx.JavaFXUtil;
 import bluej.utility.javafx.SharedTransition;
 
@@ -52,21 +53,41 @@ class Operator
         sourceProperty.set(op);
         l = new Label();
         JavaFXUtil.addStyleClass(l, "expression-operator");
-        l.setOnMousePressed(e -> {parent.moveTo(e.getSceneX(), e.getSceneY(), true); e.consume();});
-        l.setOnMouseDragged(e -> { parent.selectTo(e.getSceneX(), e.getSceneY()); e.consume(); });
-        l.setOnMouseReleased(e -> { parent.selected(); e.consume(); });
-        l.setOnMouseMoved(e -> { if (e.isShortcutDown()) parent.getSlot().getOverlay().hoverAtPos(-1); });
+        l.setOnMousePressed(e -> {
+            parent.moveTo(e.getSceneX(), e.getSceneY(), true);
+            e.consume();
+        });
+        l.setOnMouseDragged(e -> {
+            parent.selectTo(e.getSceneX(), e.getSceneY());
+            e.consume();
+        });
+        l.setOnMouseReleased(e -> {
+            parent.selected();
+            e.consume();
+        });
+        l.setOnMouseMoved(e -> {
+            if (e.isShortcutDown()) parent.getSlot().getOverlay().hoverAtPos(-1);
+        });
         l.setOnMouseClicked(MouseEvent::consume);
         l.setOnDragDetected(MouseEvent::consume);
         
         l.textProperty().bind(
             new When(showingJava)
                 .then(new When(sourceProperty.isEqualTo("<:")).then(" instanceof ")
-                        .otherwise(new When(sourceProperty.isEqualTo("..")).then(rangeJavaPreview)
-                             .otherwise(sourceProperty)))
+                    .otherwise(new When(sourceProperty.isEqualTo("..")).then(rangeJavaPreview)
+                        .otherwise(sourceProperty)))
                 .otherwise(sourceProperty));
+        
+        JavaFXUtil.addChangeListener(sourceProperty, s -> updateBreaks());
+        updateBreaks();
     }
-    
+
+    private void updateBreaks()
+    {
+        // Can break before every operator except comma:
+        HangingFlowPane.setBreakBefore(l, !sourceProperty.get().equals(","));
+    }
+
     static boolean canBeUnary(String s)
     {
         if (s == null)

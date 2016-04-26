@@ -44,13 +44,9 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-import javafx.application.Platform;
-
 import javax.swing.AbstractAction;
 import javax.swing.JPopupMenu;
 
-import threadchecker.OnThread;
-import threadchecker.Tag;
 import bluej.Config;
 import bluej.collect.DataCollector;
 import bluej.compiler.CompileObserver;
@@ -60,6 +56,7 @@ import bluej.debugger.gentype.Reflective;
 import bluej.debugmgr.objectbench.InvokeListener;
 import bluej.editor.Editor;
 import bluej.editor.EditorManager;
+import bluej.editor.TextEditor;
 import bluej.editor.stride.FrameEditor;
 import bluej.extensions.BClass;
 import bluej.extensions.BClassTarget;
@@ -107,6 +104,9 @@ import bluej.utility.JavaReflective;
 import bluej.utility.JavaUtils;
 import bluej.views.ConstructorView;
 import bluej.views.MethodView;
+import javafx.application.Platform;
+import threadchecker.OnThread;
+import threadchecker.Tag;
 
 /**
  * A class target in a package, i.e. a target that is a class file built from
@@ -261,8 +261,8 @@ public class ClassTarget extends DependentTarget
     }
 
     /**
-     * Returns the {@link BClassTarget} associated with this {@link ClassTarget}
-     * . There should be only one {@link BClassTarget} object associated with
+     * Returns the {@link BClassTarget} associated with this {@link ClassTarget}.
+     * There should be only one {@link BClassTarget} object associated with
      * each {@link ClassTarget}.
      * 
      * @return The {@link BClassTarget} associated with this {@link ClassTarget}.
@@ -329,10 +329,11 @@ public class ClassTarget extends DependentTarget
         
         // Not compiled; try to get a reflective from the parser
         ParsedCUNode node = null;
-        // TODO turn this back on once we fix race hazards:
-        //getEditor();
-        if (editor != null) {
-            node = editor.assumeText().getParsedNode();
+        if (getEditor() != null) {
+            TextEditor textEditor = editor.assumeText();
+            if (textEditor != null) {
+                node = textEditor.getParsedNode();
+            }
         }
         
         if (node != null) {
@@ -839,7 +840,8 @@ public class ClassTarget extends DependentTarget
     }
 
     /**
-     * @return the name of the Java file this target corresponds to.
+     * @return the name of the Java file this target corresponds to. In the case of a Stride target this is
+     *          the file generated during compilation.
      */
     public File getJavaSourceFile()
     {
@@ -847,7 +849,7 @@ public class ClassTarget extends DependentTarget
     }
     
     /**
-     * @return the name of the Java file this target corresponds to.
+     * @return the name of the Stride file this target corresponds to. This is only valid for Stride targets.
      */
     public File getFrameSourceFile()
     {
@@ -1034,6 +1036,7 @@ public class ClassTarget extends DependentTarget
     // --- user interface function implementation ---
 
     /**
+     * Open an inspector window for the class represented by this target.
      */
     private void inspect()
     {
@@ -1238,7 +1241,7 @@ public class ClassTarget extends DependentTarget
             return false;
         }
         else {
-            boolean success = role.generateSkeleton(template, getPackage(), getBaseName(), getSourceFile().getPath());
+            boolean success = role.generateSkeleton(template, getPackage(), getBaseName(), getJavaSourceFile().getPath());
             if (success) {
                 // skeleton successfully generated
                 setState(S_INVALID);
@@ -1633,6 +1636,9 @@ public class ClassTarget extends DependentTarget
         }
     }
 
+    /**
+     * Delete all the source files (edited and generated) for this target.
+     */
     private void deleteSourceFiles()
     {
         if (getSourceType().equals(SourceType.Stride)) {
@@ -1655,7 +1661,6 @@ public class ClassTarget extends DependentTarget
 
     /**
      * Change the package of a class target to something else.
-     * 
      * 
      * @param newName the new fully qualified package name
      */
@@ -2245,10 +2250,5 @@ public class ClassTarget extends DependentTarget
     {
         return knownError;
     }
-
-//    @Override
-//    public void changedName(String oldName, String newName)
-//    {
-//        doClassNameChange(newName);
-//    }
+    
 }

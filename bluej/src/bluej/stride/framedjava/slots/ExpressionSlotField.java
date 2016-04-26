@@ -51,6 +51,7 @@ import bluej.stride.slots.EditableSlot.MenuItems;
 import bluej.utility.Debug;
 import bluej.utility.javafx.DelegableScalableTextField;
 import bluej.utility.javafx.FXConsumer;
+import bluej.utility.javafx.HangingFlowPane;
 import bluej.utility.javafx.JavaFXUtil;
 import bluej.utility.javafx.SharedTransition;
 
@@ -92,8 +93,14 @@ class ExpressionSlotField implements ExpressionSlotComponent
                 parent.getSlot().notifyGainFocus(this);
             }
         });
-        field.textProperty().addListener((a, b, c) -> shrinkGrow.run());
-        field.promptTextProperty().addListener((a, b, c) -> shrinkGrow.run());
+        field.textProperty().addListener((a, b, c) -> {
+            shrinkGrow.run();
+            if (!stringLiteral)
+                updateBreaks();
+            Platform.runLater(() ->
+                parent.updatePromptsInMethodCalls(this));
+        });
+        field.promptTextProperty().addListener((a, b, c) -> {shrinkGrow.run(); if (!stringLiteral) updateBreaks(); });
         
         JavaFXUtil.initializeCustomHelp(parent.getEditor(), field, this::calculateTooltip, true);
         
@@ -106,6 +113,14 @@ class ExpressionSlotField implements ExpressionSlotComponent
         // Also run it to determine initial size, but must run later after parent has
         // initialised:
         Platform.runLater(shrinkGrow);
+        if (!stringLiteral)
+            updateBreaks();
+    }
+
+    private void updateBreaks()
+    {
+        // You can break before any field that has non-empty text or non-empty prompt text:
+        HangingFlowPane.setBreakBefore(field, !getText().isEmpty() || !field.getPromptText().isEmpty());
     }
 
 
@@ -342,14 +357,6 @@ class ExpressionSlotField implements ExpressionSlotComponent
         else
             parent.withTooltipFor(this, tooltipConsumer);
     }
-
-
-    @Override
-    public void updatePrompts()
-    {
-        // Nothing to do        
-    }
-
 
     @Override
     public Stream<TextOverlayPosition> getAllStartEndPositionsBetween(CaretPos start, CaretPos end)

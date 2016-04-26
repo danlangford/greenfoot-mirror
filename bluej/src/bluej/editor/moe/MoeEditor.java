@@ -38,6 +38,7 @@ import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionListener;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.print.PageFormat;
 import java.awt.print.PrinterJob;
@@ -87,6 +88,7 @@ import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
+import javax.swing.Timer;
 import javax.swing.border.BevelBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
@@ -153,7 +155,7 @@ import bluej.utility.Utility;
  */
 
 public final class MoeEditor extends JPanel
-    implements bluej.editor.TextEditor, BlueJEventListener, HyperlinkListener, DocumentListener, MouseListener
+    implements bluej.editor.TextEditor, BlueJEventListener, HyperlinkListener, DocumentListener, MouseListener, MouseMotionListener
 {
     // -------- CONSTANTS --------
 
@@ -266,6 +268,8 @@ public final class MoeEditor extends JPanel
     private MoeErrorManager errorManager = new MoeErrorManager(this, enable -> {
         setNextErrorEnabled(enable || madeChangeOnCurrentLine, madeChangeOnCurrentLine);
     });
+    private Timer mouseHover;
+    private int mouseCaretPos = -1;
 
     /**
      * Constructor. Title may be null.
@@ -614,6 +618,7 @@ public final class MoeEditor extends JPanel
                 lastModified = file.lastModified();
                 
                 sourcePane.addMouseListener(this);
+                sourcePane.addMouseMotionListener(this);
                 sourceDocument = (MoeSyntaxDocument) sourcePane.getDocument();
                 naviView.setDocument(sourceDocument);
                 sourceDocument.addDocumentListener(this);
@@ -889,8 +894,26 @@ public final class MoeEditor extends JPanel
 //            errorManager.removeErrorHighlight();
 //            checkIfFreshLine();
             // If error is zero-width, make it one character wide:
-            if (endPos == startPos && endPos < getTextLength() - 1)
-                endPos += 1;
+            if (endPos == startPos)
+            {
+                try
+                {
+                    // By default, extend one char right, unless that would encompass a newline:
+                    if (endPos < getTextLength() - 1 && !sourceDocument.getText(endPos, 1).equals("\n"))
+                    {
+                        endPos += 1;
+                    }
+                    else if (startPos > 0 && !sourceDocument.getText(startPos - 1, 1).equals("\n"))
+                    {
+                        startPos -= 1;
+                    }
+                }
+                catch (BadLocationException e)
+                {
+                    // Report error and give up trying to extend size:
+                    Debug.reportError(e);
+                }
+            }
             errorManager.addErrorHighlight(startPos, endPos, diagnostic.getMessage());
         }
 
@@ -2550,7 +2573,8 @@ public final class MoeEditor extends JPanel
         htmlPane.setEditorKit(new HTMLEditorKit());
         htmlPane.setEditable(false);
         htmlPane.addHyperlinkListener(this);
-        htmlPane.setInputMap(JComponent.WHEN_FOCUSED, new InputMap() {
+        htmlPane.setInputMap(JComponent.WHEN_FOCUSED, new InputMap()
+        {
             @Override
             public Object get(KeyStroke keyStroke)
             {
@@ -2558,7 +2582,8 @@ public final class MoeEditor extends JPanel
                 // pane to process the keys instead. This means the view will scroll,
                 // rather than just moving an invisible cursor.
                 Object action = super.get(keyStroke);
-                if ("caret-up".equals(action) || "caret-down".equals(action)) {
+                if ("caret-up".equals(action) || "caret-down".equals(action))
+                {
                     return null;
                 }
                 return action;
@@ -2946,15 +2971,7 @@ public final class MoeEditor extends JPanel
     public void caretMoved()
     {
         int caretPos = sourcePane.getCaretPosition();
-        ErrorDetails err = errorManager.getErrorAtPosition(caretPos);
-        if (err != null)
-        {
-            showErrorOverlay(ParserMessageHandler.getMessageForCode(err.message), err.startPos);
-        }
-        else
-        {
-            showErrorOverlay(null, -1);
-        }
+        showErrorPopupForCaretPos(caretPos, false);
         
         // the selection may have changed and therefore need to determine
         // whether it is logical to have the buttons enabled/disabled
@@ -2977,6 +2994,24 @@ public final class MoeEditor extends JPanel
         oldCaretLineNumber = getLineNumberAt(caretPos);
     }
 
+    private void showErrorPopupForCaretPos(int caretPos, boolean mousePosition)
+    {
+        ErrorDetails err = errorManager.getErrorAtPosition(caretPos);
+        if (err != null)
+        {
+            showErrorOverlay(err, caretPos);
+        }
+        else
+        {
+            // Only hide if it was a keyboard move,
+            // or it was a mouse move but there is no error at the keyboard position
+            if (errorDisplay != null && (!mousePosition || !errorDisplay.details.containsPosition(sourcePane.getCaretPosition())))
+            {
+                showErrorOverlay(null, caretPos);
+            }
+        }
+    }
+
     // --------------------------------------------------------------------
 
     @Override
@@ -2989,21 +3024,27 @@ public final class MoeEditor extends JPanel
         }
     }
 
+    @Override
+    public void focusMethod(String methodName)
+    {
+        //TODO implement it
+    }
+
     // --------------------------------------------------------------------
 
-    private void showErrorOverlay(String message, int startPos)
+    private void showErrorOverlay(ErrorDetails details, int displayPosition)
     {
-        if (message != null)
+        if (details != null)
         {
-            if (errorDisplay == null || !errorDisplay.isShowing(message, startPos))
+            if (errorDisplay == null || errorDisplay.details != details)
             {
                 // First, hide existing display:
-                showErrorOverlay(null, -1);
-                errorDisplay = new ErrorDisplay(message, startPos);
-                
-                int cpos = sourcePane.getCaretPosition();
+                if (errorDisplay != null)
+                    errorDisplay.setVisible(false);
+                errorDisplay = new ErrorDisplay(details);
+
                 try {
-                    Rectangle pos = sourcePane.modelToView(cpos);
+                    Rectangle pos = sourcePane.modelToView(displayPosition);
                     Point spLoc = sourcePane.getLocationOnScreen();
                     int xpos = pos.x + spLoc.x;
                     int ypos = pos.y + (3*pos.height/2) + spLoc.y;
@@ -3761,7 +3802,25 @@ public final class MoeEditor extends JPanel
     {
         showPopup(e);
     }
-    
+
+    @Override
+    public void mouseDragged(MouseEvent e) { }
+
+    @Override
+    public void mouseMoved(MouseEvent e)
+    {
+        final int caretPos = sourcePane.viewToModel(e.getPoint());
+        // If the mouse has moved position, restart error show timer:
+        if (caretPos != mouseCaretPos)
+        {
+            if (mouseHover != null)
+                mouseHover.stop();
+            mouseCaretPos = caretPos;
+            mouseHover = new Timer(400, a -> showErrorPopupForCaretPos(caretPos, true));
+            mouseHover.start();
+        }
+    }
+
     /**
      * Displays the popup menu, if triggered by the given mouse event
      */
@@ -4030,27 +4089,25 @@ public final class MoeEditor extends JPanel
         if (!visible)
         {
             // Hide any error tooltip:
-            showErrorOverlay(null, -1);
+            showErrorOverlay(null, 0);
         }
         
     }
 
     private static class ErrorDisplay extends JFrame
     {
-        private final String message;
-        private final int startPos;
-        
-        public ErrorDisplay(String message, int startPos)
+        private final ErrorDetails details;
+
+        public ErrorDisplay(ErrorDetails details)
         {
-            this.message = message;
-            this.startPos = startPos;
+            this.details = details;
             
             setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
             setUndecorated(true);
             setFocusableWindowState(false);
             setAlwaysOnTop(true);
             
-            JTextArea err = new JTextArea(message);
+            JTextArea err = new JTextArea(ParserMessageHandler.getMessageForCode(details.message));
             err.setOpaque(false);
             err.setBackground(new Color(0, 0, 0, 0));
             err.setForeground(Color.WHITE);
@@ -4063,11 +4120,6 @@ public final class MoeEditor extends JPanel
             pack();
             setShape(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 5, 5));
             setOpacity(1.0f);
-        }
-
-        public boolean isShowing(String message, int startPos)
-        {
-            return this.message.equals(message) && this.startPos == startPos;
         }
     }
 

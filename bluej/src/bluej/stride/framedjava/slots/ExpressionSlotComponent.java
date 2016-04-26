@@ -75,8 +75,6 @@ interface ExpressionSlotComponent
 
     String getJavaCode();
 
-    void updatePrompts();
-
     ObservableList<? extends Node> getComponents();
 
     // See InfixExpression.getAllStartEndPositionsBetween for an explanation

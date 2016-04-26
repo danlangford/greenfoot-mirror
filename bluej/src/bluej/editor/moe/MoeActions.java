@@ -78,6 +78,7 @@ import bluej.parser.nodes.ParsedNode;
 import bluej.prefmgr.PrefMgr;
 import bluej.prefmgr.PrefMgrDialog;
 import bluej.utility.Debug;
+import java.awt.datatransfer.UnsupportedFlavorException;
 
 /**
  * A set of actions supported by the Moe editor. This is a singleton: the
@@ -106,7 +107,7 @@ public final class MoeActions
     private static int DOUBLE_SHORTCUT_MASK; // two masks (ie. CTRL + META)
 
     // -------- INSTANCE VARIABLES --------
-    private static IdentityHashMap<MoeEditor, MoeActions> moeActions = new IdentityHashMap<>();
+    private static final IdentityHashMap<MoeEditor, MoeActions> moeActions = new IdentityHashMap<>();
     // undo helpers
     public UndoAction undoAction;
     public RedoAction redoAction;
@@ -119,11 +120,11 @@ public final class MoeActions
     private HashMap<Object, Action> actions; // the same actions in a hash-map
     private String[] categories;
     private int[] categoryIndex;
-    private Keymap keymap; // the editor's keymap
-    private KeyCatcher keyCatcher;
+    private final Keymap keymap; // the editor's keymap
+    private final KeyCatcher keyCatcher;
     private boolean lastActionWasCut; // true if last action was a cut action
     // for bug workaround:
-    private InputMap componentInputMap;
+    private final InputMap componentInputMap;
     private Action[] overrideActions;
     private MoeActions(MoeEditor editor, JTextComponent textComponent)
     {
@@ -155,7 +156,11 @@ public final class MoeActions
 
     /**
      * Get the actions object (a singleton) and, at the same time, install the
-     * action keymap as the main keymap for the given textComponent..
+     * action keymap as the main keymap for the given textComponent.
+     * 
+     * @param editor The editor to get the actions from
+     * @param textComponent The text component for the editor
+     * @return The actions object
      */
     public static MoeActions getActions(MoeEditor editor, JTextComponent textComponent)
     {
@@ -610,11 +615,11 @@ public final class MoeActions
         KeyStroke[] componentKeys = componentInputMap.allKeys();
 
         // find all component keys that bind to this action
-        for (int i = 0; i < componentKeys.length; i++) {
-            if (componentInputMap.get(componentKeys[i]).equals(action.getValue(Action.NAME))) {
+        for (KeyStroke componentKey : componentKeys) {
+            if (componentInputMap.get(componentKey).equals(action.getValue(Action.NAME))) {
                 if (keyStrokes == null)
-                    keyStrokes = new ArrayList<KeyStroke>();
-                keyStrokes.add(componentKeys[i]);
+                    keyStrokes = new ArrayList<>();
+                keyStrokes.add(componentKey);
             }
         }
 
@@ -680,9 +685,9 @@ public final class MoeActions
             KeyStroke[] keys = keymap.getBoundKeyStrokes();
             stream.writeInt(MoeEditor.version);
             stream.writeInt(keys.length);
-            for (int i = 0; i < keys.length; i++) {
-                stream.writeObject(keys[i]);
-                stream.writeObject(keymap.getAction(keys[i]).getValue(Action.NAME));
+            for (KeyStroke key : keys) {
+                stream.writeObject(key);
+                stream.writeObject(keymap.getAction(key).getValue(Action.NAME));
             }
             stream.flush();
             ostream.close();
@@ -741,7 +746,7 @@ public final class MoeActions
             }
             return true;
         }
-        catch (Exception exc) {
+        catch (IOException | ClassNotFoundException exc) {
             // ignore - file probably didn't exist (yet)
             return false;
         }
@@ -830,7 +835,7 @@ public final class MoeActions
             try {
                 clipContent = (String) (content.getTransferData(DataFlavor.stringFlavor));
             }
-            catch (Exception exc) {} // content was not string
+            catch (UnsupportedFlavorException | IOException exc) {} // content was not string
         }
 
         // add current selection and store back in clipboard
@@ -880,7 +885,7 @@ public final class MoeActions
 
             boolean foundLine = false;
             int lineOffset = 1;
-            String prevLineText = null;
+            String prevLineText = "";
             while ((lineIndex - lineOffset >= 0) && !foundLine) {
                 Element prevline = getLine(textPane, lineIndex - lineOffset);
                 int prevLineStart = prevline.getStartOffset();
@@ -1160,7 +1165,7 @@ public final class MoeActions
 
         // insert all actions into a hash map
 
-        actions = new HashMap<Object, Action>();
+        actions = new HashMap<>();
 
         for (Action action : textActions) {
             actions.put(action.getValue(Action.NAME), action);
@@ -2045,7 +2050,7 @@ public final class MoeActions
 
     private abstract class MoeActionWithOrWithoutSelection extends MoeAbstractAction
     {
-        private boolean withSelection;
+        private final boolean withSelection;
         
         protected MoeActionWithOrWithoutSelection(String actionName, MoeEditor editor, boolean withSelection)
         {
@@ -2276,7 +2281,7 @@ public final class MoeActions
         }
     }
 
-    class NextErrorAction extends MoeAbstractAction
+    public class NextErrorAction extends MoeAbstractAction
     {
         public NextErrorAction(MoeEditor editor)
         {
@@ -2434,8 +2439,13 @@ public final class MoeActions
         public void apply(Element line, MoeSyntaxDocument doc)
         {
             int lineStart = line.getStartOffset();
+            int lineEnd = line.getEndOffset();
             try {
-                doc.insertString(lineStart, "// ", null);
+                String lineText = doc.getText(lineStart, lineEnd - lineStart);
+                if (lineText.trim().length() > 0) {
+                    int textStart = MoeIndent.findFirstNonIndentChar(lineText, true);
+                    doc.insertString(lineStart+textStart, "// ", null);
+                }
             }
             catch (BadLocationException exc) {
                 throw new RuntimeException(exc);
@@ -2463,10 +2473,10 @@ public final class MoeActions
                         cnt++;
                     }
                     if (lineText.charAt(cnt + 2) == ' ') {
-                        doc.remove(lineStart, cnt + 3);
+                        doc.remove(lineStart+cnt, 3);
                     }
                     else {
-                        doc.remove(lineStart, cnt + 2);
+                        doc.remove(lineStart+cnt, 2);
                     }
                 }
             }

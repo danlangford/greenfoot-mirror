@@ -24,10 +24,7 @@ package bluej.editor.stride;
 
 
 import java.awt.print.PrinterJob;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -195,7 +192,7 @@ public class FrameEditor implements Editor
         //Debug.message("&&&&&& Creating panel: " + System.currentTimeMillis());
         this.panel = new FrameEditorTab(fXTabbedEditor, resolver, this, lastSource);
         //Debug.message("&&&&&& Adding panel to editor: " + System.currentTimeMillis());
-        fXTabbedEditor.addFrameEditor(this.panel, this.panel::getMenus, visible, toFront);
+        fXTabbedEditor.addFrameEditor(this.panel, visible, toFront);
         //Debug.message("&&&&&& Done! " + System.currentTimeMillis());
         // Saving Java will trigger any pending actions like jumping to a stack trace location:
         panel.initialisedProperty().addListener((a, b, newVal) -> {
@@ -351,12 +348,14 @@ public class FrameEditor implements Editor
     {
         if (source == null)
             return; // Not fully loaded yet
-        
-        FileWriter w = new FileWriter(javaFilename);
+
+        FileOutputStream fos = new FileOutputStream(javaFilename);
+        OutputStreamWriter w = new OutputStreamWriter(fos, Charset.forName("UTF-8"));
         final JavaSource js = source.toJavaSource(warning);
         String javaString = js.toDiskJavaCodeString();
         w.write(javaString);
         w.close();
+        fos.close();
         // Because there may be a listener waiting on javaSource in order to show compiler error,
         // it's important that we first generate the string above, before storing it into the property,
         // to make sure all the source positions have been recorded.
@@ -646,6 +645,13 @@ public class FrameEditor implements Editor
             public void cancelFreshState()
             {
                 FrameEditor.this.cancelFreshState();
+            }
+
+            @Override
+            @OnThread(Tag.Swing)
+            public void focusMethod(String methodName)
+            {
+                FrameEditor.this.focusMethod(methodName);
             }
         };
     }
@@ -1161,6 +1167,16 @@ public class FrameEditor implements Editor
         }
     }
 
+    @Override
+    public void focusMethod(String methodName)
+    {
+        Platform.runLater(() -> {
+            if (panel == null) {
+                createPanel(true, true);
+            }
+            panel.focusMethod(methodName);
+        });
+    }
 
     public JavadocResolver getJavadocResolver()
     {

@@ -116,7 +116,7 @@ public class FrameCursor implements RecallableFocus
 
             final boolean selection = !editor.getSelection().getSelected().isEmpty();
             // Is it a request to expand/collapse?
-            if (key == '+' || key == '-') {
+            if (false && (key == '+' || key == '-')) {
                 List<Frame> targets = selection ? editor.getSelection().getSelected() : Collections.singletonList(getFrameAfter());
                 targets.stream().filter(Frame::isCollapsible)
                     .forEach(t -> t.setCollapsed(key == '-')); // otherwise it's plus
@@ -372,7 +372,7 @@ public class FrameCursor implements RecallableFocus
      */
     public FrameCursor(final FrameEditorTab editor, final FrameCanvas parentCanvas)
     {
-        node.getStyleClass().add("cursor-frame");
+        node.getStyleClass().add("frame-cursor");
         node.setMaxWidth(100);
         node.setMaxHeight(HIDE_HEIGHT);
         node.setOpacity(0);
@@ -477,6 +477,7 @@ public class FrameCursor implements RecallableFocus
                 }
                 editor.getSelection().clear();
                 focusAfter.requestFocus();
+                editor.updateCatalog(focusAfter);
                 event.consume();
                 return;
             }
@@ -565,13 +566,13 @@ public class FrameCursor implements RecallableFocus
     
     public void showAsDropTarget(boolean showAsSource, boolean dragPossible, boolean copying)
     {
-        String chosen;
+        int chosen;
         
         if (dragPossible) {
-            chosen = showAsSource ? "frame-cursor-drag-source" : "frame-cursor-drag";
+            chosen = showAsSource ? 1 : 0;
         }
         else {
-            chosen = "frame-cursor-drag-impossible";
+            chosen = 2;
         }
         
         // Must resize before setting drag class:
@@ -580,11 +581,15 @@ public class FrameCursor implements RecallableFocus
         updateDragCopyState(copying);
     }
 
-    private void setDragClass(String chosen)
+    /**
+     * 
+     * @param classIndex -1 for no drag target, 0 for possible, 1 for source, 2 for imposibble
+     */
+    private void setDragClass(int classIndex)
     {
-        JavaFXUtil.selectStyleClass(chosen, node,
-                "frame-cursor-drag-impossible", "frame-cursor-drag-source", "frame-cursor-drag");
-        setDragTargetOverlayVisible(chosen != null, "frame-cursor-drag-impossible".equals(chosen));
+        JavaFXUtil.selectPseudoClass(node, classIndex,
+                "bj-drag-possible", "bj-drag-source", "bj-drag-impossible");
+        setDragTargetOverlayVisible(classIndex != -1, classIndex == 2);
     }
     
     private void adjustDragTargetPosition()
@@ -655,7 +660,7 @@ public class FrameCursor implements RecallableFocus
     public void stopShowAsDropTarget()
     {
         animateShowHide(false, false);
-        setDragClass(null);
+        setDragClass(-1);
     }
     
     public void insertBlockAfter(Frame b)
