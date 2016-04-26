@@ -1,6 +1,6 @@
 /*
  This file is part of the Greenfoot program. 
- Copyright (C) 2005-2009,2010,2011,2012  Poul Henriksen and Michael Kolling 
+ Copyright (C) 2005-2009,2010,2011,2012,2015  Poul Henriksen and Michael Kolling 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -78,9 +78,11 @@ public class GreenfootUtilDelegateStandAlone implements GreenfootUtilDelegate
         // it doesn't contain a ! it is probably because it didn't exists, but
         // the webserver produced an error page at the given URL instead of
         // returning a fail. Therefore, we need to explicitly test for the
-        // existence of a ! in the returned URL.
+        // existence of a ! in the returned URL. However, if the protocol is
+        // 'file', we'll accept it regardless; this allows for running standalone
+        // scenarios from an IDE.
         URL res = this.getClass().getClassLoader().getResource(path);
-        if (res != null && res.toString().contains("!")) {  
+        if (res != null && (res.toString().contains("!") || res.getProtocol().equals("file"))) {  
             return res;
         }
         else {

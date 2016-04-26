@@ -1,6 +1,6 @@
 /*
  This file is part of the BlueJ program. 
- Copyright (C) 1999-2009,2010,2011,2012,2013,2014  Michael Kolling and John Rosenberg 
+ Copyright (C) 1999-2009,2010,2011,2012,2013,2014,2015  Michael Kolling and John Rosenberg 
  
  This program is free software; you can redistribute it and/or 
  modify it under the terms of the GNU General Public License 
@@ -67,8 +67,8 @@ public class Boot
     
     // The version numbers for Greenfoot are changed in the Greenfoot build.xml
     // and then the update-version target should be executed.
-    public static String GREENFOOT_VERSION = "2.4.1";
-    public static String GREENFOOT_API_VERSION = "2.7.0";
+    public static String GREENFOOT_VERSION = "2.4.2";
+    public static String GREENFOOT_API_VERSION = "2.7.1";
     
     // A singleton boot object so the rest of BlueJ can pick up args etc.
     private static Boot instance;
