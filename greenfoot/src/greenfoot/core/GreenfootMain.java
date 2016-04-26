@@ -64,7 +64,7 @@ import bluej.views.View;
  * but each will be in its own JVM so it is effectively a singleton.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: GreenfootMain.java 6720 2009-09-18 13:49:11Z davmac $
+ * @version $Id: GreenfootMain.java 6789 2009-10-13 07:04:57Z davmac $
  */
 public class GreenfootMain extends Thread implements CompileListener, RProjectListener
 {
@@ -385,11 +385,6 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
         projectProperties.setInt("mainWindow.x", loc.x);
         projectProperties.setInt("mainWindow.y", loc.y);
 
-        String worldClassName = WorldHandler.getInstance().getLastWorldClassName();
-        if (worldClassName != null) {
-            projectProperties.setString("world.lastInstantiated", WorldHandler.getInstance().getLastWorldClassName());
-        }
-
         projectProperties.save();
     }
 
@@ -695,7 +690,7 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
     {
         if (version == null) {
             try {
-                Class bootCls = Class.forName("bluej.Boot");
+                Class<?> bootCls = Class.forName("bluej.Boot");
                 Field field = bootCls.getField("GREENFOOT_API_VERSION");
                 String versionStr = (String) field.get(null);
                 version = new Version(versionStr);
@@ -725,7 +720,7 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
         return version;
     }
 
-    public static Class loadAndInitClass(String name)
+    public static Class<?> loadAndInitClass(String name)
     {
         return null;
     }

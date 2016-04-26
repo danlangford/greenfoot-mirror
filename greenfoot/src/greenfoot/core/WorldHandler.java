@@ -215,16 +215,6 @@ public class WorldHandler
         defaultCursor = worldCanvas.getCursor();
     }
 
-    public void setLastWorldClass(String lastWorldClass)
-    {
-        this.lastWorldClass = lastWorldClass;
-    }
-    
-    public String getLastWorldClassName()
-    {
-        return lastWorldClass;
-    }
-    
     /**
      * Get the keyboard manager.
      */
