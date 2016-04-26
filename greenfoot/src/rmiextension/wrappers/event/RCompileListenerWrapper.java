@@ -88,16 +88,22 @@ public class RCompileListenerWrapper
      * 
      * @see bluej.extensions.event.CompileListener#compileStarted(bluej.extensions.event.CompileEvent)
      */
-    public void compileStarted(CompileEvent event)
+    public void compileStarted(final CompileEvent event)
     {
         if (isInThisProject(event.getFiles())) {
-            try {
-                RCompileEvent rEvent = new RCompileEventImpl(event);
-                remoteListener.compileStarted(rEvent);
-            }
-            catch (RemoteException e1) {
-                e1.printStackTrace();
-            }
+            new Thread() {
+                @Override
+                public void run()
+                {
+                    try {
+                        RCompileEvent rEvent = new RCompileEventImpl(event);
+                        remoteListener.compileStarted(rEvent);
+                    }
+                    catch (RemoteException e1) {
+                        e1.printStackTrace();
+                    }
+                }
+            }.start();
         }
     }
 
@@ -107,16 +113,22 @@ public class RCompileListenerWrapper
      * 
      * @see bluej.extensions.event.CompileListener#compileError(bluej.extensions.event.CompileEvent)
      */
-    public void compileError(CompileEvent event)
+    public void compileError(final CompileEvent event)
     {
         if (isInThisProject(event.getFiles())) {
-            try {
-                RCompileEvent rEvent = new RCompileEventImpl(event);
-                remoteListener.compileError(rEvent);
-            }
-            catch (RemoteException e1) {
-                e1.printStackTrace();
-            }
+            new Thread() {
+                @Override
+                public void run()
+                {
+                    try {
+                        RCompileEvent rEvent = new RCompileEventImpl(event);
+                        remoteListener.compileError(rEvent);
+                    }
+                    catch (RemoteException e1) {
+                        e1.printStackTrace();
+                    }
+                }
+            }.start();
         }
     }
 
@@ -125,16 +137,22 @@ public class RCompileListenerWrapper
      * 
      * @see bluej.extensions.event.CompileListener#compileWarning(bluej.extensions.event.CompileEvent)
      */
-    public void compileWarning(CompileEvent event)
+    public void compileWarning(final CompileEvent event)
     {
         if (isInThisProject(event.getFiles())) {
-            try {
-                RCompileEvent rEvent = new RCompileEventImpl(event);
-                remoteListener.compileWarning(rEvent);
-            }
-            catch (RemoteException e1) {
-                e1.printStackTrace();
-            }
+            new Thread() {
+                @Override
+                public void run()
+                {
+                    try {
+                        RCompileEvent rEvent = new RCompileEventImpl(event);
+                        remoteListener.compileWarning(rEvent);
+                    }
+                    catch (RemoteException e1) {
+                        e1.printStackTrace();
+                    }
+                }
+            }.start();
         }
     }
 
@@ -143,16 +161,20 @@ public class RCompileListenerWrapper
      * 
      * @see bluej.extensions.event.CompileListener#compileSucceeded(bluej.extensions.event.CompileEvent)
      */
-    public void compileSucceeded(CompileEvent event)
+    public void compileSucceeded(final CompileEvent event)
     {
         if (isInThisProject(event.getFiles())) {
-            try {
-                RCompileEvent rEvent = new RCompileEventImpl(event);
-                remoteListener.compileSucceeded(rEvent);
-            }
-            catch (RemoteException e1) {
-                e1.printStackTrace();
-            }
+            new Thread() {
+                public void run() {
+                    try {
+                        RCompileEvent rEvent = new RCompileEventImpl(event);
+                        remoteListener.compileSucceeded(rEvent);
+                    }
+                    catch (RemoteException e1) {
+                        e1.printStackTrace();
+                    }
+                }
+            }.start();
         }
     }
 
@@ -161,16 +183,20 @@ public class RCompileListenerWrapper
      * 
      * @see bluej.extensions.event.CompileListener#compileFailed(bluej.extensions.event.CompileEvent)
      */
-    public void compileFailed(CompileEvent event)
+    public void compileFailed(final CompileEvent event)
     {
         if (isInThisProject(event.getFiles())) {
-            try {
-                RCompileEvent rEvent = new RCompileEventImpl(event);
-                remoteListener.compileFailed(rEvent);
-            }
-            catch (RemoteException e1) {
-                e1.printStackTrace();
-            }
+            new Thread() {
+                public void run() {
+                    try {
+                        RCompileEvent rEvent = new RCompileEventImpl(event);
+                        remoteListener.compileFailed(rEvent);
+                    }
+                    catch (RemoteException e1) {
+                        e1.printStackTrace();
+                    }
+                }
+            }.start();
         }
     }
 }

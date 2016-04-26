@@ -64,7 +64,7 @@ import bluej.views.View;
  * but each will be in its own JVM so it is effectively a singleton.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: GreenfootMain.java 6474 2009-07-31 12:52:51Z polle $
+ * @version $Id: GreenfootMain.java 6720 2009-09-18 13:49:11Z davmac $
  */
 public class GreenfootMain extends Thread implements CompileListener, RProjectListener
 {
@@ -385,9 +385,9 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
         projectProperties.setInt("mainWindow.x", loc.x);
         projectProperties.setInt("mainWindow.y", loc.y);
 
-        Class cls = WorldHandler.getInstance().getLastWorldClass();
-        if (cls != null) {
-            projectProperties.setString("world.lastInstantiated", WorldHandler.getInstance().getLastWorldClass().getName());
+        String worldClassName = WorldHandler.getInstance().getLastWorldClassName();
+        if (worldClassName != null) {
+            projectProperties.setString("world.lastInstantiated", WorldHandler.getInstance().getLastWorldClassName());
         }
 
         projectProperties.save();

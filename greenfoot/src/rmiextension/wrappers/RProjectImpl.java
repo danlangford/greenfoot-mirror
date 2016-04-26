@@ -38,7 +38,7 @@ import bluej.utility.Debug;
 
 /**
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: RProjectImpl.java 6216 2009-03-30 13:41:07Z polle $
+ * @version $Id: RProjectImpl.java 6720 2009-09-18 13:49:11Z davmac $
  */
 public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
     implements RProject
@@ -46,7 +46,7 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
     /**	The BlueJ-package (from extensions) that is wrapped */
     private BProject bProject;
     
-    private List listeners = new ArrayList();
+    private List<RProjectListener> listeners = new ArrayList<RProjectListener>();
 
     /**
      * Construct an RProjectImpl - generally only should be called from
@@ -84,7 +84,7 @@ public class RProjectImpl extends java.rmi.server.UnicastRemoteObject
      */
     public void notifyClosing()
     {
-        List listeners = new ArrayList(this.listeners);
+        List<RProjectListener> listeners = new ArrayList<RProjectListener>(this.listeners);
         Iterator i = listeners.iterator();
         while (i.hasNext()) {
             RProjectListener listener = (RProjectListener) i.next();

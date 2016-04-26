@@ -33,7 +33,7 @@ import bluej.extensions.ProjectNotOpenException;
  * The interface for a package.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: RPackage.java 6216 2009-03-30 13:41:07Z polle $
+ * @version $Id: RPackage.java 6720 2009-09-18 13:49:11Z davmac $
  */
 public interface RPackage
     extends java.rmi.Remote
@@ -47,7 +47,7 @@ public interface RPackage
      * @throws RemoteException
      * @throws CompilationNotStartedException
      */
-	public abstract void compile(boolean waitCompileEnd)
+    public abstract void compile(boolean waitCompileEnd)
         throws ProjectNotOpenException, PackageNotFoundException, RemoteException, CompilationNotStartedException;
 
     /**
@@ -58,7 +58,7 @@ public interface RPackage
      * @throws RemoteException
      * @throws CompilationNotStartedException
      */
-	public abstract void compileAll(boolean waitCompileEnd)
+    public abstract void compileAll()
         throws ProjectNotOpenException, PackageNotFoundException, RemoteException, CompilationNotStartedException;
 
     /**
@@ -117,9 +117,6 @@ public interface RPackage
     public abstract void reload()
         throws ProjectNotOpenException, PackageNotFoundException, RemoteException;
 
-    public abstract RClass getSelectedClass()
-        throws ProjectNotOpenException, PackageNotFoundException, RemoteException;
-
     /**
      * Returns the directory where this package is stored.
      * 
@@ -161,7 +158,7 @@ public interface RPackage
      */
     public String invokeConstructor(String className, String [] argTypes, String [] args)
         throws RemoteException;
-    
+
     /**
      * Invoke a static method.
      * 

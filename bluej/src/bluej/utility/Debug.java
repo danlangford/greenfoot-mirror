@@ -21,27 +21,73 @@
  */
 package bluej.utility;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.Writer;
+
 import bluej.Config;
 
 /**
  * Class to handle debugging messages.
  * 
  * @author Michael Kolling
- * @version $Id: Debug.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: Debug.java 6718 2009-09-18 12:44:11Z davmac $
  */
 
 public class Debug
 {
+    private static final String eol = System.getProperty("line.separator");
+    
+    private static Writer debugStream = new Writer() {
+        @Override
+        public void write(char[] cbuf, int off, int len) throws IOException
+        {
+        }
+        
+        @Override
+        public void flush() throws IOException
+        {
+        }
+        
+        @Override
+        public void close() throws IOException
+        {
+        }
+    };
+    
+    /**
+     * Set the debug output stream. All debug messages go to the debug
+     * output stream.
+     */
+    public static void setDebugStream(Writer debugStream)
+    {
+        Debug.debugStream = debugStream;
+    }
+    
+    /**
+     * Get the debug output stream.
+     */
+    public static Writer getDebugStream()
+    {
+        return debugStream;
+    }
+    
     /**
      * Write out a debug message. This may go to a terminal, or to
      * a debug file, depending on external debug settings.
      * 
      * @param msg The message to be written.
      */
-    public static final void message(String msg)
+    public static void message(String msg)
     {
-        System.out.println(msg);
-        System.out.flush();
+        try {
+            debugStream.write(msg);
+            debugStream.write(eol);
+            debugStream.flush();
+        }
+        catch (IOException ioe) {
+            System.err.println("IOException writing debug log");
+        }
     }
     
     /**
@@ -56,7 +102,12 @@ public class Debug
     }
 
     /**
-     * Write out a BlueJ error message for debugging.
+     * Write out a BlueJ error message for debugging. Note, this does
+     * not by itself provide a stack trace, so it's of only limited use -
+     * it should be used only when what has gone wrong should be obvious.
+     * 
+     * <p>Use the variant which takes an exception as a parameter where
+     * otherwise prudent.
      * 
      * @param error The error message.
      */
@@ -74,5 +125,8 @@ public class Debug
     {
         message("Internal error: " + error);
         message("Exception: " + exc);
+        PrintWriter pwriter = new PrintWriter(debugStream);
+        exc.printStackTrace(pwriter);
+        pwriter.flush();
     }
 }

@@ -190,7 +190,7 @@ public final class MoeActions
     
     public void setPasteEnabled(boolean enabled)
     {
-    	actions.get(DefaultEditorKit.pasteAction).setEnabled(enabled);
+        actions.get(DefaultEditorKit.pasteAction).setEnabled(enabled);
     }
     
     /**
@@ -450,12 +450,12 @@ public final class MoeActions
      */
     //      public KeyStroke[] getKeyStrokesForName(String actionName)
     //      {
-    //  	Action action = getActionByName(actionName);
-    //  	KeyStroke[] keys = keymap.getKeyStrokesForAction(action);
-    //  	if (keys != null && keys.length > 0)
-    //  	    return keys;
-    //  	else
-    //  	    return null;
+    //      Action action = getActionByName(actionName);
+    //      KeyStroke[] keys = keymap.getKeyStrokesForAction(action);
+    //      if (keys != null && keys.length > 0)
+    //          return keys;
+    //      else
+    //          return null;
     //      }
     // ============================ USER ACTIONS =============================
 
@@ -865,14 +865,12 @@ public final class MoeActions
         }
 
         public void actionPerformed(ActionEvent e)
-        {
-        	
-        	JTextComponent textPane = getTextComponent(e);
+        {           
+            JTextComponent textPane = getTextComponent(e);
             Font textPFont= textPane.getFont();           
             int newFont=textPFont.getSize()+1;
-            //PrefMgr.setEditorFontSize(newFont);
-            getTextComponent(e).setFont(textPane.getFont().deriveFont((float)newFont));
-            
+            PrefMgr.setEditorFontSize(newFont);
+            getTextComponent(e).setFont(textPane.getFont().deriveFont((float)newFont));            
         }
     }
     
@@ -887,12 +885,11 @@ public final class MoeActions
         }
 
         public void actionPerformed(ActionEvent e)
-        {
-     
+        {     
             JTextComponent textPane = getTextComponent(e);
             Font textPFont= textPane.getFont();            
             int newFont=textPFont.getSize()-1;
-            //PrefMgr.setEditorFontSize(newFont);
+            PrefMgr.setEditorFontSize(newFont);
             getTextComponent(e).setFont(textPFont.deriveFont((float)newFont));
         }
     }
@@ -1225,11 +1222,11 @@ public final class MoeActions
     //     class Action extends MoeAbstractAction {
     //
     //       public Action() {
-    //  	 super("");
+    //       super("");
     //       }
     //
     //       public void actionPerformed(ActionEvent e) {
-    // 	  DialogManager.NYI(editor);
+    //    DialogManager.NYI(editor);
     //       }
     //     }
 
@@ -1777,7 +1774,7 @@ public final class MoeActions
         // sort all actions into a big, ordered table
 
         actionTable = new Action[] {
-        		
+                
 
         // edit functions
 
@@ -2137,10 +2134,10 @@ public final class MoeActions
                 Object binding = componentInputMap.get(key);
                 if (binding == null){
                     //editor.writeMessage(keyName + " is not bound to a function.");
-                	editor.writeMessage(keyName + Config.getString("editor.keypressed.keyIsNotBound"));
+                    editor.writeMessage(keyName + Config.getString("editor.keypressed.keyIsNotBound"));
                 }
                 else {
-                	editor.writeMessage(keyName + Config.getString("editor.keypressed.callsTheFunction") + binding + "\"");
+                    editor.writeMessage(keyName + Config.getString("editor.keypressed.callsTheFunction") + binding + "\"");
                 }
             }
             else {

@@ -163,12 +163,6 @@ public class GCoreClass extends GClass
 	}
 
 	@Override
-	public String getToString()
-	{
-		return cls.toString();
-	}
-
-	@Override
 	public boolean isActorClass()
 	{
 		return cls.equals(Actor.class);

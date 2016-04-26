@@ -97,7 +97,7 @@ public abstract class Actor
     /** Field used to store some extra data in an object. Used by collision checkers. */
     private Object data;
 
-    private static GreenfootImage greenfootImage;
+    static GreenfootImage greenfootImage;
 
     /** Bounding rectangle of the object. In pixels. */
     private Rect boundingRect;

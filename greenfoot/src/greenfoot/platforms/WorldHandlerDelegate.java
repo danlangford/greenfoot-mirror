@@ -55,9 +55,6 @@ public interface WorldHandlerDelegate
      */
     void instantiateNewWorld();
 
-    @SuppressWarnings("unchecked")
-    Class getLastWorldClass();
-
     InputManager getInputManager();
 
     void discardWorld(World world);

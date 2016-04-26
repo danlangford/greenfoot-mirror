@@ -61,7 +61,7 @@ import bluej.views.MethodView;
  * resulting class file and executes a method in a new thread.
  * 
  * @author Michael Kolling
- * @version $Id: Invoker.java 6475 2009-07-31 14:30:38Z davmac $
+ * @version $Id: Invoker.java 6703 2009-09-17 04:48:20Z davmac $
  */
 
 public class Invoker
@@ -172,7 +172,7 @@ public class Invoker
         }
         else if (member instanceof MethodView) {
             constructing = false;
-        	executionEvent = new ExecutionEvent(pkg, member.getClassName(), null );
+                executionEvent = new ExecutionEvent(pkg, member.getClassName(), null );
         }
         else {
             Debug.reportError("illegal member type in invocation");
@@ -285,7 +285,7 @@ public class Invoker
      */
     public void tryAgain()
     {
-    	doTryAgain = true;
+        doTryAgain = true;
     }
 
     // -- CallDialogWatcher interface --
@@ -507,12 +507,12 @@ public class Invoker
             // goes into an infinite loop can hang BlueJ.
             new Thread() {
                 public void run() {
-                	EventQueue.invokeLater(new Runnable() {
-                		public void run() {
+                        EventQueue.invokeLater(new Runnable() {
+                                public void run() {
                             closeCallDialog();
-                		}
-                	});
-                	
+                                }
+                        });
+                        
                     final DebuggerResult result = pkg.getProject().getDebugger().instantiateClass(className);
                     
                     EventQueue.invokeLater(new Runnable() {
@@ -704,7 +704,7 @@ public class Invoker
         Map<String, String> objBenchVarsMap = new HashMap<String, String>();
         
         if (wrappers.hasNext() || localVars != null) {
-            buffer.append("final java.util.Map __bluej_runtime_scope = getScope(\"" + scopeId + "\");" + Config.nl);
+            buffer.append("final bluej.runtime.BJMap __bluej_runtime_scope = getScope(\"" + scopeId + "\");" + Config.nl);
         
             // writeVariables("", buffer, false, wrappers, cqtTransform);
             while (wrappers.hasNext()) {
@@ -718,9 +718,9 @@ public class Invoker
         // later on.
         if (localVars != null && constype == null) {
             // writeVariables("lv:", buffer, false, localVars.getValueIterator(), cqtTransform);
-            Iterator<?> i = localVars.getValueIterator();
+            Iterator<? extends NamedValue> i = localVars.getValueIterator();
             while (i.hasNext()) {
-                NamedValue localVar = (NamedValue) i.next();
+                NamedValue localVar = i.next();
                 objBenchVarsMap.put(localVar.getName(), getVarDeclString("lv:", false, localVar, cqtTransform));
             }
         }
@@ -1074,9 +1074,9 @@ public class Invoker
         deleteShellFiles();
         
         if (! successful && doTryAgain) {
-        	doTryAgain = false;
-        	doFreeFormInvocation(null);
-        	return;
+                doTryAgain = false;
+                doFreeFormInvocation(null);
+                return;
         }
         
         if (! successful && dialog != null) {

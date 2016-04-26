@@ -21,11 +21,7 @@
  */
 package greenfoot;
 
-import java.io.IOException;
 import java.util.Random;
-
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.UnsupportedAudioFileException;
 
 import greenfoot.core.Simulation;
 import greenfoot.core.WorldHandler;
@@ -141,17 +137,17 @@ public class Greenfoot
      * the project directory or in the sounds directory of the project
      * directory.
      * 
-     * @param filename Typically the name of a file in the sounds directory in
-     *            the project directory.
+     * @param soundFile  Typically the name of a file in the sounds directory
+     *            of the scenario.
      * @throws IllegalArgumentException If the sound can not be loaded.
      */
     public static void playSound(final String soundFile)
     {
-    	Sound sound = SoundFactory.getInstance().getCachedSound(soundFile);
+        Sound sound = SoundFactory.getInstance().getCachedSound(soundFile);
 
-		if( sound != null) {
-			sound.play();
-		}		
+        if( sound != null) {
+            sound.play();
+        }		
     }
     
     
