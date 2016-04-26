@@ -23,8 +23,10 @@ package bluej.compiler;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import javax.tools.Diagnostic;
@@ -34,8 +36,6 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
-
-import bluej.Config;
 
 /**
  * A compiler implementation using the Compiler API introduced in Java 6.
@@ -47,6 +47,7 @@ public class CompilerAPICompiler extends Compiler
     public CompilerAPICompiler()
     {
         setDebug(true);
+        setDeprecation(true);
     }
     
     /**
@@ -60,10 +61,11 @@ public class CompilerAPICompiler extends Compiler
      * @param internal
      *            True if compiling BlueJ-generated code (shell files) False if
      *            compiling user code
-     * @return    success
+     * 
+     * @return  true if successful
      */
     public boolean compile(File[] sources, CompileObserver observer,
-            boolean internal) 
+            boolean internal, List<String> userOptions) 
     {
         boolean result = true;
         JavaCompiler jc = ToolProvider.getSystemJavaCompiler();
@@ -76,7 +78,7 @@ public class CompilerAPICompiler extends Compiler
             List<File> pathList = new ArrayList<File>();
             List<File> outputList = new ArrayList<File>();
             outputList.add(getDestDir());
-            pathList.addAll(Arrays.asList(getProjectClassLoader().getClassPathAsFiles()));
+            Collections.addAll(pathList, getClassPath());
             
             // In BlueJ, the destination directory and the source path are
             // always the same
@@ -94,14 +96,14 @@ public class CompilerAPICompiler extends Compiler
             if(isDeprecation()) {
                 optionsList.add("-deprecation");
             }
-            if(getProjectClassLoader().loadsForJavaMEproject()) {
-                // Set the "bootclasspath" and use the ME-specific compiler options
-                sjfm.setLocation(StandardLocation.PLATFORM_CLASS_PATH, Arrays.asList(getProjectClassLoader().getJavaMElibsAsFiles()));
-                addUserSpecifiedOptions(optionsList, JAVAME_COMPILER_OPTIONS);
-            } else {
-                addUserSpecifiedOptions(optionsList, COMPILER_OPTIONS);
+            
+            File[] bootClassPath = getBootClassPath();
+            if (bootClassPath != null && bootClassPath.length != 0) {
+                sjfm.setLocation(StandardLocation.PLATFORM_CLASS_PATH, Arrays.asList(bootClassPath));
             }
-
+            
+            optionsList.addAll(userOptions);
+            
             //compile
             jc.getTask(null, sjfm, diagnostics, optionsList, null, compilationUnits1).call();
             sjfm.close();            
@@ -153,16 +155,11 @@ public class CompilerAPICompiler extends Compiler
             Diagnostic<? extends JavaFileObject> diagnostic = diagnosticList.get(diagnosticErrorPosition);
             if (diagnostic.getSource() != null)
             {
-                if (Config.isJava17())
-                {
-                    //in Java 7 this returns the full path, where in earlier versions
-                    //it only returns the base class
-                    src = diagnostic.getSource().getName();  
-                } else {
-                    //in Java 7 this returns a JavaFileObject toString (as you expect)
-                    //whereas in earlier versions this returns the full path
-                    src = diagnostic.getSource().toString();
-                }
+                // See bug: http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6419926
+                // JDK6 returns URIs without a scheme in some cases, so always resolve against a
+                // known "file:/" URI:
+                URI srcUri = sources[0].toURI().resolve(diagnostic.getSource().toUri());
+                src = new File(srcUri).toString();
             }
             pos = (int)diagnostic.getLineNumber();
 
@@ -170,7 +167,7 @@ public class CompilerAPICompiler extends Compiler
             if (error) 
             {
                 result = false;          
-                msg = processDiagnosticMessage(src, pos, diagnostic.getMessage(null));  
+                msg = processMessage(src, pos, diagnostic.getMessage(null));  
                 observer.errorMessage(src, pos, msg);
             }
             // Handle compiler warning messages  
@@ -197,53 +194,20 @@ public class CompilerAPICompiler extends Compiler
     }
 
     /**
-     * processDiagnosticMessage tidies up the message returned from the diagnostic tool
+     * Processes messages returned from the compiler. This just slightly adjusts the format of some
+     * messages.
      */
-    protected String processDiagnosticMessage(String src, int pos, String msg)
+    protected String processMessage(String src, int pos, String message)
     {
-        if (Config.isJava17())
-        {
-            int lastIndex = msg.lastIndexOf('\n');            
-            if (lastIndex == -1)
-            {
-                return msg;
-            }            
-            int index = 0; 
-            String rMsg = "";
-            while (index >= 0 ) 
-            {
-                lastIndex = Math.max(msg.indexOf('\n', index+1), msg.indexOf('\r', index+1));
-                if (lastIndex < 0){
-                    rMsg = rMsg + msg.substring(index, msg.length()).trim();
-                }
-                else {
-                    rMsg = rMsg + msg.substring(index, lastIndex).trim() +";\n";
-                }
-                index = msg.indexOf('\n', index + 1);
-            }  
-            return rMsg;
-        }
-        else {
-            return processMessage(src, pos, msg);
-        }
-    }
-
-    /**
-     * Processes messages returned from the compiler where the Java version is 1.6 or earlier
-     */
-    protected String processMessage(String src, int pos, String msg)
-    {
-        // The message is in this format: 
+        // For JDK 6, the message is in this format: 
         //   path and filename:line number:message
-        // i.e includes the path and line number; so we need to strip that off
+        // i.e includes the path and line number; so we need to strip that off.
         String expected = src + ":" + pos + ": ";
-        if (! msg.startsWith(expected)) 
+        if (message.startsWith(expected)) 
         {
-            // Hmm, it's not a format we recgonize
-            return src;
+            message = message.substring(expected.length());
         }
         
-        String message = msg.substring(expected.length());
         if (message.contains("cannot resolve symbol")
                 || message.contains("cannot find symbol")
                 || message.contains("incompatible types")) 
@@ -251,13 +215,13 @@ public class CompilerAPICompiler extends Compiler
             // divide the message into lines so we can retrieve necessary values
             int index1, index2;
             String line2, line3;
-            index1=message.indexOf('\n');
+            index1 = message.indexOf('\n');
             if (index1 == -1) 
             {
                 // We don't know how to handle this.
-                return msg;
+                return message;
             }
-            index2=message.indexOf('\n',index1+1);
+            index2 = message.indexOf('\n',index1+1);
             //i.e there are only 2 lines not 3
             if (index2 < index1) 
             {
@@ -268,23 +232,23 @@ public class CompilerAPICompiler extends Compiler
                 line2 = message.substring(index1, index2).trim();
                 line3 = message.substring(index2).trim();
             }
-            message=message.substring(0, index1);
+            message = message.substring(0, index1);
 
             //e.g incompatible types
             //found   : int
             //required: java.lang.String
             if (line2.startsWith("found") && line2.indexOf(':') != -1) 
             {
-                message= message +" - found "+line2.substring(line2.indexOf(':')+2, line2.length());
+                message = message +" - found " + line2.substring(line2.indexOf(':') + 2, line2.length());
             }
             if (line3.startsWith("required") && line3.indexOf(':') != -1) {
-                message= message +" but expected "+line3.substring(line3.indexOf(':')+2, line3.length());
+                message = message +" but expected " + line3.substring(line3.indexOf(':') + 2, line3.length());
             }
             //e.g cannot find symbol
             //symbol: class Persons
             if (line2.startsWith("symbol") && line2.indexOf(':') != -1) 
             {
-                message= message +" - "+line2.substring(line2.indexOf(':')+2, line2.length());
+                message = message + " - " + line2.substring(line2.indexOf(':') + 2, line2.length());
             }
         }
         return message;

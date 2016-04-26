@@ -27,6 +27,7 @@ import greenfoot.event.CompileListener;
 import greenfoot.event.CompileListenerForwarder;
 import greenfoot.gui.GreenfootFrame;
 import greenfoot.gui.MessageDialog;
+import greenfoot.importer.scratch.ScratchImport;
 import greenfoot.platforms.ide.ActorDelegateIDE;
 import greenfoot.util.FileChoosers;
 import greenfoot.util.Version;
@@ -48,6 +49,7 @@ import javax.swing.JButton;
 import javax.swing.JOptionPane;
 
 import rmiextension.wrappers.RBlueJ;
+import rmiextension.wrappers.RClass;
 import rmiextension.wrappers.RPackage;
 import rmiextension.wrappers.RProject;
 import rmiextension.wrappers.event.RCompileEvent;
@@ -55,6 +57,7 @@ import rmiextension.wrappers.event.RInvocationListener;
 import rmiextension.wrappers.event.RProjectListener;
 import bluej.Config;
 import bluej.debugmgr.CallHistory;
+import bluej.extensions.PackageNotFoundException;
 import bluej.extensions.ProjectNotOpenException;
 import bluej.pkgmgr.Project;
 import bluej.runtime.ExecServer;
@@ -70,7 +73,7 @@ import bluej.views.View;
  * but each will be in its own JVM so it is effectively a singleton.
  * 
  * @author Poul Henriksen <polle@mip.sdu.dk>
- * @version $Id: GreenfootMain.java 8321 2010-09-14 15:05:24Z nccb $
+ * @version $Id: GreenfootMain.java 8514 2010-10-21 10:31:51Z nccb $
  */
 public class GreenfootMain extends Thread implements CompileListener, RProjectListener
 {
@@ -264,15 +267,36 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
             frame.openProject(project);
             return;
         }
+        
+        // Used for some imports:
+        boolean autoIndentAllFiles = false;
 
         if (!projectDirFile.isDirectory() && !Project.isProject(projectDirFile.toString())) {
-            projectDirFile = Utility.maybeExtractArchive(projectDirFile, frame);
+            if (projectDirFile.getName().endsWith(".sb")) {
+                projectDirFile = ScratchImport.convert(projectDirFile);
+                autoIndentAllFiles = true;
+            } else {
+                projectDirFile = Utility.maybeExtractArchive(projectDirFile, frame);
+            }
         }
                 
         int versionStatus = GreenfootMain.updateApi(projectDirFile, frame, getAPIVersion().toString());
         boolean doOpen = versionStatus != VERSION_BAD;
         if (doOpen) {
-            rBlueJ.openProject(projectDirFile);
+            RProject proj = rBlueJ.openProject(projectDirFile);
+
+            if (autoIndentAllFiles) {
+                try {
+                    for (RPackage pkg : proj.getPackages()) {
+                        for (RClass cls : pkg.getRClasses()) {
+                            cls.autoIndent();
+                        }
+                    }
+                // If there any problems, never mind about it:
+                } catch(ProjectNotOpenException e) { }
+                catch (PackageNotFoundException e) { }
+            }
+                
 
             // if this is the dummy startup project, close it now.
             if (frame.getProject() == null) {
@@ -417,7 +441,7 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
     /**
      * Creates a new project
      */
-    public void newProject()
+    public RProject newProject()
     {
         File newFile = FileUtility.getDirName(frame,
                 Config.getString("greenfoot.utilDelegate.newScenario"),
@@ -425,7 +449,8 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
                 false, true);
         if (newFile != null) {
             try {
-                if (rBlueJ.newProject(newFile) != null) {
+                RProject rproj = rBlueJ.newProject(newFile);
+                if (rproj != null) {
                     // The rest of the project preparation will be done by the
                     // ProjectManager on the BlueJ VM.
 
@@ -433,6 +458,8 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
                     if (isStartupProject()) {
                         project.close();
                     }
+                    
+                    return rproj;
                 }
                 else {
                     String errMsg = Config.getString("greenfoot.cannotCreateProject");
@@ -449,6 +476,7 @@ public class GreenfootMain extends Thread implements CompileListener, RProjectLi
                 Debug.reportError("Problems when trying to create new scenario", re);
             }
         }
+        return null;
     }
 
     /**

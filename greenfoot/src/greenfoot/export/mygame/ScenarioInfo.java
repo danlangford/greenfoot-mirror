@@ -42,6 +42,7 @@ public class ScenarioInfo
     private String url;
     private boolean hasSource;
     private boolean isLocked;
+    private boolean isUpdate = false;
     
     private static final String PUBLISH_TITLE = "publish.title";
     private static final String PUBLISH_SHORT_DESC = "publish.shortDesc";
@@ -123,8 +124,9 @@ public class ScenarioInfo
     {
         return hasSource;
     }
+    
     /**
-     * Stores the scenario info locally.
+     * Stores the scenario information into the specified project properties.
      */
     public void store(ProjectProperties properties)
     {
@@ -166,7 +168,7 @@ public class ScenarioInfo
     public boolean load(ProjectProperties properties)
     {
         //if it is a saved scenario it should have at least a title set
-        if (properties.getString(PUBLISH_TITLE)==null){
+        if (properties.getString(PUBLISH_TITLE) == null) {
             return false;
         }
         setTitle(properties.getString(PUBLISH_TITLE));
@@ -197,6 +199,16 @@ public class ScenarioInfo
     public void setUpdateDescription(String updateDescription)
     {
         this.updateDescription = updateDescription;
+    }
+
+    public boolean isUpdate()
+    {
+        return isUpdate;
+    }
+
+    public void setUpdate(boolean isUpdate)
+    {
+        this.isUpdate = isUpdate;
     }
  
 }

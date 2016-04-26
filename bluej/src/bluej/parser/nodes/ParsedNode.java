@@ -94,6 +94,9 @@ public abstract class ParsedNode extends RBTreeNode
      * <li>NODETYPE_METHODDEF - a method defintion
      * <li>NODETYPE_ITERATION - an iteration construct (for loop etc)
      * <li>NODETYPE_SELECTION - a selection construct (if/else etc)
+     * <li>NODETYPE_FIELD     - a field or variable declaration
+     * <li>NODETYPE_EXPRESSION - an expression
+     * <li>NODETYPE_COMMENT   - a code comment
      * </ul>
      */
     public int getNodeType()
@@ -272,7 +275,8 @@ public abstract class ParsedNode extends RBTreeNode
      * @param length     The length of the insert
      * @param listener   The listener for node structural changes
      */
-    public abstract int textInserted(Document document, int nodePos, int insPos, int length, NodeStructureListener listener);
+    public abstract int textInserted(MoeSyntaxDocument document, int nodePos, int insPos,
+            int length, NodeStructureListener listener);
 
     /**
      * The specified portion of text within the node has been removed.<p>
@@ -287,7 +291,8 @@ public abstract class ParsedNode extends RBTreeNode
      * @param length     The length of the removal
      * @param listener   The listener for node structural changes
      */
-    public abstract int textRemoved(Document document, int nodePos, int delPos, int length, NodeStructureListener listener);
+    public abstract int textRemoved(MoeSyntaxDocument document, int nodePos, int delPos,
+            int length, NodeStructureListener listener);
 
     /**
      * This node should be re-parsed from the specified point. The node position

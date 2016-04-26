@@ -59,7 +59,7 @@ import bluej.Config;
  * 
  * @author Michael Cahill
  * @author Michael Kolling
- * @version $Id: Utility.java 8323 2010-09-14 20:14:07Z mik $
+ * @version $Id: Utility.java 8563 2010-12-07 01:02:46Z davmac $
  */
 public class Utility
 {
@@ -474,7 +474,7 @@ public class Utility
     public static void bringToFront(final Window window)
     {
         // If not showing at all we return now.
-        if (!window.isShowing()) {
+        if (!window.isShowing() || !window.getFocusableWindowState()) {
             return;
         }
 
@@ -503,10 +503,18 @@ public class Utility
             try {
                 Process p = Runtime.getRuntime().exec(command);
                 new ExternalProcessLogger(command[0], commandAsStr.toString(), p).start();
+                if (isWindows) {
+                    // An apparent JDK bug causes us to lose the ability to receive
+                    // input if the script is executed while a popup window is showing.
+                    // In an attempt to avoid that we'll wait for the script to execute
+                    // now:
+                    new ProcessWaiter(p).waitForProcess(500);
+                }
             }
             catch (IOException e) {
                 Debug.reportError("While trying to launch \"" + command + "\", got this IOException:", e);
             }
+            catch (InterruptedException ie) {}
         }
         if (Config.isLinux()) {
             // http://ubuntuforums.org/archive/index.php/t-197207.html
@@ -569,6 +577,45 @@ public class Utility
                     br.close();
                 }
                 catch (IOException ioe) {}
+            }
+        }
+    }
+    
+    /**
+     * A utility class to wait for an external process to complete.
+     * This allows waiting with a timeout, unlike the Process.waitFor()
+     * method. Simply create a ProcessWaiter, and then call {@code wait()}
+     * or {@code wait(long)} on the ProcessWaiter.
+     */
+    private static class ProcessWaiter
+    {
+        boolean complete = false;
+        
+        public ProcessWaiter(final Process p)
+        {
+            new Thread() {
+                public void run() {
+                    try {
+                        p.waitFor();
+                    }
+                    catch (InterruptedException ie) {}
+                    synchronized (ProcessWaiter.this) {
+                        complete = true;
+                        ProcessWaiter.this.notify();
+                    }
+                };
+            }.start();
+        }
+        
+        /**
+         * Wait for the process to complete, with the given timeout.
+         * If the timeout is 0, wait indefinitely.
+         */
+        public synchronized void waitForProcess(long timeout)
+            throws InterruptedException
+        {
+            while (! complete) {
+                wait(timeout);
             }
         }
     }
@@ -979,4 +1026,71 @@ public class Utility
         }
         return oPath;
     }
+    
+    /**
+     * Convert an array of files into a classpath string that can be used to start a VM.
+     * If files is null or files is empty then an empty string is returned.
+     * 
+     * @param files an array of files.
+     * @return a non null string, possibly empty.
+     */
+    public static final String toClasspathString(File[] files)
+    {
+        if ((files == null) || (files.length < 1)) {
+            return "";
+        }
+
+        boolean addSeparator = false; // Do not add a separator at the beginning
+        StringBuffer buf = new StringBuffer();
+
+        for (int index = 0; index < files.length; index++) {
+            File file = files[index];
+
+            // It may happen that one entry is null, strange, but just skip it.
+            if (file == null) {
+                continue;
+            }
+
+            if (addSeparator) {
+                buf.append(File.pathSeparatorChar);
+            }
+
+            buf.append(file.toString());
+
+            // From now on, you have to add a separator.
+            addSeparator = true;
+        }
+
+        return buf.toString();
+    }
+    
+    /**
+     * Transform an array of URL into an array of File. Any non-file URLs are skipped.
+     * 
+     * @param urls  an array of URL to be converted
+     * @return  a non null (but possibly empty) array of File
+     */
+    public static final File[] urlsToFiles(URL[] urls)
+    {
+        if ((urls == null) || (urls.length < 1)) {
+            return new File[0];
+        }
+
+        List<File> rlist = new ArrayList<File>();
+
+        for (int index = 0; index < urls.length; index++) {
+            URL url = urls[index];
+
+            // A class path is always without the qualifier file in front of it.
+            // However some characters (such as space) are encoded.
+            
+            if ("file".equals(url.getProtocol())) {
+                URI uri = URI.create(url.toString());
+                rlist.add(new File(uri));
+            }
+        }
+
+        return rlist.toArray(new File[rlist.size()]);
+    }
+
 }

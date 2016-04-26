@@ -206,8 +206,11 @@ public class Exporter
             ScenarioInfo info = new ScenarioInfo();
             info.setTitle(scenarioName);
             info.setShortDescription(pane.getShortDescription());
-            info.setLongDescription(pane.getDescription());
             info.setUpdateDescription(pane.getUpdateDescription());
+            info.setLongDescription(pane.getDescription());
+            if (pane.isUpdate()){
+                info.setUpdate(true);
+            }
             info.setTags(pane.getTags());
             info.setUrl(pane.getURL());
             

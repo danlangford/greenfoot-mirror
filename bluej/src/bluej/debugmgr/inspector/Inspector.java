@@ -45,9 +45,12 @@ import java.lang.reflect.Method;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
+import javax.swing.JRootPane;
 import javax.swing.JScrollPane;
+import javax.swing.KeyStroke;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 
@@ -78,7 +81,6 @@ public abstract class Inspector extends JFrame
 {
     // === static variables ===
 
-
     protected final static String showClassLabel = Config.getString("debugger.inspector.showClass");
     protected final static String inspectLabel = Config.getString("debugger.inspector.inspect");
     protected final static String getLabel = Config.getString("debugger.inspector.get");
@@ -86,6 +88,7 @@ public abstract class Inspector extends JFrame
  
     // === instance variables ===
 
+    protected JScrollPane fieldListScrollPane = null;
     protected FieldList fieldList = null;
     private Color fieldListBackgroundColor;
 
@@ -109,7 +112,7 @@ public abstract class Inspector extends JFrame
 
     //The width of the list of fields
     private static final int MIN_LIST_WIDTH = 150;
-    private static final int MAX_LIST_WIDTH = 300;
+    private static final int MAX_LIST_WIDTH = 400;
 
   
     /**
@@ -153,6 +156,21 @@ public abstract class Inspector extends JFrame
         fieldListBackgroundColor = valueFieldColor;
         initFieldList();
     }
+    
+    @Override
+    protected JRootPane createRootPane()
+    {
+        // Close the dialog if escape is pressed.
+        ActionListener actionListener = new ActionListener() {
+            public void actionPerformed(ActionEvent actionEvent) {
+              doClose(true);
+            }
+        };
+        JRootPane rootPane = super.createRootPane();
+        KeyStroke stroke = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
+        rootPane.registerKeyboardAction(actionListener, stroke, JComponent.WHEN_IN_FOCUSED_WINDOW);
+        return rootPane;
+    }
 
     /**
      * Initializes the list of fields. This creates the component that shows the
@@ -185,18 +203,22 @@ public abstract class Inspector extends JFrame
         // grab the key event from the fieldlist. 
         fieldList.addKeyListener(new KeyListener() {            
             public void keyPressed(KeyEvent e)
-            {                
+            {
             }
 
             public void keyReleased(KeyEvent e)
             {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER || e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                    doClose(true);
-                }    
             }
 
             public void keyTyped(KeyEvent e)
             {
+            	// Enter or escape?
+            	if (e.getKeyChar() == '\n' || e.getKeyChar() == 27) {
+            	    // On MacOS, we'll never see escape here. We have set up an
+            	    // action on the root pane which will handle it instead.
+                    doClose(true);
+                    e.consume();
+                }    
             }
         });        
     }
@@ -291,12 +313,32 @@ public abstract class Inspector extends JFrame
     /**
      * Call this method when you want the inspector to resize to its preferred
      * size as calculated from the elements in the inspector.
-     * 
      */
     public void updateLayout()
     {
+        recalculateFieldlistSize();
+        
+        // limit the preferred size of the field list scrollpane
+        if (fieldListScrollPane != null) {
+            fieldListScrollPane.setPreferredSize(null);
+            Dimension d = fieldListScrollPane.getPreferredSize();
+            fieldListScrollPane.setMaximumSize(d);
+            d = new Dimension(d);
+            d.width = Math.min(d.width, MAX_LIST_WIDTH);
+            fieldListScrollPane.setPreferredSize(d);
+        }
+        
+        pack();
+        repaint();
+    }
+    
+    /**
+     * Re-calculate the preferred field list size according to the data in the list.
+     */
+    protected void recalculateFieldlistSize()
+    {
         final Object[] listData = getListData();
-        double height = fieldList.getPreferredSize().getHeight();
+        int height = fieldList.getPreferredSize().height;
         int rows = listData.length;
         int scrollBarWidth = 0;
         if (rows > getPreferredRows()) {
@@ -304,18 +346,10 @@ public abstract class Inspector extends JFrame
             scrollBarWidth = 32; // add some space for a scrollbar
         }
         
-        int width = (int) fieldList.getPreferredSize().getWidth();
-        if (width < MIN_LIST_WIDTH) {
-            width = MIN_LIST_WIDTH;
-        }
-        if(width > MAX_LIST_WIDTH) {
-            width = MAX_LIST_WIDTH;
-        }
+        int width = fieldList.getPreferredSize().width;
+        width = Math.max(width, MIN_LIST_WIDTH);
         
-        
-        fieldList.setPreferredScrollableViewportSize(new Dimension(width+scrollBarWidth, (int) height));
-        pack();
-        repaint();
+        fieldList.setPreferredScrollableViewportSize(new Dimension(width + scrollBarWidth, height));
     }
 
     // ----- ListSelectionListener interface -----
@@ -448,17 +482,13 @@ public abstract class Inspector extends JFrame
     protected JButton createCloseButton()
     {
         JButton button = new JButton(close);
-        {
-            button.addActionListener(new ActionListener() {
-                public void actionPerformed(ActionEvent e)
-                {
-                    doClose(true);
-                }
-            });
-        }
-
+        button.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e)
+            {
+                doClose(true);
+            }
+        });
         return button;
-
     }
 
     /**
@@ -506,10 +536,10 @@ public abstract class Inspector extends JFrame
      */
     protected JScrollPane createFieldListScrollPane()
     {
-        JScrollPane scrollPane = new JScrollPane(fieldList);
-        scrollPane.setBorder(BorderFactory.createLineBorder(fieldListBackgroundColor, 10));
-        scrollPane.getViewport().setBackground(fieldListBackgroundColor);
-        return scrollPane;
+        fieldListScrollPane = new JScrollPane(fieldList);
+        fieldListScrollPane.setBorder(BorderFactory.createLineBorder(fieldListBackgroundColor, 10));
+        fieldListScrollPane.getViewport().setBackground(fieldListBackgroundColor);
+        return fieldListScrollPane;
     }
     
     // Allow movement of the window by dragging
@@ -589,6 +619,8 @@ public abstract class Inspector extends JFrame
                // mSetWindowShape = awtUtilitiesClass.getMethod("setWindowShape", Window.class, Shape.class);
                // mSetWindowOpacity = awtUtilitiesClass.getMethod("setWindowOpacity", Window.class, float.class);
                mSetWindowOpaque = awtUtilitiesClass.getMethod("setWindowOpaque", Window.class, boolean.class);
+           } catch (ClassNotFoundException cnfe) {
+               Debug.log("Sun AWT translucency classes not available (ClassNotFoundException).");
            } catch (Exception ex) {
                Debug.reportError("Couldn't support AWTUtilities", ex);
            }

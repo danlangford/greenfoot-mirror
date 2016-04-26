@@ -28,8 +28,10 @@ import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -80,6 +82,7 @@ public abstract class MyGameClient
         String gameUrl = info.getUrl();
         
         HttpClient httpClient = getHttpClient();
+        httpClient.getHttpConnectionManager().getParams().setConnectionTimeout(20 * 1000); // 20s timeout
         
         // Authenticate user and initiate session
         PostMethod postMethod = new PostMethod(hostAddress + "account/authenticate");
@@ -107,66 +110,53 @@ public abstract class MyGameClient
         List<String> tagsList = info.getTags();
         boolean hasSource = sourceFile != null;
         //determining the number of parts to send through
-        boolean update=false;
-        int index=5;
-        if (updateDescription!=null && updateDescription.length()>0) {
-            index=index+1;
-            update=true;
+        //use a temporary map holder
+        Map<String, String> partsMap = new HashMap<String, String>();
+        if (info.isUpdate()){
+            partsMap.put("scenario[update_description]", updateDescription);
         }
-        if (screenshotFile!=null) {
-            index=index+1;
+        else {
+            partsMap.put("scenario[long_description]", longDescription);
+            partsMap.put("scenario[short_description]", shortDescription);
         }
-        //Initial export ->there is a short and long descrp 
-        if (!update){
-            index=index+2;
+        int size = partsMap.size();
+       
+        if (screenshotFile!= null){
+            size=size+1;
         }
-        int tagindex = index+1;
-        Part [] parts = new Part[index+1 + tagsList.size() + (hasSource ? 1 : 0)];
+
+        //base number of parts is 6
+        int counter=6;
+        Part [] parts = new Part[ counter + size + tagsList.size() + (hasSource ? 1 : 0)];
         parts[0] = new StringPart("scenario[title]", gameName);
         parts[1] = new StringPart("scenario[main_class]", "greenfoot.export.GreenfootScenarioViewer");
         parts[2] = new StringPart("scenario[width]", "" + width);
         parts[3] = new StringPart("scenario[height]", "" + height);
         parts[4] = new StringPart("scenario[url]", gameUrl);
         parts[5] = new ProgressTrackingPart("scenario[uploaded_data]", new File(jarFileName), this);
-        switch (index){
-        case 6:
-            //can't be a initial export as that index is exactly 7
-            //could be either a update desc or a screenshot
-            if (updateDescription!=null && updateDescription.length()>0 ){
-                parts[6] = new StringPart("scenario[update_description]", updateDescription); 
-            }
-            else {
-                parts[6] = new ProgressTrackingPart("scenario[screenshot_data]", screenshotFile, this); 
-            }  
-            break;
-        case 7:
-            if (update)
-            {
-                //both a update desc or a screenshot
-                parts[6] = new StringPart("scenario[update_description]", updateDescription); 
-                parts[7] = new ProgressTrackingPart("scenario[screenshot_data]", screenshotFile, this);
-            }
-            else {
-                parts[6] = new StringPart("scenario[short_description]", shortDescription);
-                parts[7] = new StringPart("scenario[long_description]", longDescription);
-            }
-            break;
-        case 8:
-            parts[6] = new StringPart("scenario[short_description]", shortDescription);
-            parts[7] = new StringPart("scenario[long_description]", longDescription);
-            parts[8] = new ProgressTrackingPart("scenario[screenshot_data]", screenshotFile, this);
-        default:
-
-            break;
+        Iterator <String> mapIterator=partsMap.keySet().iterator();
+        String key="";
+        String obj="";
+        while (mapIterator.hasNext()){
+            key = mapIterator.next().toString();
+            obj = partsMap.get(key).toString();
+            parts[counter]= new StringPart(key, obj);
+            counter=counter+1;
         }
+        
         if (hasSource) {
-            parts[tagindex] = new ProgressTrackingPart("scenario[source_data]", sourceFile, this);
-            tagindex++;
+            parts[counter] = new ProgressTrackingPart("scenario[source_data]", sourceFile, this);
+            counter=counter+1;
+        }
+        if (screenshotFile!= null){
+            parts[counter] = new ProgressTrackingPart("scenario[screenshot_data]", screenshotFile, this);
+            counter=counter+1;
         }
 
         int tagNum = 0;
         for (Iterator<String> i = tagsList.iterator(); i.hasNext(); ) {
-            parts[tagindex++] = new StringPart("scenario[tag" + tagNum++ + "]", i.next());
+            parts[counter] = new StringPart("scenario[tag" + tagNum++ + "]", i.next());
+            counter=counter+1;
         }
         
         postMethod = new PostMethod(hostAddress + "upload-scenario");
@@ -277,16 +267,17 @@ public abstract class MyGameClient
      * @param hostAddress   The game server address
      * @param uid           The username of the user
      * @param gameName      The scenario title
-     * @param info        If not null, this will have the title, short description,
-     *                    long description and tags set to whatever the existing
-     *                    scenario has. 
-     * @return
+     * @param info        If not null, this will on return have the title, short description,
+     *                    long description and tags set to whatever the existing scenario has. 
+     * @return  true iff the scenario exists on the server
      */
     public boolean checkExistingScenario(String hostAddress, String uid,
             String gameName, ScenarioInfo info)
         throws UnknownHostException, IOException
     {
         HttpClient client = getHttpClient();
+        client.getHttpConnectionManager().getParams().setConnectionTimeout(20 * 1000);
+        // 20 second timeout is quite generous
         
         String encodedName = URLEncoder.encode(gameName, "UTF-8");
         encodedName = encodedName.replace("+", "%20");
@@ -382,11 +373,16 @@ public abstract class MyGameClient
     
     /**
      * Get a list of commonly used tags from the server.
+     * 
+     * @throws UnknownHostException if the host is unknown
+     * @throws org.apache.commons.httpclient.ConnectTimeoutException if the connection timed out
+     * @throws IOException if some other I/O exception occurs
      */
     public List<String> getCommonTags(String hostAddress, int maxNumberOfTags)
         throws UnknownHostException, IOException
     {
         HttpClient client = getHttpClient();
+        client.getHttpConnectionManager().getParams().setConnectionTimeout(20 * 1000);
         
         GetMethod getMethod = new GetMethod(hostAddress +
                 "common-tags/"+ maxNumberOfTags);
