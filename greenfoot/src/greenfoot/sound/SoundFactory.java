@@ -77,24 +77,20 @@ public class SoundFactory
      * 
      * @param file Name of a file or an url
      */
-    public Sound createSound(final String file) 
+    public Sound createSound(final String file)
     {      
     	try {
-			// First, determine the size of the sound, if possible
 			URL url = GreenfootUtil.getURL(file, "sounds");
 			int size = url.openConnection().getContentLength();
-
-
-            // TODO: Remove comment when we want to include GreenfootSound support            
-            /*
+/* ENABLESOUND
 			if (isMidi(url)) {
 				return new MidiFileSound(url, soundCollection);
 			}
 			else if(isMp3(url)) {
 				return new SoundStream(new Mp3AudioInputStream(url), soundCollection);
-			}
-			
-			else */
+			}			
+			else 
+			*/
 			if (isJavaAudioStream(size)) {
 				return new SoundStream(new JavaAudioInputStream(url), soundCollection);
 			} 

@@ -52,7 +52,7 @@ import bluej.Config;
  * 
  * @author Michael Cahill
  * @author Michael Kolling
- * @version $Id: Utility.java 6215 2009-03-30 13:28:25Z polle $
+ * @version $Id: Utility.java 6489 2009-08-05 12:36:56Z polle $
  */
 public class Utility
 {

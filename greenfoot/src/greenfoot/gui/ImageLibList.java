@@ -52,11 +52,12 @@ import bluej.BlueJTheme;
  * filenames.
  * 
  * @author Davin McCall
- * @version $Id: ImageLibList.java 6216 2009-03-30 13:41:07Z polle $
+ * @version $Id: ImageLibList.java 6424 2009-07-09 15:23:40Z mjrb4 $
  */
 public class ImageLibList extends JList
 {
     private DefaultListModel listModel;
+    private File directory;
     
     /**
      * Construct an empty ImageLibList.
@@ -74,7 +75,7 @@ public class ImageLibList extends JList
             public void mouseClicked(MouseEvent e)
             {
                 if (e.getButton() == MouseEvent.BUTTON1 && e.getClickCount() >= 2) {
-                    if (getSelectedEntry() != null) {
+                    if (getSelectedEntry() != null && getRootPane().getDefaultButton()!=null) {
                         getRootPane().getDefaultButton().doClick();
                     }
                 }
@@ -102,6 +103,7 @@ public class ImageLibList extends JList
      */
     public void setDirectory(File directory)
     {
+        this.directory = directory;
         listModel.removeAllElements();
         
         FilenameFilter filter = new FilenameFilter() {
@@ -132,6 +134,24 @@ public class ImageLibList extends JList
             }
             catch (MalformedURLException mfue) { }
             catch (IOException ioe) { }
+        }
+    }
+
+    /**
+     * Get the current directory this list is pointing to.
+     */
+    public File getDirectory()
+    {
+        return directory;
+    }
+
+    /**
+     * Refresh the contents of the list.
+     */
+    public void refresh()
+    {
+        if(getDirectory()!=null) {
+            setDirectory(getDirectory());
         }
     }
         

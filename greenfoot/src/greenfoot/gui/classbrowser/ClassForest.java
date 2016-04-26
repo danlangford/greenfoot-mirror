@@ -37,7 +37,7 @@ import java.util.TreeSet;
  * A forest of trees. The roots are sorted alphabetically on their keys
  * 
  * @author Poul Henriksen
- * @version $Id: ClassForest.java 6322 2009-05-09 17:50:58Z polle $
+ * @version $Id: ClassForest.java 6478 2009-08-04 11:12:45Z polle $
  */
 public class ClassForest
 {
@@ -56,6 +56,18 @@ public class ClassForest
 
         public void addChild(TreeEntry child)
         {
+            if(this.equals(child)) {
+                throw new IllegalArgumentException(" Cannot add TreeEntry as a child of itself: " + this);
+            }
+            List<TreeEntry> childsChildren = child.getChildren();
+            for (TreeEntry treeEntry : childsChildren) {
+                if(this.equals(treeEntry)) {
+                    // found a cycle, just return and don't add it.
+                    // Should not be able to happen since it is checked in GClass
+                    System.err.println("ClassForest found Cycle between: " + key + " and " + child);
+                    return;
+                }
+            }
             children.add(child);
         }
         
@@ -110,6 +122,11 @@ public class ClassForest
         {
             return getKey().hashCode();
         }
+
+        public void rename(String newKey)
+        {
+            this.key = newKey;
+        }
     }
 
     private SortedSet<TreeEntry> roots = new TreeSet<TreeEntry>();
@@ -151,7 +168,7 @@ public class ClassForest
 		treeEntryMap.put(entry.getKey(), entry);
 		List<TreeEntry> children = entry.getChildren();
 		for (TreeEntry treeEntry : children) {
-			add(treeEntry);
+		    add(treeEntry);
 		}
 	}
 
@@ -160,13 +177,18 @@ public class ClassForest
 	 * any. Returns the removed TreeEntry.
 	 */
     public synchronized TreeEntry remove(ClassView cls)
-    {
+    {        
         String name =  cls.getClassName();
         TreeEntry removedEntry = treeEntryMap.remove(name);
         if (removedEntry != null) {
+            // Make sure to update the key in the entry if it has changed.
+            String oldName = removedEntry.getKey();
+            if(oldName != name) {
+                removedEntry.rename(name);                
+            }
 			List<TreeEntry> children = removedEntry.getChildren();
 			for (TreeEntry child : children) {
-				remove(child.getData());				
+				remove(child.getData());	
 			}
 		}
 
@@ -182,7 +204,9 @@ public class ClassForest
     {
         TreeEntry entry = treeEntryMap.remove(oldName);
         if (entry != null) {
-            treeEntryMap.put(cls.getClassName(), entry);
+            String newName = cls.getClassName();
+            entry.rename(newName);
+            treeEntryMap.put(newName, entry);
         }
     }
 
@@ -212,8 +236,7 @@ public class ClassForest
      */
     private void addEntryToTree(ClassView clsView)
     {
-        String superName = clsView.getSuperclassGuess();
-
+        String superName = clsView.getSuperclass();
         TreeEntry child = (TreeEntry) treeEntryMap.get(clsView.getClassName());
         if(superName == null || superName.equals("")) {
             roots.add(child);
